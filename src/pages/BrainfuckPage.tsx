@@ -42,7 +42,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
 
   // ユーザー操作
   const [isDragging, setIsDragging] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 475);
   const [lastTouchX, setLastTouchX] = useState<number | null>(null);
   const [isHelpPopupOpen, setIsHelpPopupOpen] = useState(false);
 
@@ -52,7 +52,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
 
   // スマホサイズの画面かどうかを検知
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    const handleResize = () => setIsMobile(window.innerWidth <= 475);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -325,11 +325,11 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
         backgroundColor: '#263238', 
         color: 'white' 
       }}>
-        <button onClick={backToMenu} style={{ cursor: 'pointer' }}>
+        <button onClick={backToMenu} style={{ cursor: 'pointer', fontSize: isMobile ? '10px' : '16px' }}>
           ◀ 戻る
         </button>
-        <h2 style={{ margin: 0, fontSize: isMobile ? '10px' : '18px' }}>Brainfuck Visualizer</h2>
-        <button onClick={() => setIsHelpPopupOpen(true)} style={{ cursor:'pointer', fontWeight: "bold" }}>
+        <h2 style={{ margin: 0, fontSize: isMobile ? '12px' : '18px' }}>Brainfuck Visualizer</h2>
+        <button onClick={() => setIsHelpPopupOpen(true)} style={{ cursor:'pointer', fontWeight: "bold", fontSize: isMobile ? '10px' : '16px'  }}>
           ヘルプ ❓
         </button>
       </div>
