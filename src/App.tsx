@@ -1,8 +1,42 @@
 import { useEffect, useState, useRef } from 'react';
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+
 import { BrainfuckPage } from './pages/BrainfuckPage';
 
+function MainMenu() {
+  const navigate = useNavigate();
+  return (
+    <div style={{ 
+      display: 'flex', flexDirection: 'column', 
+      height: '100vh', width: '100vw',
+      textAlign: 'center', alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden', fontFamily: 'sans-serif' 
+    }}>
+      <h1 style={{ fontSize: '45px' }}>ビジュアライザへようこそ</h1>
+      <h3>利用可能なビジュアライザ</h3>
+      <button 
+        onClick={() => navigate('/brainfuck')} 
+        style={{ fontSize: '20px', padding: '10px 20px', border: '1px solid' }}
+      >
+        Brainfuck
+      </button>
+      <h4>他のビジュアライザはこれから追加されます</h4>
+    </div>
+  );
+}
+
+function BrainfuckWrapper({ engine }: { engine: any }) {
+  const navigate = useNavigate();
+  return (
+    <BrainfuckPage 
+      engine={engine} 
+      onBack={() => navigate('/')} // ★ '/' (トップ) へ遷移
+    />
+  );
+}
+
 function App() {
-  const [activePage, setActivePage] = useState<'menu' | 'brainfuck'>('menu');
   const [isReady, setIsReady] = useState(false);
   const [loadError, setLoadError] = useState("");
   const engineRef = useRef<any>(null);
@@ -63,31 +97,16 @@ function App() {
   );
 
   return (
-    <>
-      {activePage === 'menu' ? (
-      <div style={{ 
-        display: 'flex', flexDirection: 'column', 
-        height: '100vh', width: '100vw',
-        textAlign: 'center', alignItems: 'center',
-        justifyContent: 'center',
-        overflow: 'hidden', fontFamily: 'sans-serif' 
-      }}>
+    <BrowserRouter>
+    <Routes>
+      {/* URLが '/' のときはメニューを表示 */}
+      <Route path="/" element={<MainMenu/>}/>
 
-        {/* <div style={{ padding: '50px', textAlign: 'center' }}> */}
-          <h1 style={{ fontSize: '45px' }}>ビジュアライザへようこそ</h1>
-          <h3>利用可能なビジュアライザ</h3>
-          <button onClick={() => setActivePage('brainfuck')} style={{ fontSize: '20px', padding: '10px 20px', border: '1px solid' }}>
-            Brainfuck
-          </button>
-          <h4>他のビジュアライザはこれから追加されます</h4>
-        </div>
-      ) : (
-        <BrainfuckPage 
-          engine={engineRef.current} 
-          onBack={() => setActivePage('menu')} 
-        />
-      )}
-    </>
+      {/* URLが '/brainfuck' のときはビジュアライザを表示 */}
+      <Route path="/brainfuck" element={<BrainfuckWrapper engine={engineRef.current} />} />
+    </Routes>
+
+    </BrowserRouter>
   );
 }
 
