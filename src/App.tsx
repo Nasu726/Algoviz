@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 
 import { BrainfuckPage } from './pages/BrainfuckPage';
+import { GraphPage } from './pages/GraphPage';
 
 function MainMenu() {
   const navigate = useNavigate();
@@ -32,6 +33,16 @@ function BrainfuckWrapper({ engine }: { engine: any }) {
     <BrainfuckPage 
       engine={engine} 
       onBack={() => navigate('/')} // ★ '/' (トップ) へ遷移
+    />
+  );
+}
+
+function GraphWrapper({engine}: {engine: any}){
+  const navigate = useNavigate();
+  return (
+    <GraphPage
+      engine={engine}
+      onBack={() => navigate("/")}
     />
   );
 }
@@ -104,6 +115,8 @@ function App() {
 
       {/* URLが '/brainfuck' のときはビジュアライザを表示 */}
       <Route path="/brainfuck" element={<BrainfuckWrapper engine={engineRef.current} />} />
+
+      <Route path="/graph" element={<GraphWrapper engine={engineRef.current} />} />
     </Routes>
 
     </BrowserRouter>
