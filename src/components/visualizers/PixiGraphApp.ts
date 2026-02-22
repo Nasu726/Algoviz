@@ -121,7 +121,7 @@ export class PixiGraphApp {
         this.engine.step();
         const state = this.engine.getState({});
         const nodeArray = new Float32Array(state.nodes);
-        const edgeArray = new Int32Array(state.edges);
+        const edgeArray = new Float32Array(state.edges);
 
         const nodeCount = nodeArray.length / 3;
         while (this.nodeSprites.length < nodeCount) {

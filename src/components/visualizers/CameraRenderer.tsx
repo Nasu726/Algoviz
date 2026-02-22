@@ -99,7 +99,7 @@ export const GraphRenderer: React.FC<GraphRendererProps> = ({ engine }) => {
         engine.step();
         const state = engine.getState({});
         const nodeArray = new Float32Array(state.nodes);
-        const edgeArray = new Int32Array(state.edges);
+        const edgeArray = new Float32Array(state.edges);
 
         const nodeCount = nodeArray.length / 3;
         while (nodeSprites.length < nodeCount) {

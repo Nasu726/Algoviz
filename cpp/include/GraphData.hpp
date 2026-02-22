@@ -1,3 +1,4 @@
+#pragma once
 #include <vector>
 #include <emscripten/bind.h>
 #include <emscripten/val.h>
@@ -6,14 +7,14 @@ using namespace emscripten;
 // 視覚データの管理クラス（各アルゴリズムクラスのメンバとして持たせる）
 class GraphData {
 public:
-    std::vector<float> nodeData; // [x0, y0, color0, x1, y1, color1, ...]
-    std::vector<int> edgeData;   // [from0, to0, from1, to1, ...]
-    const int NODE_STRIDE = 3;   // 1ノードあたりのデータ数
-    const int EDGE_STRIDE = 3;   // 1エッジあたりのデータ数
+    std::vector<float> nodeData; // [x0, y0, weight0, color0, x1, y1, weight1, color1, ...]
+    std::vector<float> edgeData;   // [from0, to0, weight0, color0, from1, to1, ...]
+    const int NODE_STRIDE = 4;   // 1ノードあたりのデータ数
+    const int EDGE_STRIDE = 4;   // 1エッジあたりのデータ数
 
     GraphData(int maxNodes, int maxEdges) {
         nodeData.reserve(maxNodes * NODE_STRIDE);
-        edgeData.reserve(maxEdges * 2);
+        edgeData.reserve(maxEdges * EDGE_STRIDE);
     }
 
     void jiggle() {
@@ -25,17 +26,19 @@ public:
         }
     }
 
-    void setNode(int index, float x, float y, float colorId) {
+    void setNode(int index, float x, float y, float weight, float colorId) {
         int offset = index * NODE_STRIDE;
         if (offset + NODE_STRIDE > nodeData.size()) nodeData.resize(offset + NODE_STRIDE, 0.0f);
-        nodeData[offset] = x;
+        nodeData[offset]     = x;
         nodeData[offset + 1] = y;
-        nodeData[offset + 2] = colorId;
+        nodeData[offset + 2] = weight;
+        nodeData[offset + 3] = colorId;
     }
 
-    void addEdge(int fromIndex, int toIndex, int colorId) {
+    void addEdge(float fromIndex, float toIndex, float weight, float colorId) {
         edgeData.push_back(fromIndex);
         edgeData.push_back(toIndex);
+        edgeData.push_back(weight);
         edgeData.push_back(colorId);
     }
 

@@ -3,6 +3,7 @@
 
 #include "IVisualizer.hpp"
 #include "GraphData.hpp"
+#include "StressMajorizationLayout.hpp"
 #include <emscripten/val.h>
 #include <cstdlib>
 
@@ -11,10 +12,11 @@ using namespace emscripten;
 class GraphVisualizer : public IVisualizer {
 private:
     GraphData* graph;
+    StressMajorizationLayout layout;
 
 public:
     GraphVisualizer() {
-        // 初期化時に1万ノードのテストデータを作る
+        // 初期化時に10ノードのテストデータを作る
         int nodeCount = 10;
         int edgeCount = 10;
         graph = new GraphData(nodeCount, edgeCount);
@@ -23,13 +25,14 @@ public:
             float x = rand() % 600;
             float y = rand() % 400;
             float colorId = rand() % 2;
-            graph->setNode(i, x, y, colorId);
+            graph->setNode(i, x, y, 0, colorId);
         }
         for (int i = 0; i < edgeCount; i++) {
-            int from = rand() % nodeCount;
-            int to = rand() % nodeCount;
-            graph->addEdge(from, to, 0);
+            float from = rand() % nodeCount;
+            float to = rand() % nodeCount;
+            graph->addEdge(from, to, 0, 0);
         }
+        layout.init(graph);
     }
 
     ~GraphVisualizer() {
@@ -37,13 +40,16 @@ public:
     }
 
     void load(const std::string& source, const std::string& input) override {
-        // 今回は使わないが、将来アルゴリズムの初期化（初期配置）に使う
+        // 将来、JSから実際のグラフデータを受け取った時も、
+        // データをセットし終わった後に layout.init(graph) を呼ぶようにします。
     }
 
     bool step() override {
-        // 毎フレームのアニメーション（揺らす）処理
+        // 毎フレームのアニメーション処理
         // JSから engine.step() を呼ぶとこれが実行される！
-        graph->jiggle();
+        
+        layout.update(graph);
+
         return true;
     }
 
