@@ -243,6 +243,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
   const handleLoad = () => {
     if (!engine) return;
     try {
+      engine.setAlgorithm("brainfuck");
       engine.load(code, input);
       setCameraStart(-(viewSize+1)/2);
       const newState = engine.getState({ start: cameraStart, range: viewSize });
