@@ -123,7 +123,7 @@ export class PixiGraphApp {
         const nodeArray = new Float32Array(state.nodes);
         const edgeArray = new Float32Array(state.edges);
 
-        const nodeCount = nodeArray.length / 3;
+        const nodeCount = nodeArray.length / 4;
         while (this.nodeSprites.length < nodeCount) {
             const sprite = new PIXI.Sprite(this.circleTexture!);
             sprite.anchor.set(0.5);
@@ -132,11 +132,12 @@ export class PixiGraphApp {
         }
 
         let visibleNodeCount = 0;
-        for (let i = 0; i < nodeArray.length; i += 3) {
+        for (let i = 0; i < nodeArray.length; i += 4) {
             const x = nodeArray[i];
             const y = nodeArray[i + 1];
-            const colorId = nodeArray[i + 2];
-            const sprite = this.nodeSprites[i / 3];
+            // const weight = nodeArray[i + 2];
+            const colorId = nodeArray[i + 3];
+            const sprite = this.nodeSprites[i / 4];
 
             if (this.isVisible(x, y)) {
                 sprite.visible = true;
@@ -150,13 +151,13 @@ export class PixiGraphApp {
         }
 
         this.edgeGraphics.clear();
-        for (let i = 0; i < edgeArray.length; i += 3) {
+        for (let i = 0; i < edgeArray.length; i += 4) {
             const fromIdx = edgeArray[i];
             const toIdx = edgeArray[i + 1];
-            const fx = nodeArray[fromIdx * 3];
-            const fy = nodeArray[fromIdx * 3 + 1];
-            const tx = nodeArray[toIdx * 3];
-            const ty = nodeArray[toIdx * 3 + 1];
+            const fx = nodeArray[fromIdx * 4];
+            const fy = nodeArray[fromIdx * 4 + 1];
+            const tx = nodeArray[toIdx * 4];
+            const ty = nodeArray[toIdx * 4 + 1];
 
             if (this.isVisible(fx, fy) || this.isVisible(tx, ty)) {
                 this.edgeGraphics.moveTo(fx, fy);

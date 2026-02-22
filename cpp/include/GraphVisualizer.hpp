@@ -27,9 +27,9 @@ public:
             float colorId = rand() % 2;
             graph->setNode(i, x, y, 0, colorId);
         }
-        for (int i = 0; i < edgeCount; i++) {
-            float from = rand() % nodeCount;
-            float to = rand() % nodeCount;
+        for (int i = 0; i < nodeCount; i++) {
+            float from = i;
+            float to = (i + 1) % nodeCount;
             graph->addEdge(from, to, 0, 0);
         }
         layout.init(graph);
