@@ -6,6 +6,7 @@
 #include "StressMajorizationLayout.hpp"
 #include <emscripten/val.h>
 #include <cstdlib>
+#include <ctime>
 
 using namespace emscripten;
 
@@ -16,6 +17,8 @@ private:
 
 public:
     GraphVisualizer() {
+        srand((unsigned int)time(nullptr));
+        
         // 初期化時に10ノードのテストデータを作る
         int nodeCount = 10;
         int edgeCount = 10;
