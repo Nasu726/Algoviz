@@ -26,10 +26,10 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     };
 
     return (
-        <div style={{ padding: "50px 60px", fontFamily: 'sans-serif' }}>
-            <h2>Graph Visualizer 統合版</h2>
+        <div style={{ padding: "50px 60px", fontFamily: 'sans-serif', display: "flex", flexDirection: "row" }}>
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexDirection: "column" }}>
+                <h2>Graph Visualizer 統合版</h2>
             
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
                 <button onClick={onBack} style={{ padding: '8px 16px' }}>
                     ◀ 戻る
                 </button>
@@ -43,7 +43,7 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
             </div>
 
             {isLoaded ? (
-                <div>
+                <div style={{ display: "flex"}}>
                     <GraphRenderer engine={engine} isDirected={true} />
                 </div>
             ) : (
