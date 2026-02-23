@@ -9,7 +9,7 @@ export class PixiGraphApp {
     private world!: PIXI.Container;
     private edgeGraphics!: PIXI.Graphics;
     private nodeContainer!: PIXI.Container;
-    private nodeSprites: PIXI.Sprite[] = [];
+    private nodeSprites: PIXI.Container[] = [];
     private circleTexture: PIXI.Texture | null = null;
     private fpsText!: PIXI.Text;
     
@@ -48,9 +48,29 @@ export class PixiGraphApp {
         this.nodeContainer = new PIXI.Container();
         this.world.addChild(this.nodeContainer);
 
-        const g = new PIXI.Graphics();
-        g.circle(0, 0, 10).fill(0xffffff);
-        this.circleTexture = this.app.renderer.generateTexture(g);
+        // ノード用のコンテナ（箱）を100個あらかじめ作っておく
+        for (let i = 0; i < 100; i++) {
+            const nodeGroup = new PIXI.Container();
+
+            // 1. 白抜きの円（Graphics）
+            const bg = new PIXI.Graphics();
+            bg.circle(0, 0, 14);
+            bg.fill(0xffffff); // 中身は白
+            bg.stroke({ width: 3, color: 0xcccccc }); // 枠線（最初はグレー）
+            nodeGroup.addChild(bg); // 箱に入れる
+
+            // 2. ノード番号のテキスト（Text）
+            const text = new PIXI.Text({
+                text: i.toString(),
+                style: { fontSize: 14, fill: 0x333333, fontWeight: 'bold' }
+            });
+            text.anchor.set(0.5); // テキストを中央揃えにする
+            nodeGroup.addChild(text); // 箱に入れる
+
+            nodeGroup.visible = false; // 最初は隠しておく
+            this.nodeContainer.addChild(nodeGroup); // 世界に追加
+            this.nodeSprites.push(nodeGroup); // 配列に保存
+        }
 
         this.fpsText = new PIXI.Text({ text: 'FPS: 0', style: { fontSize: 16, fill: 0x000000 } });
         this.fpsText.x = 10;
@@ -131,23 +151,46 @@ export class PixiGraphApp {
             this.nodeContainer.addChild(sprite);
         }
 
+        // ノードの更新とカリング
         let visibleNodeCount = 0;
+        let nodeIndex = 0; // 何番目のノードを処理しているか
+
         for (let i = 0; i < nodeArray.length; i += 4) {
             const x = nodeArray[i];
             const y = nodeArray[i + 1];
-            // const weight = nodeArray[i + 2];
             const colorId = nodeArray[i + 3];
-            const sprite = this.nodeSprites[i / 4];
+
+            // 100個（用意したコンテナ数）を超えたら処理しない
+            if (nodeIndex >= this.nodeSprites.length) break;
+
+            const group = this.nodeSprites[nodeIndex];
 
             if (this.isVisible(x, y)) {
-                sprite.visible = true;
-                sprite.x = x;
-                sprite.y = y;
-                sprite.tint = colorId === 0 ? 0x3498db : 0xe74c3c;
+                group.visible = true;
+                group.x = x;
+                group.y = y;
+
+                // 状態（colorId）に応じて枠線の色を変更する
+                // group.children[0] は、さっき入れた「白抜きの円（Graphics）」のこと
+                const bg = group.children[0] as PIXI.Graphics;
+                const borderColor = colorId === 0 ? 0x3498db : 0xe74c3c;
+                
+                // 色を塗り直す
+                bg.clear();
+                bg.circle(0, 0, 14);
+                bg.fill(0xffffff);
+                bg.stroke({ width: 3, color: borderColor });
+
                 visibleNodeCount++;
             } else {
-                sprite.visible = false;
+                group.visible = false;
             }
+            nodeIndex++;
+        }
+
+        // 余った（使わなかった）ノードを非表示にする
+        for (let i = nodeIndex; i < this.nodeSprites.length; i++) {
+            this.nodeSprites[i].visible = false;
         }
 
         this.edgeGraphics.clear();

@@ -10,7 +10,7 @@
 class StressMajorizationLayout {
 private:
     float inf = 999999.0f;
-    float baseDistance = 30.0f;
+    float baseDistance = 100.0f;
     int nodeStride;
     int edgeStride;
     int nodeSize;
