@@ -10,8 +10,11 @@
 
 class StressMajorizationLayout {
 private:
+    bool is_stable = false;
+    float epsilon = 0.05f;
     float inf = 999999.0f;
     float baseDistance = 80.0f;
+
     int nodeStride;
     int edgeStride;
     int nodeSize;
@@ -75,7 +78,9 @@ public:
         }
     }
 
-    void update(GraphData* graph){
+    bool update(GraphData* graph){
+        if (is_stable) return true;
+        float max_movement = 0.0f;
         // すべてのノード i について、新しい座標を計算する
         for (int i = 0; i < nodeSize; i++){
             float sum_w = 0.0f;
@@ -102,7 +107,7 @@ public:
                 float dy = yi - yj;
 
                 float dist = std::max(0.01f, (float)std::sqrt(dx*dx + dy*dy));
-                float w_ij = 1.0f / (d_ij * d_ij);
+                float w_ij = 1.0f / (d_ij );
 
 
                 // ノード j から見た i の理想の座標 (target_x, target_y)
@@ -204,9 +209,26 @@ public:
         for (int i=0; i<nodeSize; i++){
             float xi = graph->nodeData[i * nodeStride];
             float yi = graph->nodeData[i * nodeStride + 1];
-            graph->nodeData[i * nodeStride]     = xi + (target_nx[i] - xi) * 0.3f;
-            graph->nodeData[i * nodeStride + 1] = yi + (target_ny[i] - yi) * 0.3f;
+
+            float new_x = xi + (target_nx[i] - xi) * 0.3f;
+            float new_y = yi + (target_ny[i] - yi) * 0.3f;
+
+            // ★移動量をチェック
+            float dx = new_x - xi;
+            float dy = new_y - yi;
+            float dist = std::sqrt(dx*dx + dy*dy);
+            if (dist > max_movement) {
+                max_movement = dist;
+            }
+
+            graph->nodeData[i * nodeStride]     = new_x;
+            graph->nodeData[i * nodeStride + 1] = new_y;
         }
+
+        if (max_movement < epsilon){
+            is_stable = true;
+        }
+        return is_stable;
     }
 };
 
