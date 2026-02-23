@@ -26,7 +26,7 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     };
 
     return (
-        <div style={{ padding: "50px 60px", fontFamily: 'sans-serif', display: "flex", flexDirection: "row" }}>
+        <div style={{ padding: "20px 60px", fontFamily: 'sans-serif', display: "flex", flexDirection: "row" }}>
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexDirection: "column" }}>
                 <h2>Graph Visualizer 統合版</h2>
             
