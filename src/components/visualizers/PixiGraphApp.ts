@@ -12,7 +12,7 @@ export class PixiGraphApp {
     private nodeSprites: PIXI.Container[] = [];
     private circleTexture: PIXI.Texture | null = null;
     private fpsText!: PIXI.Text;
-    private nodeRadius = 20.0;
+    private nodeRadius: number = 20.0;
     private isDirected: boolean;
     // private isAutomaton: boolean;
     
@@ -40,8 +40,8 @@ export class PixiGraphApp {
     // 初期化処理（Reactから呼ばれる）
     public async init() {
         await this.app.init({ 
-            width: 600, 
-            height: 400, 
+            width: 800, 
+            height: 600, 
             backgroundColor: 0xfcfcfc,
             antialias: true,
             resolution: window.devicePixelRatio || 1,
@@ -105,7 +105,7 @@ export class PixiGraphApp {
     // ★ イベント設定
     private setupEvents() {
         this.app.stage.eventMode = 'static';
-        this.app.stage.hitArea = new PIXI.Rectangle(0, 0, 600, 400);
+        this.app.stage.hitArea = new PIXI.Rectangle(0, 0, this.app.canvas.width, this.app.canvas.height);
 
         this.app.stage.on('pointerdown', (e) => {
             this.isDragging = true;
@@ -148,7 +148,7 @@ export class PixiGraphApp {
     private isVisible(x: number, y: number): boolean {
         const screenX = x * this.world.scale.x + this.world.position.x;
         const screenY = y * this.world.scale.y + this.world.position.y;
-        return screenX >= -50 && screenX <= 650 && screenY >= -50 && screenY <= 450;
+        return screenX >= -50 && screenX <= this.app.canvas.width + 50 && screenY >= -50 && screenY <= this.app.canvas.height + 50;
     }
 
     // ★ 描画ループ（アロー関数）
