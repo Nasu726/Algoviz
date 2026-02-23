@@ -22,9 +22,193 @@ private:
     std::vector<std::vector<int>> components;
     std::vector<float> target_nx;
     std::vector<float> target_ny;
+
+    // ==========================================
+    // 内部処理用の分割関数群
+    // ==========================================
+
+    // ① SMアルゴリズムの計算
+    void calculateStressMajorization(GraphData* graph) {
+        for(size_t c = 0; c < components.size(); c++) {
+            for(int i : components[c]) {
+                float xi = graph->nodeData[i * nodeStride];
+                float yi = graph->nodeData[i * nodeStride + 1];
+                float sum_x = 0.0f, sum_y = 0.0f, sum_w = 0.0f;
+
+                for(int j : components[c]) {
+                    if (i == j) continue;
+                    float d_ij = d[i * nodeSize + j];
+                    float xj = graph->nodeData[j * nodeStride];
+                    float yj = graph->nodeData[j * nodeStride + 1];
+                    float dx = xi - xj;
+                    float dy = yi - yj;
+                    
+                    if (dx == 0.0f && dy == 0.0f) {
+                        dx = ((rand() % 100) - 50) / 1000.0f;
+                        dy = ((rand() % 100) - 50) / 1000.0f;
+                    }
+
+                    float dist = std::max(0.01f, (float)std::sqrt(dx*dx + dy*dy));
+                    float w_ij = 1.0f / d_ij; 
+                    float target_x = xj + (dx/dist) * d_ij;
+                    float target_y = yj + (dy/dist) * d_ij;
+
+                    sum_w += w_ij;
+                    sum_x += w_ij * target_x;
+                    sum_y += w_ij * target_y;
+                }
+                
+                if (sum_w > 0.0f) {
+                    target_nx[i] = sum_x / sum_w;
+                    target_ny[i] = sum_y / sum_w;
+                }
+            }
+        }
+    }
+
+    // ② 密の解消（ノード同士の重なりを防ぐ）
+    void applyNodeRepulsion() {
+        // 完全グラフなどの密集を防ぐための斥力
+        float optimalDist = baseDistance * 0.8f; 
+        for(size_t c = 0; c < components.size(); c++) {
+            for(size_t i = 0; i < components[c].size(); i++) {
+                int u = components[c][i];
+                for(size_t j = i + 1; j < components[c].size(); j++) {
+                    int v = components[c][j];
+                    float dx = target_nx[u] - target_nx[v];
+                    float dy = target_ny[u] - target_ny[v];
+                    float dist = std::max(0.01f, (float)std::sqrt(dx*dx + dy*dy));
+                    
+                    if (dist < optimalDist) {
+                        // 力が強すぎて振動しないよう、0.2fの係数をかけてマイルドにする
+                        float force = (optimalDist - dist) * 0.2f;
+                        float fx = (dx/dist) * force;
+                        float fy = (dy/dist) * force;
+                        target_nx[u] += fx; target_ny[u] += fy;
+                        target_nx[v] -= fx; target_ny[v] -= fy;
+                    }
+                }
+            }
+        }
+    }
+
+    // ③ 指向性（縦長・横長）に合わせた回転
+    void updateComponentOrientations(GraphData* graph) {
+        for(size_t c = 0; c < components.size(); c++) {
+            if (components[c].empty()) continue;
+            float min_x = inf, max_x = -inf, min_y = inf, max_y = -inf;
+            for(int i : components[c]) {
+                if (target_nx[i] < min_x) min_x = target_nx[i];
+                if (target_nx[i] > max_x) max_x = target_nx[i];
+                if (target_ny[i] < min_y) min_y = target_ny[i];
+                if (target_ny[i] > max_y) max_y = target_ny[i];
+            }
+            
+            float w = max_x - min_x;
+            float h = max_y - min_y;
+            bool shouldRotate = false;
+            
+            if (preferHorizontal && h > w * 1.2f) shouldRotate = true;
+            if (!preferHorizontal && w > h * 1.2f) shouldRotate = true;
+
+            if (shouldRotate) {
+                float cx = (min_x + max_x) / 2.0f;
+                float cy = (min_y + max_y) / 2.0f;
+                
+                for(int i : components[c]) {
+                    float nx = target_nx[i] - cx;
+                    float ny = target_ny[i] - cy;
+                    target_nx[i] = cx - ny;
+                    target_ny[i] = cy + nx;
+                    
+                    float c_nx = graph->nodeData[i * nodeStride] - cx;
+                    float c_ny = graph->nodeData[i * nodeStride + 1] - cy;
+                    graph->nodeData[i * nodeStride] = cx - c_ny;
+                    graph->nodeData[i * nodeStride + 1] = cy + c_nx;
+                }
+            }
+        }
+    }
+
+// ④ フレキシブルな力学パッキング（Bubble Packing）
+    void packComponentsForceDirected() {
+        if (components.empty()) return;
+
+        std::vector<float> comp_cx(components.size(), 0.0f);
+        std::vector<float> comp_cy(components.size(), 0.0f);
+        std::vector<float> comp_r(components.size(), 0.0f); // コンポーネントの半径（泡の大きさ）
+
+        // 各コンポーネントの中心と半径を計算
+        for(size_t c = 0; c < components.size(); c++) {
+            if (components[c].empty()) continue;
+            float min_x = inf, max_x = -inf, min_y = inf, max_y = -inf;
+            for(int i : components[c]) {
+                if (target_nx[i] < min_x) min_x = target_nx[i];
+                if (target_nx[i] > max_x) max_x = target_nx[i];
+                if (target_ny[i] < min_y) min_y = target_ny[i];
+                if (target_ny[i] > max_y) max_y = target_ny[i];
+            }
+            comp_cx[c] = (min_x + max_x) / 2.0f;
+            comp_cy[c] = (min_y + max_y) / 2.0f;
+            
+            float w = max_x - min_x;
+            float h = max_y - min_y;
+            // 独立した1頂点でもしっかり領域を確保する (半径は少し大きめの25.0fに)
+            comp_r[c] = std::max(25.0f, (float)std::sqrt(w*w + h*h) / 2.0f); 
+        }
+
+        std::vector<float> force_x(components.size(), 0.0f);
+        std::vector<float> force_y(components.size(), 0.0f);
+        float padding = 20.0f; // 泡同士の隙間
+
+        // 泡同士の反発力（重ならないように押し返す）
+        for(size_t i = 0; i < components.size(); i++) {
+            for(size_t j = i + 1; j < components.size(); j++) {
+                float dx = comp_cx[i] - comp_cx[j];
+                float dy = comp_cy[i] - comp_cy[j];
+                
+                // ★修正1: 完全に重なっている場合、微小なランダム方向の力を与えて確実に分離させる
+                if (dx == 0.0f && dy == 0.0f) {
+                    dx = ((rand() % 100) - 50) / 1000.0f;
+                    dy = ((rand() % 100) - 50) / 1000.0f;
+                }
+
+                float dist = std::max(0.01f, (float)std::sqrt(dx*dx + dy*dy));
+                float minDist = comp_r[i] + comp_r[j] + padding;
+
+                if (dist < minDist) {
+                    float overlap = minDist - dist;
+                    // ★修正2: 引力に負けないよう、押し出す反発力を強めに設定 (0.5f)
+                    float fx = (dx/dist) * overlap * 0.5f; 
+                    float fy = (dy/dist) * overlap * 0.5f;
+                    force_x[i] += fx; force_y[i] += fy;
+                    force_x[j] -= fx; force_y[j] -= fy;
+                }
+            }
+        }
+
+        // 画面中心 (300, 200) への引力
+        for(size_t i = 0; i < components.size(); i++) {
+            float dx = 300.0f - comp_cx[i];
+            float dy = 200.0f - comp_cy[i];
+            // ★修正3: 全体を綺麗な円形にするため、X軸とY軸で均等な引力をかける
+            float force = 0.02f; // 反発力に負けるくらい弱めの引力にするのがコツ
+            force_x[i] += dx * force;
+            force_y[i] += dy * force;
+        }
+
+        // 計算した力をターゲット座標に適用
+        for(size_t c = 0; c < components.size(); c++) {
+            for(int i : components[c]) {
+                target_nx[i] += force_x[c];
+                target_ny[i] += force_y[c];
+            }
+        }
+    }
+
 public:
     bool is_stable = false;
-    float epsilon = 0.01f;
+    float epsilon = 0.1f;
     bool preferHorizontal = true;
 
     void init(GraphData* graph) {
@@ -36,41 +220,38 @@ public:
         target_nx.assign(nodeSize, 0.0f);
         target_ny.assign(nodeSize, 0.0f);
         
-        // BFSのために連結リストを作成
         std::vector<std::vector<int>> adj(nodeSize);
         for (int i=0; i<edgeSize; i++){
             int from = (int)graph->edgeData[i * edgeStride];
-            int to   = (int)graph->edgeData[i * edgeStride + 1];
+            int to   = (int)graph->edgeData[i * edgeStride +1];
             if (from != to) {
                 adj[from].push_back(to);
                 adj[to].push_back(from);
             }
         }
 
-        // 全頂点からのBFSで理想距離を計算
         for (int i=0; i<nodeSize; i++){
             d[i * nodeSize + i] = 0.0f;
             std::queue<int> q;
             q.push(i);
-
-            while (!q.empty()) {
+            while(!q.empty()){
                 int u = q.front(); q.pop();
-                for (int v: adj[u]) {
-                    if (d[i * nodeSize + v] == inf) {
-                        d[i * nodeSize + v] = d[i * nodeSize + u] + baseDistance;
+                for(int v: adj[u]){
+                    if (d[i*nodeSize + v] == inf) {
+                        d[i*nodeSize + v] = d[i*nodeSize + u] + baseDistance;
                         q.push(v);
                     }
                 }
             }
         }
-        // 非連結グラフを、連結成分のグループに分ける
+
         components.clear();
         std::vector<bool> visited(nodeSize, false);
         for (int i=0; i<nodeSize; i++){
             if (!visited[i]) {
                 std::vector<int> comp;
                 for (int j=0; j<nodeSize; j++){
-                    if (d[i * nodeSize + j] != inf) {
+                    if (d[i*nodeSize + j] != inf) {
                         visited[j] = true;
                         comp.push_back(j);
                     }
@@ -80,214 +261,40 @@ public:
         }
     }
 
-    bool update(GraphData* graph){
+    // ★ update は各関数を呼ぶだけでスッキリ！
+    bool update(GraphData* graph) {
         if (is_stable) return true;
+
+        // 1. 各コンポーネント内の形を整える
+        calculateStressMajorization(graph);
+        
+        // 2. 密集を防ぎ、円形に膨らませる
+        applyNodeRepulsion();
+
+        // 3. 縦横の指向性に合わせて回転する
+        updateComponentOrientations(graph);
+
+        // 4. コンポーネント同士を泡のようにパッキングする
+        packComponentsForceDirected();
+
+        // 5. イージングをかけて実際の座標を動かし、収束を判定する
         float max_movement = 0.0f;
-        // すべてのノード i について、新しい座標を計算する
-        for (int i = 0; i < nodeSize; i++){
-            float sum_w = 0.0f;
-            float sum_x = 0.0f;
-            float sum_y = 0.0f;
-
-            // ノード i の現在の座標
-            float xi = graph->nodeData[i * nodeStride];
-            float yi = graph->nodeData[i * nodeStride + 1];
-
-            // 他の全てのノード j との調整をする
-            for (int j = 0; j < nodeSize; j++) {
-                if (i == j) continue;
-                float d_ij = d[i * nodeSize + j];
-                if (d_ij == inf) continue; // 非連結なら無視
-
-                // ノード j の現在の座標 xj, yj を取得する
-                float xj = graph->nodeData[j * nodeStride];
-                float yj = graph->nodeData[j * nodeStride + 1];
-
-                // ノード i とノード j の座標の差を求め、距離を求める
-                // distは0だとその後の処理で0除算してしまうので、0.01fを最小値とする
-                float dx = xi - xj;
-                float dy = yi - yj;
-
-                float dist = std::max(0.01f, (float)std::sqrt(dx*dx + dy*dy));
-                float w_ij = 1.0f / (d_ij );
-
-
-                // ノード j から見た i の理想の座標 (target_x, target_y)
-                float target_x = xj + (dx/dist) * d_ij;
-                float target_y = yj + (dy/dist) * d_ij;
-
-                // 重み付けをして座標を足す
-                sum_w += w_ij;
-                sum_x += w_ij * target_x;
-                sum_y += w_ij * target_y;
-
-            }
-            if (sum_w > 0.0f){
-                // ノード i の新しい座標を決定
-                target_nx[i] = sum_x / sum_w;
-                target_ny[i] = sum_y / sum_w;
-            } else {
-                target_nx[i] = xi;
-                target_ny[i] = yi;
-            }
-        }
-
-        // --- 2. 複数の成分を「Shelf Packing（棚詰め）」で綺麗に整列させる ---
-        if (components.size() > 0) {
-            float padding = 50.0f; // 成分間の隙間
-            
-            std::vector<float> comp_widths(components.size(), 0.0f);
-            std::vector<float> comp_heights(components.size(), 0.0f);
-            std::vector<float> comp_cx(components.size(), 0.0f);
-            std::vector<float> comp_cy(components.size(), 0.0f);
-            
-            // 各成分のバウンディングボックスを計算
-            for (size_t c = 0; c < components.size(); c++){
-                if (components[c].empty()) continue;
-                float min_x = inf, max_x = -inf, min_y = inf, max_y = -inf;
-                for (int i: components[c]) {
-                    if (target_nx[i] < min_x) min_x = target_nx[i];
-                    if (target_nx[i] > max_x) max_x = target_nx[i];
-                    if (target_ny[i] < min_y) min_y = target_ny[i];
-                    if (target_ny[i] > max_y) max_y = target_ny[i];
-                }
-                float w = max_x - min_x;
-                float h = max_y - min_y;
-
-                // ★ 向きの判定（1.2倍以上の差がある場合のみ回転させ、振動を防ぐ）
-                bool shouldRotate = false;
-                if (preferHorizontal && h > w * 1.2f) shouldRotate = true;
-                if (!preferHorizontal && w > h * 1.2f) shouldRotate = true;
-
-                if (shouldRotate) {
-                    float cx = (min_x + max_x) / 2.0f;
-                    float cy = (min_y + max_y) / 2.0f;
-                    min_x = inf; max_x = -inf; min_y = inf; max_y = -inf;
-                    
-                    for(int i : components[c]) {
-                        // 目標座標を回転
-                        float nx = target_nx[i] - cx;
-                        float ny = target_ny[i] - cy;
-                        target_nx[i] = cx - ny;
-                        target_ny[i] = cy + nx;
-                        
-                        // ★ 同時に、実際の座標も回転させる！（斜め歪みの防止）
-                        float c_nx = graph->nodeData[i * nodeStride] - cx;
-                        float c_ny = graph->nodeData[i * nodeStride + 1] - cy;
-                        graph->nodeData[i * nodeStride] = cx - c_ny;
-                        graph->nodeData[i * nodeStride + 1] = cy + c_nx;
-
-                        if (target_nx[i] < min_x) min_x = target_nx[i];
-                        if (target_nx[i] > max_x) max_x = target_nx[i];
-                        if (target_ny[i] < min_y) min_y = target_ny[i];
-                        if (target_ny[i] > max_y) max_y = target_ny[i];
-                    }
-                }
-                
-                comp_widths[c] = max_x - min_x;
-                comp_heights[c] = max_y - min_y;
-                comp_cx[c] = (min_x + max_x) / 2.0f;
-                comp_cy[c] = (min_y + max_y) / 2.0f;
-            }
-
-            // 1. 高さが大きい順（背の高い順）にソートするためのインデックス配列を作成
-            std::vector<int> order(components.size());
-            for (int i = 0; i < components.size(); i++) order[i] = i;
-            std::sort(order.begin(), order.end(), [&](int a, int b) {
-                return comp_heights[a] > comp_heights[b];
-            });
-
-            // 2. すべてのコンポーネントの面積から、理想のパッキング幅（max_width）を計算
-            float total_area = 0.0f;
-            float max_w_single = 0.0f; // 最も横に長いコンポーネントの幅
-            for (int c : order) {
-                if (components[c].empty()) continue;
-                float w = comp_widths[c] + padding;
-                float h = comp_heights[c] + padding;
-                total_area += w * h;
-                if (w > max_w_single) max_w_single = w;
-            }
-            
-            // キャンバスの縦横比（3:2 = 1.5）に合わせて、理想の横幅を逆算
-            float aspect_ratio = 1.5f;
-            float expected_width = std::sqrt(total_area * aspect_ratio);
-            float max_width = std::max(expected_width, max_w_single);
-
-            // 3. 棚詰め（Shelf Packing）の実行
-            std::vector<float> grid_cx(components.size(), 0.0f);
-            std::vector<float> grid_cy(components.size(), 0.0f);
-            
-            float current_x = 0.0f;
-            float current_y = 0.0f;
-            float row_max_height = 0.0f;
-            float total_min_x = inf, total_max_x = -inf, total_min_y = inf, total_max_y = -inf;
-
-            for (int c : order) {
-                if (components[c].empty()) continue;
-                float w = comp_widths[c];
-                float h = comp_heights[c];
-
-                // 現在の行に置くと理想の幅を超える場合、次の行（棚）へ改行
-                if (current_x > 0.0f && (current_x + w) > max_width) {
-                    current_x = 0.0f;
-                    current_y += row_max_height + padding;
-                    row_max_height = 0.0f;
-                }
-
-                if (h > row_max_height) row_max_height = h;
-
-                // 配置位置の記録
-                grid_cx[c] = current_x + w / 2.0f;
-                grid_cy[c] = current_y + h / 2.0f;
-                
-                // 全体のサイズを更新
-                if (current_x < total_min_x) total_min_x = current_x;
-                if (current_x + w > total_max_x) total_max_x = current_x + w;
-                if (current_y < total_min_y) total_min_y = current_y;
-                if (current_y + h > total_max_y) total_max_y = current_y + h;
-
-                current_x += w + padding;
-            }
-
-            // 4. 全体を画面中央 (300, 200) にシフトさせる
-            float total_cx = (total_min_x + total_max_x) / 2.0f;
-            float total_cy = (total_min_y + total_max_y) / 2.0f;
-            float offset_x = 300.0f - total_cx;
-            float offset_y = 200.0f - total_cy;
-
-            for(size_t c = 0; c < components.size(); c++) {
-                if (components[c].empty()) continue;
-                float shift_x = (grid_cx[c] + offset_x) - comp_cx[c];
-                float shift_y = (grid_cy[c] + offset_y) - comp_cy[c];
-                for(int i : components[c]) {
-                    target_nx[i] += shift_x;
-                    target_ny[i] += shift_y;
-                }
-            }
-        }
-
         for (int i=0; i<nodeSize; i++){
             float xi = graph->nodeData[i * nodeStride];
             float yi = graph->nodeData[i * nodeStride + 1];
-
             float new_x = xi + (target_nx[i] - xi) * 0.3f;
             float new_y = yi + (target_ny[i] - yi) * 0.3f;
 
-            // ★移動量をチェック
             float dx = new_x - xi;
             float dy = new_y - yi;
             float dist = std::sqrt(dx*dx + dy*dy);
-            if (dist > max_movement) {
-                max_movement = dist;
-            }
+            if (dist > max_movement) max_movement = dist;
 
-            graph->nodeData[i * nodeStride]     = new_x;
+            graph->nodeData[i * nodeStride] = new_x;
             graph->nodeData[i * nodeStride + 1] = new_y;
         }
 
-        if (max_movement < epsilon){
-            is_stable = true;
-        }
+        if (max_movement < epsilon) is_stable = true;
         return is_stable;
     }
 };
