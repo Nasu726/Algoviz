@@ -3,16 +3,17 @@ import { PixiGraphApp } from './PixiGraphApp'; // 先ほど作ったクラスを
 
 interface GraphRendererProps {
   engine: any;
+  isDirected?: boolean;
 }
 
-export const GraphRenderer: React.FC<GraphRendererProps> = ({ engine }) => {
+export const GraphRenderer: React.FC<GraphRendererProps> = ({ engine, isDirected = false }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!containerRef.current || !engine) return;
 
     // 1. クラスをインスタンス化
-    const pixiApp = new PixiGraphApp(containerRef.current, engine);
+    const pixiApp = new PixiGraphApp(containerRef.current, engine, isDirected);
     
     // 2. 初期化を実行
     pixiApp.init();
@@ -21,7 +22,7 @@ export const GraphRenderer: React.FC<GraphRendererProps> = ({ engine }) => {
     return () => {
       pixiApp.destroy();
     };
-  }, [engine]);
+  }, [engine, isDirected]);
 
   return (
     <div 

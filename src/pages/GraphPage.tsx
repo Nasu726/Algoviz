@@ -28,7 +28,7 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
             {isLoaded ? (
                 <div>
                     {/* ★ GraphRenderer に engine を渡します */}
-                    <GraphRenderer engine={engine} />
+                    <GraphRenderer engine={engine} isDirected={true} />
                 </div>
             ) : (
                 <p>エンジンをロード中...</p>
