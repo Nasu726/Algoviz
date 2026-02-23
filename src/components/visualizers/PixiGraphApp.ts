@@ -12,6 +12,9 @@ export class PixiGraphApp {
     private nodeSprites: PIXI.Container[] = [];
     private circleTexture: PIXI.Texture | null = null;
     private fpsText!: PIXI.Text;
+    private nodeRadius = 20.0;
+    private isDirected: boolean;
+    // private isAutomaton: boolean;
     
     // 状態管理フラグ
     private isInitialized = false;
@@ -21,15 +24,29 @@ export class PixiGraphApp {
     private isDragging = false;
     private lastPos = { x: 0, y: 0 };
 
-    constructor(container: HTMLDivElement, engine: any) {
+    constructor(
+        container: HTMLDivElement, 
+        engine: any, 
+        isDirected: boolean = false, 
+        // isAutomaton: boolean = false
+    ) {
         this.container = container;
         this.engine = engine;
+        this.isDirected = isDirected;
+        // this.isAutomaton = isAutomaton;
         this.app = new PIXI.Application();
     }
 
-    // ★ 初期化処理（Reactから呼ばれる）
+    // 初期化処理（Reactから呼ばれる）
     public async init() {
-        await this.app.init({ width: 600, height: 400, backgroundColor: 0xfcfcfc });
+        await this.app.init({ 
+            width: 600, 
+            height: 400, 
+            backgroundColor: 0xfcfcfc,
+            antialias: true,
+            resolution: window.devicePixelRatio || 1,
+            autoDensity: true
+        });
         
         // 初期化を待っている間にReactがコンポーネントを破棄していたら、即座に終了する
         if (this.isDestroyed) {
@@ -54,7 +71,7 @@ export class PixiGraphApp {
 
             // 1. 白抜きの円（Graphics）
             const bg = new PIXI.Graphics();
-            bg.circle(0, 0, 14);
+            bg.circle(0, 0, this.nodeRadius);
             bg.fill(0xffffff); // 中身は白
             bg.stroke({ width: 3, color: 0xcccccc }); // 枠線（最初はグレー）
             nodeGroup.addChild(bg); // 箱に入れる
@@ -177,7 +194,7 @@ export class PixiGraphApp {
                 
                 // 色を塗り直す
                 bg.clear();
-                bg.circle(0, 0, 14);
+                bg.circle(0, 0, this.nodeRadius);
                 bg.fill(0xffffff);
                 bg.stroke({ width: 3, color: borderColor });
 
@@ -194,6 +211,9 @@ export class PixiGraphApp {
         }
 
         this.edgeGraphics.clear();
+        // ★ 追加：辺の出現回数を記録する辞書（Map）
+        const edgeCounts: { [key: string]: number } = {};
+
         for (let i = 0; i < edgeArray.length; i += 4) {
             const fromIdx = edgeArray[i];
             const toIdx = edgeArray[i + 1];
@@ -203,8 +223,88 @@ export class PixiGraphApp {
             const ty = nodeArray[toIdx * 4 + 1];
 
             if (this.isVisible(fx, fy) || this.isVisible(tx, ty)) {
-                this.edgeGraphics.moveTo(fx, fy);
-                this.edgeGraphics.lineTo(tx, ty);
+                
+                // ★ 何回目の辺かをカウントする処理
+                // 向きが違っても（A→BとB→A）同じペアとして数えるため、小さい方を前にする
+                const minIdx = Math.min(fromIdx, toIdx);
+                const maxIdx = Math.max(fromIdx, toIdx);
+                const edgeKey = `${minIdx}-${maxIdx}`;
+                
+                if (edgeCounts[edgeKey] === undefined) {
+                    edgeCounts[edgeKey] = 0;
+                }
+                const count = edgeCounts[edgeKey];
+                edgeCounts[edgeKey]++; // 次回のためにカウントアップ
+
+                if (fromIdx === toIdx) {
+                    // 【自己ループの場合】
+                    // カウントが増えるごとに、円の半径と位置を大きくしていく（同心円のように広がる）
+                    const radius = 15 + count * 10; // 15, 25, 35...と大きくなる
+                    this.edgeGraphics.circle(fx + radius + 5, fy - radius - 5, radius);
+                } else {
+                    // 【多重辺の場合】
+                    const midX = (fx + tx) / 2;
+                    const midY = (fy + ty) / 2;
+                    const dx = tx - fx;
+                    const dy = ty - fy;
+                    const normalX = -dy;
+                    const normalY = dx;
+                    const length = Math.sqrt(normalX * normalX + normalY * normalY);
+                    
+                    // カウントに応じて膨らみ方（offset）を変える
+                    let offset = 0;
+                    if (count > 0) {
+                        const direction = count % 2 === 1 ? 1 : -1; // 奇数ならプラス、偶数ならマイナス
+                        const magnitude = Math.ceil(count / 2) * 20; // 20, 20, 40, 40...
+                        offset = direction * magnitude;
+                    }
+
+                    const controlX = midX + (normalX / length) * offset;
+                    const controlY = midY + (normalY / length) * offset;
+
+                    this.edgeGraphics.moveTo(fx, fy);
+                    let dirX = 0;
+                    let dirY = 0;
+
+                    if (offset === 0) {
+                        // 1本目（offset=0）は単なる直線にする
+                        this.edgeGraphics.lineTo(tx, ty);
+                        const len = Math.sqrt((tx - fx) ** 2 + (ty - fy) ** 2);
+                        dirX = (tx - fx) / len;
+                        dirY = (ty - fy) / len;
+                    } else {
+                        // 2本目以降はベジェ曲線で膨らませる
+                        this.edgeGraphics.quadraticCurveTo(controlX, controlY, tx, ty);
+                        const len = Math.sqrt((tx - controlX) ** 2 + (ty - controlY) ** 2);
+                        dirX = (tx - controlX) / len;
+                        dirY = (ty - controlY) / len;
+                    }
+                    // 有向グラフなら矢印を描画する
+                    if (this.isDirected) {
+                        const nodeRadius = 24; // ノードの円の半径（大きくしたサイズに合わせる）
+                        const arrowSize = 10;  // 矢印の羽の長さ
+                        const angle = Math.PI / 6; // 矢印の羽の角度（30度）
+
+                        // 矢印の先端の位置（ノードの縁に接するように、半径分だけ手前に引く）
+                        const tipX = tx - dirX * nodeRadius;
+                        const tipY = ty - dirY * nodeRadius;
+
+                        // 進行方向の角度
+                        const baseAngle = Math.atan2(dirY, dirX);
+
+                        // 矢印の左羽と右羽の座標を計算
+                        const leftX = tipX - arrowSize * Math.cos(baseAngle - angle);
+                        const leftY = tipY - arrowSize * Math.sin(baseAngle - angle);
+                        const rightX = tipX - arrowSize * Math.cos(baseAngle + angle);
+                        const rightY = tipY - arrowSize * Math.sin(baseAngle + angle);
+
+                        // 矢印のV字を描画
+                        this.edgeGraphics.moveTo(tipX, tipY);
+                        this.edgeGraphics.lineTo(leftX, leftY);
+                        this.edgeGraphics.moveTo(tipX, tipY);
+                        this.edgeGraphics.lineTo(rightX, rightY);
+                    }
+                }
             }
         }
         this.edgeGraphics.stroke({ width: 2 / this.world.scale.x, color: 0x999999 });

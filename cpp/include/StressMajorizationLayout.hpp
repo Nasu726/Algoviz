@@ -16,6 +16,10 @@ private:
     int nodeSize;
     int edgeSize;
     std::vector<float> d;
+
+    std::vector<std::vector<int>> components;
+    std::vector<float> target_nx;
+    std::vector<float> target_ny;
 public:
     void init(GraphData* graph) {
         nodeStride = graph->NODE_STRIDE;
@@ -23,6 +27,8 @@ public:
         nodeSize = graph->nodeData.size()/nodeStride;
         edgeSize = graph->edgeData.size()/edgeStride;
         d.assign(nodeSize*nodeSize, inf);
+        target_nx.assign(nodeSize, 0.0f);
+        target_ny.assign(nodeSize, 0.0f);
         
         for (int i = 0; i < nodeSize; i++){
             d[i * nodeSize + i] = 0.0f;
@@ -43,26 +49,24 @@ public:
                 }
             }
         }
-        float max_d = baseDistance;
-        for (int i = 0; i < nodeSize * nodeSize; i++) {
-            if (d[i] != inf && d[i] > max_d) {
-                max_d = d[i];
-            }
-        }
-        float disconnected_d = max_d + baseDistance;
-        for (int i = 0; i < nodeSize * nodeSize; i++) {
-            if (d[i] == inf) {
-                d[i] = disconnected_d;
+        // 非連結グラフを、連結成分のグループに分ける
+        components.clear();
+        std::vector<bool> visited(nodeSize, false);
+        for (int i=0; i<nodeSize; i++){
+            if (!visited[i]) {
+                std::vector<int> comp;
+                for (int j=0; j<nodeSize; j++){
+                    if (d[i * nodeSize + j] != inf) {
+                        visited[j] = true;
+                        comp.push_back(j);
+                    }
+                }
+                components.push_back(comp);
             }
         }
     }
 
     void update(GraphData* graph){
-        int nodeStride = graph->NODE_STRIDE;
-
-        std::vector<float> next_x(nodeSize, 0.0f);
-        std::vector<float> next_y(nodeSize, 0.0f);
-
         // すべてのノード i について、新しい座標を計算する
         for (int i = 0; i < nodeSize; i++){
             float sum_w = 0.0f;
@@ -76,6 +80,9 @@ public:
             // 他の全てのノード j との調整をする
             for (int j = 0; j < nodeSize; j++) {
                 if (i == j) continue;
+                float d_ij = d[i * nodeSize + j];
+                if (d_ij == inf) continue; // 非連結なら無視
+
                 // ノード j の現在の座標 xj, yj を取得する
                 float xj = graph->nodeData[j * nodeStride];
                 float yj = graph->nodeData[j * nodeStride + 1];
@@ -84,11 +91,10 @@ public:
                 // distは0だとその後の処理で0除算してしまうので、0.01fを最小値とする
                 float dx = xi - xj;
                 float dy = yi - yj;
-                float dist = std::max(0.01f, (float)std::sqrt(dx*dx + dy*dy));
 
-                // ノード i, j の理想の距離を取得し、重みを計算する。距離がinfなら連結でないのでスキップ
-                float d_ij = d[i * nodeSize + j];
+                float dist = std::max(0.01f, (float)std::sqrt(dx*dx + dy*dy));
                 float w_ij = 1.0f / (d_ij * d_ij);
+
 
                 // ノード j から見た i の理想の座標 (target_x, target_y)
                 float target_x = xj + (dx/dist) * d_ij;
@@ -102,21 +108,62 @@ public:
             }
             if (sum_w > 0.0f){
                 // ノード i の新しい座標を決定
-                next_x[i] = sum_x / sum_w;
-                next_y[i] = sum_y / sum_w;
-
-                graph->nodeData[i * nodeStride]     = xi + (next_x[i] - xi) * 0.3f;
-                graph->nodeData[i * nodeStride + 1] = yi + (next_y[i] - yi) * 0.3f;
-
+                target_nx[i] = sum_x / sum_w;
+                target_ny[i] = sum_y / sum_w;
             } else {
-                next_x[i] = xi;
-                next_y[i] = yi;
+                target_nx[i] = xi;
+                target_ny[i] = yi;
             }
         }
-        // for (int i=0; i<nodeSize; i++){
-        //     graph->nodeData[i * nodeStride]     = next_x[i];
-        //     graph->nodeData[i * nodeStride + 1] = next_y[i];
-        // }
+
+        float padding = 80.0f;
+        std::vector<float> comp_widths(components.size(), 0.0f);
+        std::vector<float> comp_current_cx(components.size(), 0.0f);
+        std::vector<float> comp_current_cy(components.size(), 0.0f);
+        float total_width = 0.0f;
+
+        for (size_t c = 0; c < components.size(); c++){
+            float min_x = inf, max_x = -inf, min_y = inf, max_y = -inf;
+            for (int i: components[c]) {
+                if (target_nx[i] < min_x) min_x = target_nx[i];
+                if (target_nx[i] > max_x) max_x = target_nx[i];
+                if (target_ny[i] < min_y) min_y = target_ny[i];
+                if (target_ny[i] > max_y) max_y = target_ny[i];
+            }
+
+            if (min_x == inf) continue;
+
+            comp_widths[c] = max_x - min_x;
+            total_width += comp_widths[c];
+            comp_current_cx[c] = (min_x + max_x) / 2.0f;
+            comp_current_cy[c] = (min_y + max_y) / 2.0f;
+        }
+
+        total_width += padding * (components.size() - 1);
+
+        float start_x = 300.0f - total_width / 2.0f;
+
+        for (size_t c = 0; c < components.size(); c++){
+            if (components[c].empty()) continue;
+
+            float ideal_cx = start_x + comp_widths[c] / 2.0f;
+            start_x += comp_widths[c] + padding;
+
+            float shift_x = ideal_cx - comp_current_cx[c];
+            float shift_y = 200.0f - comp_current_cy[c];
+
+            for (int i: components[c]) {
+                target_nx[i] += shift_x;
+                target_ny[i] += shift_y;
+            }
+        }
+        
+        for (int i=0; i<nodeSize; i++){
+            float xi = graph->nodeData[i * nodeStride];
+            float yi = graph->nodeData[i * nodeStride + 1];
+            graph->nodeData[i * nodeStride] = xi + (target_nx[i] - xi) * 0.1f;
+            graph->nodeData[i * nodeStride + 1] = yi + (target_ny[i] - yi) * 0.1f;
+        }
     }
 };
 
