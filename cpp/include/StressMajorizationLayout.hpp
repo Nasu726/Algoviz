@@ -162,18 +162,21 @@ public:
                 if (shouldRotate) {
                     float cx = (min_x + max_x) / 2.0f;
                     float cy = (min_y + max_y) / 2.0f;
-                    
-                    // 新しいバウンディングボックス用にリセット
                     min_x = inf; max_x = -inf; min_y = inf; max_y = -inf;
                     
-                    // 重心を中心に90度回転させる
                     for(int i : components[c]) {
+                        // 目標座標を回転
                         float nx = target_nx[i] - cx;
                         float ny = target_ny[i] - cy;
-                        target_nx[i] = cx - ny; // x' = -y
-                        target_ny[i] = cy + nx; // y' = x
+                        target_nx[i] = cx - ny;
+                        target_ny[i] = cy + nx;
                         
-                        // 回転後のバウンディングボックスを再計算
+                        // ★ 同時に、実際の座標も回転させる！（斜め歪みの防止）
+                        float c_nx = graph->nodeData[i * nodeStride] - cx;
+                        float c_ny = graph->nodeData[i * nodeStride + 1] - cy;
+                        graph->nodeData[i * nodeStride] = cx - c_ny;
+                        graph->nodeData[i * nodeStride + 1] = cy + c_nx;
+
                         if (target_nx[i] < min_x) min_x = target_nx[i];
                         if (target_nx[i] > max_x) max_x = target_nx[i];
                         if (target_ny[i] < min_y) min_y = target_ny[i];
