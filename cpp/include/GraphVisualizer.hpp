@@ -45,6 +45,12 @@ public:
     void load(const std::string& source, const std::string& input) override {
         // 将来、JSから実際のグラフデータを受け取った時も、
         // データをセットし終わった後に layout.init(graph) を呼ぶようにします。
+        // source 引数を使って向きを設定
+        if (source == "horizontal")    layout.preferHorizontal = true;
+        else if (source == "vertical") layout.preferHorizontal = false;
+
+        // 設定が変更されたら、再び計算を走らせるためにフラグをリセットし、少し揺らす
+        layout.is_stable = false;
     }
 
     bool step() override {

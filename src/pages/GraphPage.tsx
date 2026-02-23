@@ -8,26 +8,42 @@ interface GraphProps {
 
 export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     const [isLoaded, setIsLoaded] = useState(false);
+    const [isHorizontal, setIsHorizontal] = useState(true); // ★ 向きのState
 
-    // ページが開かれた時の初期化処理
     useEffect(() => {
         if (!engine) return;
-        // 1. C++エンジンを「グラフモード」に切り替え
-        engine.setAlgorithm("graph");        
+        engine.setAlgorithm("graph");
+        // 初期状態をロード
+        engine.load(isHorizontal ? "horizontal" : "vertical", "");
         setIsLoaded(true);
-    }, [engine]);
+    }, [engine]); // ※ 初回のみ
+
+    // ★ ボタンが押された時に向きを切り替えてエンジンに伝える関数
+    const toggleOrientation = () => {
+        const newOrientation = !isHorizontal;
+        setIsHorizontal(newOrientation);
+        engine.load(newOrientation ? "horizontal" : "vertical", "");
+    };
 
     return (
         <div style={{ padding: "50px 60px", fontFamily: 'sans-serif' }}>
             <h2>Graph Visualizer 統合版</h2>
-            <button onClick={onBack} style={{ padding: '8px 16px', marginBottom: '20px' }}>
-                ◀ 戻る
-            </button>
+            
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+                <button onClick={onBack} style={{ padding: '8px 16px' }}>
+                    ◀ 戻る
+                </button>
+                {/* ★ 向き切り替えボタンを追加 */}
+                <button 
+                    onClick={toggleOrientation} 
+                    style={{ padding: '8px 16px', cursor: 'pointer', backgroundColor: '#3498db', color: '#fff', border: 'none', borderRadius: '4px' }}
+                >
+                    向きを変更: {isHorizontal ? "横長 (Horizontal)" : "縦長 (Vertical)"}
+                </button>
+            </div>
 
-            {/* エンジンとデータが揃ったら描画コンポーネントを表示 */}
             {isLoaded ? (
                 <div>
-                    {/* ★ GraphRenderer に engine を渡します */}
                     <GraphRenderer engine={engine} isDirected={true} />
                 </div>
             ) : (

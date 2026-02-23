@@ -10,8 +10,6 @@
 
 class StressMajorizationLayout {
 private:
-    bool is_stable = false;
-    float epsilon = 0.05f;
     float inf = 999999.0f;
     float baseDistance = 80.0f;
 
@@ -25,6 +23,10 @@ private:
     std::vector<float> target_nx;
     std::vector<float> target_ny;
 public:
+    bool is_stable = false;
+    float epsilon = 0.01f;
+    bool preferHorizontal = true;
+
     void init(GraphData* graph) {
         nodeStride = graph->NODE_STRIDE;
         edgeStride = graph->EDGE_STRIDE;
@@ -130,16 +132,16 @@ public:
             }
         }
 
+        // --- 2. 複数の成分を「Shelf Packing（棚詰め）」で綺麗に整列させる ---
         if (components.size() > 0) {
-            float padding = 60.0f;
-
-            int cols = std::max(1, (int)std::ceil(std::sqrt(components.size())));
-
+            float padding = 50.0f; // 成分間の隙間
+            
             std::vector<float> comp_widths(components.size(), 0.0f);
             std::vector<float> comp_heights(components.size(), 0.0f);
             std::vector<float> comp_cx(components.size(), 0.0f);
             std::vector<float> comp_cy(components.size(), 0.0f);
-
+            
+            // 各成分のバウンディングボックスを計算
             for (size_t c = 0; c < components.size(); c++){
                 if (components[c].empty()) continue;
                 float min_x = inf, max_x = -inf, min_y = inf, max_y = -inf;
@@ -149,63 +151,118 @@ public:
                     if (target_ny[i] < min_y) min_y = target_ny[i];
                     if (target_ny[i] > max_y) max_y = target_ny[i];
                 }
+                float w = max_x - min_x;
+                float h = max_y - min_y;
+
+                // ★ 向きの判定（1.2倍以上の差がある場合のみ回転させ、振動を防ぐ）
+                bool shouldRotate = false;
+                if (preferHorizontal && h > w * 1.2f) shouldRotate = true;
+                if (!preferHorizontal && w > h * 1.2f) shouldRotate = true;
+
+                if (shouldRotate) {
+                    float cx = (min_x + max_x) / 2.0f;
+                    float cy = (min_y + max_y) / 2.0f;
+                    
+                    // 新しいバウンディングボックス用にリセット
+                    min_x = inf; max_x = -inf; min_y = inf; max_y = -inf;
+                    
+                    // 重心を中心に90度回転させる
+                    for(int i : components[c]) {
+                        float nx = target_nx[i] - cx;
+                        float ny = target_ny[i] - cy;
+                        target_nx[i] = cx - ny; // x' = -y
+                        target_ny[i] = cy + nx; // y' = x
+                        
+                        // 回転後のバウンディングボックスを再計算
+                        if (target_nx[i] < min_x) min_x = target_nx[i];
+                        if (target_nx[i] > max_x) max_x = target_nx[i];
+                        if (target_ny[i] < min_y) min_y = target_ny[i];
+                        if (target_ny[i] > max_y) max_y = target_ny[i];
+                    }
+                }
+                
                 comp_widths[c] = max_x - min_x;
                 comp_heights[c] = max_y - min_y;
                 comp_cx[c] = (min_x + max_x) / 2.0f;
                 comp_cy[c] = (min_y + max_y) / 2.0f;
             }
 
+            // 1. 高さが大きい順（背の高い順）にソートするためのインデックス配列を作成
+            std::vector<int> order(components.size());
+            for (int i = 0; i < components.size(); i++) order[i] = i;
+            std::sort(order.begin(), order.end(), [&](int a, int b) {
+                return comp_heights[a] > comp_heights[b];
+            });
+
+            // 2. すべてのコンポーネントの面積から、理想のパッキング幅（max_width）を計算
+            float total_area = 0.0f;
+            float max_w_single = 0.0f; // 最も横に長いコンポーネントの幅
+            for (int c : order) {
+                if (components[c].empty()) continue;
+                float w = comp_widths[c] + padding;
+                float h = comp_heights[c] + padding;
+                total_area += w * h;
+                if (w > max_w_single) max_w_single = w;
+            }
+            
+            // キャンバスの縦横比（3:2 = 1.5）に合わせて、理想の横幅を逆算
+            float aspect_ratio = 1.5f;
+            float expected_width = std::sqrt(total_area * aspect_ratio);
+            float max_width = std::max(expected_width, max_w_single);
+
+            // 3. 棚詰め（Shelf Packing）の実行
             std::vector<float> grid_cx(components.size(), 0.0f);
             std::vector<float> grid_cy(components.size(), 0.0f);
             
             float current_x = 0.0f;
             float current_y = 0.0f;
             float row_max_height = 0.0f;
-
             float total_min_x = inf, total_max_x = -inf, total_min_y = inf, total_max_y = -inf;
 
-            for (size_t c = 0; c < components.size(); c++) {
+            for (int c : order) {
                 if (components[c].empty()) continue;
+                float w = comp_widths[c];
+                float h = comp_heights[c];
 
-                if (c > 0 && c % cols == 0) {
+                // 現在の行に置くと理想の幅を超える場合、次の行（棚）へ改行
+                if (current_x > 0.0f && (current_x + w) > max_width) {
                     current_x = 0.0f;
                     current_y += row_max_height + padding;
                     row_max_height = 0.0f;
                 }
 
-                float w = comp_widths[c];
-                float h = comp_heights[c];
-                if ( h > row_max_height) row_max_height = h;
+                if (h > row_max_height) row_max_height = h;
 
+                // 配置位置の記録
                 grid_cx[c] = current_x + w / 2.0f;
                 grid_cy[c] = current_y + h / 2.0f;
-
-                if (current_x < total_min_x)     total_min_x = current_x;
+                
+                // 全体のサイズを更新
+                if (current_x < total_min_x) total_min_x = current_x;
                 if (current_x + w > total_max_x) total_max_x = current_x + w;
-                if (current_y < total_min_y)     total_min_y = current_y;
+                if (current_y < total_min_y) total_min_y = current_y;
                 if (current_y + h > total_max_y) total_max_y = current_y + h;
 
                 current_x += w + padding;
             }
 
+            // 4. 全体を画面中央 (300, 200) にシフトさせる
             float total_cx = (total_min_x + total_max_x) / 2.0f;
             float total_cy = (total_min_y + total_max_y) / 2.0f;
             float offset_x = 300.0f - total_cx;
             float offset_y = 200.0f - total_cy;
 
-            for (size_t c = 0; c < components.size(); c++) {
+            for(size_t c = 0; c < components.size(); c++) {
                 if (components[c].empty()) continue;
-
                 float shift_x = (grid_cx[c] + offset_x) - comp_cx[c];
                 float shift_y = (grid_cy[c] + offset_y) - comp_cy[c];
-
-                for (int i: components[c]) {
+                for(int i : components[c]) {
                     target_nx[i] += shift_x;
                     target_ny[i] += shift_y;
                 }
             }
         }
-        
+
         for (int i=0; i<nodeSize; i++){
             float xi = graph->nodeData[i * nodeStride];
             float yi = graph->nodeData[i * nodeStride + 1];
