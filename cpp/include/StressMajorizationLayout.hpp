@@ -66,10 +66,10 @@ private:
         }
     }
 
-    // ② 密の解消（ノード同士の重なりを防ぐ）
+    // ② グローバル斥力（密グラフを円形に押し広げる）
     void applyNodeRepulsion() {
-        // 完全グラフなどの密集を防ぐための斥力
-        float optimalDist = baseDistance * 0.8f; 
+        float k = baseDistance; // 基準距離
+        
         for(size_t c = 0; c < components.size(); c++) {
             for(size_t i = 0; i < components[c].size(); i++) {
                 int u = components[c][i];
@@ -77,16 +77,22 @@ private:
                     int v = components[c][j];
                     float dx = target_nx[u] - target_nx[v];
                     float dy = target_ny[u] - target_ny[v];
+                    
+                    // 完全に一致した場合の微小ランダムズラし
+                    if (dx == 0.0f && dy == 0.0f) {
+                        dx = ((rand() % 100) - 50) / 1000.0f;
+                        dy = ((rand() % 100) - 50) / 1000.0f;
+                    }
+
                     float dist = std::max(0.01f, (float)std::sqrt(dx*dx + dy*dy));
                     
-                    if (dist < optimalDist) {
-                        // 力が強すぎて振動しないよう、0.2fの係数をかけてマイルドにする
-                        float force = (optimalDist - dist) * 0.2f;
-                        float fx = (dx/dist) * force;
-                        float fy = (dy/dist) * force;
-                        target_nx[u] += fx; target_ny[u] += fy;
-                        target_nx[v] -= fx; target_ny[v] -= fy;
-                    }
+                    // FRモデルのクーロン斥力（距離が近いほど急激に強く、遠くても弱くかかり続ける）
+                    float force = (k * k) / dist * 0.03f; // 0.03f は引力とのバランス係数
+                    
+                    float fx = (dx/dist) * force;
+                    float fy = (dy/dist) * force;
+                    target_nx[u] += fx; target_ny[u] += fy;
+                    target_nx[v] -= fx; target_ny[v] -= fy;
                 }
             }
         }
@@ -130,7 +136,7 @@ private:
         }
     }
 
-// ④ フレキシブルな力学パッキング（Bubble Packing）
+    // ④ フレキシブルな力学パッキング（Bubble Packing）
     void packComponentsForceDirected() {
         if (components.empty()) return;
 
@@ -206,10 +212,45 @@ private:
         }
     }
 
+    // ⑤ 重心のズレをキャンセルし、ドリフト（流され）を防ぐ
+    void removeComponentDrift(GraphData* graph) {
+        for(size_t c = 0; c < components.size(); c++) {
+            if (components[c].empty()) continue;
+            
+            float sum_x = 0.0f, sum_y = 0.0f;
+            float t_sum_x = 0.0f, t_sum_y = 0.0f;
+            
+            for(int i : components[c]) {
+                sum_x += graph->nodeData[i * nodeStride];
+                sum_y += graph->nodeData[i * nodeStride + 1];
+                t_sum_x += target_nx[i];
+                t_sum_y += target_ny[i];
+            }
+            
+            int n = components[c].size();
+            float cx = sum_x / n;        // 現在の重心
+            float cy = sum_y / n;
+            float t_cx = t_sum_x / n;    // 計算後の重心
+            float t_cy = t_sum_y / n;
+
+            // 意図しない全体のズレ（ドリフト量）
+            float drift_x = t_cx - cx;
+            float drift_y = t_cy - cy;
+            
+            // ドリフト量をすべてのターゲット座標から引き算して相殺する
+            for(int i : components[c]) {
+                target_nx[i] -= drift_x;
+                target_ny[i] -= drift_y;
+            }
+        }
+    }
+
 public:
     bool is_stable = false;
-    float epsilon = 0.1f;
+    float epsilon = 0.5f;
     bool preferHorizontal = true;
+    int stable_count = 0;
+    int required_stable_frames = 20;
 
     void init(GraphData* graph) {
         nodeStride = graph->NODE_STRIDE;
@@ -267,17 +308,20 @@ public:
 
         // 1. 各コンポーネント内の形を整える
         calculateStressMajorization(graph);
+
+        // 2. 遊泳して画面外に流れてしまうのを防ぐ
+        removeComponentDrift(graph);
         
-        // 2. 密集を防ぎ、円形に膨らませる
+        // 3. 密集を防ぎ、円形に膨らませる
         applyNodeRepulsion();
 
-        // 3. 縦横の指向性に合わせて回転する
+        // 4. 縦横の指向性に合わせて回転する
         updateComponentOrientations(graph);
 
-        // 4. コンポーネント同士を泡のようにパッキングする
+        // 5. コンポーネント同士を泡のようにパッキングする
         packComponentsForceDirected();
 
-        // 5. イージングをかけて実際の座標を動かし、収束を判定する
+        // 6. イージングをかけて実際の座標を動かし、収束を判定する
         float max_movement = 0.0f;
         for (int i=0; i<nodeSize; i++){
             float xi = graph->nodeData[i * nodeStride];
@@ -294,7 +338,16 @@ public:
             graph->nodeData[i * nodeStride + 1] = new_y;
         }
 
-        if (max_movement < epsilon) is_stable = true;
+        //  収束判定のアップデート（忍耐カウンター）
+        if (max_movement < epsilon) {
+            stable_count++;
+            if (stable_count >= required_stable_frames) {
+                is_stable = true;
+            }
+        } else {
+            stable_count = 0; // 少しでも大きく動いたら最初から数え直し！
+        }
+
         return is_stable;
     }
 };
