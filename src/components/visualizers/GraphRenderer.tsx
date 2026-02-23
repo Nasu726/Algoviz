@@ -27,7 +27,7 @@ export const GraphRenderer: React.FC<GraphRendererProps> = ({ engine, isDirected
   return (
     <div 
       ref={containerRef} 
-      style={{ border: '1px solid #ccc', marginTop: '20px', width: '600px', height: '400px' }} 
+      style={{ border: '1px solid #ccc', marginTop: '20px', width: '800px', height: '600px' }} 
     />
   );
 };
