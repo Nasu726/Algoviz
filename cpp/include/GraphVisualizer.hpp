@@ -30,10 +30,18 @@ public:
             float colorId = rand() % 2;
             graph->setNode(i, x, y, 0, colorId);
         }
-        for (int i = 0; i < edgeCount; i++) {
-            float from = rand() % nodeCount;
-            float to = rand() % nodeCount;
-            graph->addEdge(from, to, 0, 0);
+        if (false){
+            for (int i=0; i< nodeCount; i++){
+                for (int j=i; j<nodeCount;  j++){
+                    graph->addEdge(i, j, 0, 0);
+                }
+            }
+        } else {
+            for (int i = 0; i < edgeCount; i++) {
+                float from = rand() % nodeCount;
+                float to = rand() % nodeCount;
+                graph->addEdge(from, to, 0, 0);
+            }
         }
         layout.init(graph);
     }
