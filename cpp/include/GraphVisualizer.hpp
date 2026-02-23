@@ -25,8 +25,8 @@ public:
         graph = new GraphData(nodeCount, edgeCount);
         
         for (int i = 0; i < nodeCount; i++) {
-            float x = rand() % 600;
-            float y = rand() % 400;
+            float x = rand() % 600 + 100;
+            float y = rand() % 400 + 100;
             float colorId = rand() % 2;
             graph->setNode(i, x, y, 0, colorId);
         }
