@@ -6,6 +6,7 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
+#include <queue>
 
 class StressMajorizationLayout {
 private:
@@ -30,22 +31,30 @@ public:
         target_nx.assign(nodeSize, 0.0f);
         target_ny.assign(nodeSize, 0.0f);
         
-        for (int i = 0; i < nodeSize; i++){
-            d[i * nodeSize + i] = 0.0f;
-        }
-        for (int i=0; i<edgeSize; i++) {
+        // BFSのために連結リストを作成
+        std::vector<std::vector<int>> adj(nodeSize);
+        for (int i=0; i<edgeSize; i++){
             int from = (int)graph->edgeData[i * edgeStride];
-            int to   = (int)graph->edgeData[i * edgeStride +1];
+            int to   = (int)graph->edgeData[i * edgeStride + 1];
             if (from != to) {
-                d[from * nodeSize + to] = baseDistance;
-                d[to * nodeSize + from] = baseDistance;
+                adj[from].push_back(to);
+                adj[to].push_back(from);
             }
         }
-        // ワ―シャルフロイド法
-        for (int k=0; k<nodeSize; k++){
-            for (int i=0; i<nodeSize; i++){
-                for (int j=0; j<nodeSize; j++){
-                    d[i * nodeSize + j] = std::min(d[i * nodeSize + j], d[i * nodeSize + k]+d[k * nodeSize + j]);
+
+        // 全頂点からのBFSで理想距離を計算
+        for (int i=0; i<nodeSize; i++){
+            d[i * nodeSize + i] = 0.0f;
+            std::queue<int> q;
+            q.push(i);
+
+            while (!q.empty()) {
+                int u = q.front(); q.pop();
+                for (int v: adj[u]) {
+                    if (d[i * nodeSize + v] == inf) {
+                        d[i * nodeSize + v] = d[i * nodeSize + u] + baseDistance;
+                        q.push(v);
+                    }
                 }
             }
         }
@@ -116,53 +125,87 @@ public:
             }
         }
 
-        float padding = 80.0f;
-        std::vector<float> comp_widths(components.size(), 0.0f);
-        std::vector<float> comp_current_cx(components.size(), 0.0f);
-        std::vector<float> comp_current_cy(components.size(), 0.0f);
-        float total_width = 0.0f;
+        if (components.size() > 0) {
+            float padding = 60.0f;
 
-        for (size_t c = 0; c < components.size(); c++){
-            float min_x = inf, max_x = -inf, min_y = inf, max_y = -inf;
-            for (int i: components[c]) {
-                if (target_nx[i] < min_x) min_x = target_nx[i];
-                if (target_nx[i] > max_x) max_x = target_nx[i];
-                if (target_ny[i] < min_y) min_y = target_ny[i];
-                if (target_ny[i] > max_y) max_y = target_ny[i];
+            int cols = std::max(1, (int)std::ceil(std::sqrt(components.size())));
+
+            std::vector<float> comp_widths(components.size(), 0.0f);
+            std::vector<float> comp_heights(components.size(), 0.0f);
+            std::vector<float> comp_cx(components.size(), 0.0f);
+            std::vector<float> comp_cy(components.size(), 0.0f);
+
+            for (size_t c = 0; c < components.size(); c++){
+                if (components[c].empty()) continue;
+                float min_x = inf, max_x = -inf, min_y = inf, max_y = -inf;
+                for (int i: components[c]) {
+                    if (target_nx[i] < min_x) min_x = target_nx[i];
+                    if (target_nx[i] > max_x) max_x = target_nx[i];
+                    if (target_ny[i] < min_y) min_y = target_ny[i];
+                    if (target_ny[i] > max_y) max_y = target_ny[i];
+                }
+                comp_widths[c] = max_x - min_x;
+                comp_heights[c] = max_y - min_y;
+                comp_cx[c] = (min_x + max_x) / 2.0f;
+                comp_cy[c] = (min_y + max_y) / 2.0f;
             }
 
-            if (min_x == inf) continue;
+            std::vector<float> grid_cx(components.size(), 0.0f);
+            std::vector<float> grid_cy(components.size(), 0.0f);
+            
+            float current_x = 0.0f;
+            float current_y = 0.0f;
+            float row_max_height = 0.0f;
 
-            comp_widths[c] = max_x - min_x;
-            total_width += comp_widths[c];
-            comp_current_cx[c] = (min_x + max_x) / 2.0f;
-            comp_current_cy[c] = (min_y + max_y) / 2.0f;
-        }
+            float total_min_x = inf, total_max_x = -inf, total_min_y = inf, total_max_y = -inf;
 
-        total_width += padding * (components.size() - 1);
+            for (size_t c = 0; c < components.size(); c++) {
+                if (components[c].empty()) continue;
 
-        float start_x = 300.0f - total_width / 2.0f;
+                if (c > 0 && c % cols == 0) {
+                    current_x = 0.0f;
+                    current_y += row_max_height + padding;
+                    row_max_height = 0.0f;
+                }
 
-        for (size_t c = 0; c < components.size(); c++){
-            if (components[c].empty()) continue;
+                float w = comp_widths[c];
+                float h = comp_heights[c];
+                if ( h > row_max_height) row_max_height = h;
 
-            float ideal_cx = start_x + comp_widths[c] / 2.0f;
-            start_x += comp_widths[c] + padding;
+                grid_cx[c] = current_x + w / 2.0f;
+                grid_cy[c] = current_y + h / 2.0f;
 
-            float shift_x = ideal_cx - comp_current_cx[c];
-            float shift_y = 200.0f - comp_current_cy[c];
+                if (current_x < total_min_x)     total_min_x = current_x;
+                if (current_x + w > total_max_x) total_max_x = current_x + w;
+                if (current_y < total_min_y)     total_min_y = current_y;
+                if (current_y + h > total_max_y) total_max_y = current_y + h;
 
-            for (int i: components[c]) {
-                target_nx[i] += shift_x;
-                target_ny[i] += shift_y;
+                current_x += w + padding;
+            }
+
+            float total_cx = (total_min_x + total_max_x) / 2.0f;
+            float total_cy = (total_min_y + total_max_y) / 2.0f;
+            float offset_x = 300.0f - total_cx;
+            float offset_y = 200.0f - total_cy;
+
+            for (size_t c = 0; c < components.size(); c++) {
+                if (components[c].empty()) continue;
+
+                float shift_x = (grid_cx[c] + offset_x) - comp_cx[c];
+                float shift_y = (grid_cy[c] + offset_y) - comp_cy[c];
+
+                for (int i: components[c]) {
+                    target_nx[i] += shift_x;
+                    target_ny[i] += shift_y;
+                }
             }
         }
         
         for (int i=0; i<nodeSize; i++){
             float xi = graph->nodeData[i * nodeStride];
             float yi = graph->nodeData[i * nodeStride + 1];
-            graph->nodeData[i * nodeStride] = xi + (target_nx[i] - xi) * 0.1f;
-            graph->nodeData[i * nodeStride + 1] = yi + (target_ny[i] - yi) * 0.1f;
+            graph->nodeData[i * nodeStride]     = xi + (target_nx[i] - xi) * 0.3f;
+            graph->nodeData[i * nodeStride + 1] = yi + (target_ny[i] - yi) * 0.3f;
         }
     }
 };
