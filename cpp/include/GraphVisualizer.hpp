@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <sstream>
+#include <random>
 
 using namespace emscripten;
 
@@ -15,19 +16,43 @@ class GraphVisualizer : public IVisualizer {
 private:
     GraphData* graph;
     StressMajorizationLayout layout;
+    bool skipExtension = false;
 
-    // ★ グラフを新しく作り直すヘルパー関数
-    void generateRandom(int v, int e) {
+    // グラフを新しく作り直すヘルパー関数
+    void generateRandom(int v, int e, bool allowSelfLoop, bool allowSameEdge) {
         delete graph;
         graph = new GraphData(v, e);
         for (int i = 0; i < v; i++) {
             graph->setNode(i, rand() % 600 + 100, rand() % 400 + 100, 0, 0);
         }
-        for (int i = 0; i < e; i++) {
-            int from = rand() % v;
-            int to = rand() % v;
-            float weight = rand() % 100; // ランダムな重み
-            graph->addEdge(from, to, weight, 0);
+
+        std::vector<std::pair<int, int>> possibleEdges;
+        for (int i = 0; i < v; i++) {
+            for (int j = 0; j < v; j++) {
+                if (!allowSelfLoop && i == j) continue;
+                possibleEdges.push_back({i, j});
+            }
+        }
+
+        if (possibleEdges.empty()) return;
+
+        if (allowSameEdge) {
+            for (int i = 0; i < e; i++) {
+                int idx = rand() % possibleEdges.size();
+                float weight = rand() % 100;
+                graph->addEdge(possibleEdges[idx].first, possibleEdges[idx].second, weight, 0);
+            }
+        } else {
+            std::random_device rd;
+            std::mt19937 g(rd());
+            std::shuffle(possibleEdges.begin(), possibleEdges.end(), g);
+
+            int actualEdges = std::min((int)possibleEdges.size(), e);
+
+            for (int i = 0; i < actualEdges; i++) {
+                float weight = rand() % 100;
+                graph->addEdge(possibleEdges[i].first, possibleEdges[i].second, weight, 0);
+            }
         }
     }
 
@@ -50,7 +75,7 @@ public:
     GraphVisualizer() {
         srand((unsigned int)time(nullptr));
         graph = nullptr;
-        generateRandom(5, 7);
+        generateRandom(5, 7, false, false);
         layout.init(graph);
     }
 
@@ -65,19 +90,25 @@ public:
         if (source == "horizontal")    layout.preferHorizontal = true;
         else if (source == "vertical") layout.preferHorizontal = false;
 
-        // ★ Reactから送られたコマンドの解析
+        // Reactから送られたコマンドの解析
         if (!input.empty()) {
             std::istringstream iss(input);
             std::string cmd;
             iss >> cmd;
             if (cmd == "random") {
-                int v, e;
+                int v, e, skip = 0, selfLoop = 0, sameEdge = 0;
                 iss >> v >> e;
-                generateRandom(v, e);
+                if (iss >> skip) skipExtension = (skip != 0);
+                if (iss >> selfLoop >> sameEdge) {
+                    generateRandom(v, e, selfLoop != 0, sameEdge != 0);
+                } else {
+                    generateRandom(v, e, false, false);
+                }
                 layout.init(graph);
             } else if (cmd == "complete") {
-                int v;
+                int v, skip = 0;
                 iss >> v;
+                if (iss >> skip) skipExtension = (skip != 0);
                 generateComplete(v);
                 layout.init(graph);
             }
@@ -87,7 +118,15 @@ public:
     }
 
     bool step() override {
-        layout.update(graph);
+        if (skipExtension) {
+            int max_iterations = 2000;
+            int iter = 0;
+            while (!layout.update(graph) && iter < max_iterations) {
+                iter++;
+            }
+        } else {
+            layout.update(graph);
+        }
         return true;
     }
 

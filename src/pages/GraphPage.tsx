@@ -15,6 +15,10 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     const [edgeCount, setEdgeCount] = useState(7);
     const [isDirected, setIsDirected] = useState(true);
     const [showWeights, setShowWeights] = useState(true);
+
+    const [skipExtension, setSkipExtension] = useState(true);
+    const [allowSelfLoop, setAllowSelfLoop] = useState(true);
+    const [allowSameEdge, setAllowSameEdge] = useState(true);
     
     // オートマトン用のState
     const [isAutomaton, setIsAutomaton] = useState(false);
@@ -29,18 +33,28 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     }, [engine]);
 
     const handleGenerateRandom = () => {
-        engine.load(isHorizontal ? "horizontal" : "vertical", `random ${nodeCount} ${edgeCount}`);
+        const skip = skipExtension ? 1 : 0;
+        const selfLoop = allowSelfLoop ? 1 : 0;
+        const sameEdge = allowSameEdge ? 1 : 0;
+        engine.load(
+            isHorizontal ? "horizontal" : "vertical",
+            `random ${nodeCount} ${edgeCount} ${skip} ${selfLoop} ${sameEdge}`
+        );
     };
 
     const handleGenerateComplete = () => {
-        engine.load(isHorizontal ? "horizontal" : "vertical", `complete ${nodeCount}`);
+        const skip = skipExtension ? 1 : 0;
+        engine.load(
+            isHorizontal ? "horizontal" : "vertical", 
+            `complete ${nodeCount} ${skip}`
+        );
     };
 
     return (
         <div style={{ padding: "20px", fontFamily: 'sans-serif', display: "flex", flexDirection: "row", gap: "20px" }}>
             {/* 左側：コントロールパネル */}
             <div style={{ 
-                display: 'flex', flexDirection: "column", gap: '15px', 
+                display: 'flex', flexDirection: "column", gap: '15px', overflowY: "auto",
                 minWidth: '280px', padding: '15px', background: '#f8f9fa', 
                 borderRadius: '8px', border: '1px solid #ddd' 
             }}>
@@ -74,7 +88,15 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
                 <label>
                     <input type="checkbox" checked={showWeights} onChange={e => setShowWeights(e.target.checked)} /> 重みを表示
                 </label>
-
+                <label>
+                    <input type="checkbox" checked={skipExtension} onChange={e => setSkipExtension(e.target.checked)} /> 展開アニメーションを飛ばす
+                </label>
+                <label>
+                    <input type="checkbox" checked={allowSelfLoop} onChange={e => setAllowSelfLoop(e.target.checked)} /> 自己ループを許す
+                </label>
+                <label>
+                    <input type="checkbox" checked={allowSameEdge} onChange={e => setAllowSameEdge(e.target.checked)} /> 多重辺を許す
+                </label>
                 <hr style={{ width: '100%', borderTop: '1px solid #ccc' }} />
 
                 <label style={{ fontWeight: 'bold' }}>
