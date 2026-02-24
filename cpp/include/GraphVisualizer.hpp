@@ -84,8 +84,6 @@ public:
     }
 
     void load(const std::string& source, const std::string& input) override {
-        // 将来、JSから実際のグラフデータを受け取った時も、
-        // データをセットし終わった後に layout.init(graph) を呼ぶようにします。
         // source 引数を使って向きを設定
         if (source == "horizontal")    layout.preferHorizontal = true;
         else if (source == "vertical") layout.preferHorizontal = false;
@@ -119,10 +117,8 @@ public:
 
     bool step() override {
         if (skipExtension) {
-            int max_iterations = 2000;
-            int iter = 0;
-            while (!layout.update(graph) && iter < max_iterations) {
-                iter++;
+            while (!layout.update(graph)) {
+                continue;
             }
         } else {
             layout.update(graph);
