@@ -211,8 +211,10 @@ export class PixiGraphApp {
         }
 
         this.edgeGraphics.clear();
-        // ★ 追加：辺の出現回数を記録する辞書（Map）
+        // 辺の出現回数を記録する辞書（Map）
         const edgeCounts: { [key: string]: number } = {};
+        // 矢印の三角形の頂点をストックする配列
+        const arrowPolygons: number[][] = [];
 
         for (let i = 0; i < edgeArray.length; i += 4) {
             const fromIdx = edgeArray[i];
@@ -236,78 +238,145 @@ export class PixiGraphApp {
                 const count = edgeCounts[edgeKey];
                 edgeCounts[edgeKey]++; // 次回のためにカウントアップ
 
+                // ノードの半径 + 余白
+                const actualRadius = this.nodeRadius + 2;
+
                 if (fromIdx === toIdx) {
-                    // 【自己ループの場合】
-                    // カウントが増えるごとに、円の半径と位置を大きくしていく（同心円のように広がる）
-                    const radius = 15 + count * 10; // 15, 25, 35...と大きくなる
-                    this.edgeGraphics.circle(fx + radius + 5, fy - radius - 5, radius);
+                    // ==========================================
+                    // 【自己ループ】完璧なティアドロップ（涙型）
+                    // ==========================================
+                    // ノードの大きさに合わせてループを広げる
+                    const loopDistance = actualRadius * 3.5 + count * (actualRadius * 1.5); 
+                    const baseAngle = -Math.PI / 2; // 真上
+                    const spread = Math.PI / 5;     // 左右に36度ずつ開く
+
+                    const outAngle = baseAngle + spread; // 出発の角度
+                    const inAngle = baseAngle - spread;  // 到着の角度
+
+                    // 制御点をノードの中心から放射状に配置
+                    const cp1X = fx + loopDistance * Math.cos(outAngle);
+                    const cp1Y = fy + loopDistance * Math.sin(outAngle);
+                    const cp2X = fx + loopDistance * Math.cos(inAngle);
+                    const cp2Y = fy + loopDistance * Math.sin(inAngle);
+
+                    // 線の出入り口を「制御点に向かう角度」の円周上に設定（垂直に出入りする）
+                    const startX = fx + actualRadius * Math.cos(outAngle);
+                    const startY = fy + actualRadius * Math.sin(outAngle);
+                    const endX = fx + actualRadius * Math.cos(inAngle);
+                    const endY = fy + actualRadius * Math.sin(inAngle);
+
+                    this.edgeGraphics.moveTo(startX, startY);
+                    this.edgeGraphics.bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, endX, endY);
+
+                    if (this.isDirected) {
+                        // 矢印の向きは「制御点2から終点へのベクトル」
+                        const dirX = endX - cp2X;
+                        const dirY = endY - cp2Y;
+                        const arrowAngle = Math.atan2(dirY, dirX);
+                        const arrowSize = 10;
+                        const wingAngle = Math.PI / 6;
+
+                        const leftX = endX - arrowSize * Math.cos(arrowAngle - wingAngle);
+                        const leftY = endY - arrowSize * Math.sin(arrowAngle - wingAngle);
+                        const rightX = endX - arrowSize * Math.cos(arrowAngle + wingAngle);
+                        const rightY = endY - arrowSize * Math.sin(arrowAngle + wingAngle);
+
+                        arrowPolygons.push([endX, endY, leftX, leftY, rightX, rightY]);
+                    }
                 } else {
-                    // 【多重辺の場合】
-                    const midX = (fx + tx) / 2;
-                    const midY = (fy + ty) / 2;
+                    // ==========================================
+                    // 【通常の辺・多重辺】
+                    // ==========================================
                     const dx = tx - fx;
                     const dy = ty - fy;
-                    const normalX = -dy;
-                    const normalY = dx;
-                    const length = Math.sqrt(normalX * normalX + normalY * normalY);
+                    const dist = Math.sqrt(dx * dx + dy * dy);
                     
-                    // カウントに応じて膨らみ方（offset）を変える
                     let offset = 0;
                     if (count > 0) {
-                        const direction = count % 2 === 1 ? 1 : -1; // 奇数ならプラス、偶数ならマイナス
-                        const magnitude = Math.ceil(count / 2) * 20; // 20, 20, 40, 40...
+                        const direction = count % 2 === 1 ? 1 : -1; 
+                        const magnitude = Math.ceil(count / 2) * 20; // 膨らみ幅
                         offset = direction * magnitude;
                     }
 
-                    const controlX = midX + (normalX / length) * offset;
-                    const controlY = midY + (normalY / length) * offset;
-
-                    this.edgeGraphics.moveTo(fx, fy);
-                    let dirX = 0;
-                    let dirY = 0;
-
                     if (offset === 0) {
-                        // 1本目（offset=0）は単なる直線にする
-                        this.edgeGraphics.lineTo(tx, ty);
-                        const len = Math.sqrt((tx - fx) ** 2 + (ty - fy) ** 2);
-                        dirX = (tx - fx) / len;
-                        dirY = (ty - fy) / len;
+                        // 直線の場合
+                        const ndx = dx / dist;
+                        const ndy = dy / dist;
+
+                        const startX = fx + ndx * actualRadius;
+                        const startY = fy + ndy * actualRadius;
+                        const endX = tx - ndx * actualRadius;
+                        const endY = ty - ndy * actualRadius;
+
+                        this.edgeGraphics.moveTo(startX, startY);
+                        this.edgeGraphics.lineTo(endX, endY);
+                        
+                        if (this.isDirected) {
+                            const arrowAngle = Math.atan2(ndy, ndx);
+                            const arrowSize = 10;
+                            const wingAngle = Math.PI / 6;
+
+                            const leftX = endX - arrowSize * Math.cos(arrowAngle - wingAngle);
+                            const leftY = endY - arrowSize * Math.sin(arrowAngle - wingAngle);
+                            const rightX = endX - arrowSize * Math.cos(arrowAngle + wingAngle);
+                            const rightY = endY - arrowSize * Math.sin(arrowAngle + wingAngle);
+
+                            arrowPolygons.push([endX, endY, leftX, leftY, rightX, rightY]);
+                        }
                     } else {
-                        // 2本目以降はベジェ曲線で膨らませる
-                        this.edgeGraphics.quadraticCurveTo(controlX, controlY, tx, ty);
-                        const len = Math.sqrt((tx - controlX) ** 2 + (ty - controlY) ** 2);
-                        dirX = (tx - controlX) / len;
-                        dirY = (ty - controlY) / len;
-                    }
-                    // 有向グラフなら矢印を描画する
-                    if (this.isDirected) {
-                        const nodeRadius = 24; // ノードの円の半径（大きくしたサイズに合わせる）
-                        const arrowSize = 10;  // 矢印の羽の長さ
-                        const angle = Math.PI / 6; // 矢印の羽の角度（30度）
+                        // 曲線（多重辺）の場合
+                        const midX = (fx + tx) / 2;
+                        const midY = (fy + ty) / 2;
+                        const normalX = -dy / dist;
+                        const normalY = dx / dist;
 
-                        // 矢印の先端の位置（ノードの縁に接するように、半径分だけ手前に引く）
-                        const tipX = tx - dirX * nodeRadius;
-                        const tipY = ty - dirY * nodeRadius;
+                        const controlX = midX + normalX * offset;
+                        const controlY = midY + normalY * offset;
 
-                        // 進行方向の角度
-                        const baseAngle = Math.atan2(dirY, dirX);
+                        // 出発点：ノード中心から制御点へ向かうベクトルと円周の交点
+                        const vFromControlX = controlX - fx;
+                        const vFromControlY = controlY - fy;
+                        const lenFrom = Math.sqrt(vFromControlX ** 2 + vFromControlY ** 2);
+                        const startX = fx + (vFromControlX / lenFrom) * actualRadius;
+                        const startY = fy + (vFromControlY / lenFrom) * actualRadius;
 
-                        // 矢印の左羽と右羽の座標を計算
-                        const leftX = tipX - arrowSize * Math.cos(baseAngle - angle);
-                        const leftY = tipY - arrowSize * Math.sin(baseAngle - angle);
-                        const rightX = tipX - arrowSize * Math.cos(baseAngle + angle);
-                        const rightY = tipY - arrowSize * Math.sin(baseAngle + angle);
+                        // ★到着点：ターゲット中心から制御点へ向かうベクトルと円周の交点
+                        const vToControlX = controlX - tx;
+                        const vToControlY = controlY - ty;
+                        const lenTo = Math.sqrt(vToControlX ** 2 + vToControlY ** 2);
+                        const endX = tx + (vToControlX / lenTo) * actualRadius;
+                        const endY = ty + (vToControlY / lenTo) * actualRadius;
 
-                        // 矢印のV字を描画
-                        this.edgeGraphics.moveTo(tipX, tipY);
-                        this.edgeGraphics.lineTo(leftX, leftY);
-                        this.edgeGraphics.moveTo(tipX, tipY);
-                        this.edgeGraphics.lineTo(rightX, rightY);
+                        this.edgeGraphics.moveTo(startX, startY);
+                        this.edgeGraphics.quadraticCurveTo(controlX, controlY, endX, endY);
+
+                        if (this.isDirected) {
+                            // 矢印の向きは「制御点から終点へのベクトル」
+                            const dirX = endX - controlX;
+                            const dirY = endY - controlY;
+                            const arrowAngle = Math.atan2(dirY, dirX);
+                            const arrowSize = 10;
+                            const wingAngle = Math.PI / 6;
+
+                            const leftX = endX - arrowSize * Math.cos(arrowAngle - wingAngle);
+                            const leftY = endY - arrowSize * Math.sin(arrowAngle - wingAngle);
+                            const rightX = endX - arrowSize * Math.cos(arrowAngle + wingAngle);
+                            const rightY = endY - arrowSize * Math.sin(arrowAngle + wingAngle);
+
+                            arrowPolygons.push([endX, endY, leftX, leftY, rightX, rightY]);
+                        }
                     }
                 }
             }
         }
+        // 1. まず、引いた軌道をすべて線として描画する
         this.edgeGraphics.stroke({ width: 2 / this.world.scale.x, color: 0x999999 });
+
+        // 2. その後、ストックしておいた矢印の頂点を使って三角形を「塗りつぶし」描画する
+        for (const poly of arrowPolygons) {
+            this.edgeGraphics.poly(poly);
+            this.edgeGraphics.fill({ color: 0x999999 });
+        }
 
         this.fpsText.text = `FPS: ${Math.round(this.app.ticker.FPS)} / Visible: ${visibleNodeCount}`;
     };
