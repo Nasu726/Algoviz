@@ -8,47 +8,102 @@ interface GraphProps {
 
 export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     const [isLoaded, setIsLoaded] = useState(false);
-    const [isHorizontal, setIsHorizontal] = useState(true); // ★ 向きのState
+    const [isHorizontal, setIsHorizontal] = useState(true);
+
+    // テスト環境用のState
+    const [nodeCount, setNodeCount] = useState(5);
+    const [edgeCount, setEdgeCount] = useState(7);
+    const [isDirected, setIsDirected] = useState(true);
+    const [showWeights, setShowWeights] = useState(true);
+    
+    // オートマトン用のState
+    const [isAutomaton, setIsAutomaton] = useState(false);
+    const [startNode, setStartNode] = useState("0");
+    const [acceptingNodes, setAcceptingNodes] = useState("1, 2");
 
     useEffect(() => {
         if (!engine) return;
         engine.setAlgorithm("graph");
-        // 初期状態をロード
         engine.load(isHorizontal ? "horizontal" : "vertical", "");
         setIsLoaded(true);
-    }, [engine]); // ※ 初回のみ
+    }, [engine]);
 
-    // ★ ボタンが押された時に向きを切り替えてエンジンに伝える関数
-    const toggleOrientation = () => {
-        const newOrientation = !isHorizontal;
-        setIsHorizontal(newOrientation);
-        engine.load(newOrientation ? "horizontal" : "vertical", "");
+    const handleGenerateRandom = () => {
+        engine.load(isHorizontal ? "horizontal" : "vertical", `random ${nodeCount} ${edgeCount}`);
+    };
+
+    const handleGenerateComplete = () => {
+        engine.load(isHorizontal ? "horizontal" : "vertical", `complete ${nodeCount}`);
     };
 
     return (
-        <div style={{ padding: "20px 60px", fontFamily: 'sans-serif', display: "flex", flexDirection: "row" }}>
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexDirection: "column" }}>
-                <h2>Graph Visualizer 統合版</h2>
-            
-                <button onClick={onBack} style={{ padding: '8px 16px' }}>
-                    ◀ 戻る
-                </button>
-                {/* ★ 向き切り替えボタンを追加 */}
-                <button 
-                    onClick={toggleOrientation} 
-                    style={{ padding: '8px 16px', cursor: 'pointer', backgroundColor: '#3498db', color: '#fff', border: 'none', borderRadius: '4px' }}
-                >
-                    向きを変更: {isHorizontal ? "横長 (Horizontal)" : "縦長 (Vertical)"}
-                </button>
+        <div style={{ padding: "20px", fontFamily: 'sans-serif', display: "flex", flexDirection: "row", gap: "20px" }}>
+            {/* 左側：コントロールパネル */}
+            <div style={{ 
+                display: 'flex', flexDirection: "column", gap: '15px', 
+                minWidth: '280px', padding: '15px', background: '#f8f9fa', 
+                borderRadius: '8px', border: '1px solid #ddd' 
+            }}>
+                <button onClick={onBack} style={{ padding: '8px 16px', alignSelf: 'flex-start' }}>◀ 戻る</button>
+                <h3 style={{ margin: 0 }}>グラフ設定</h3>
+
+                <div>
+                    <label>頂点数 (V): </label>
+                    <input type="number" value={nodeCount} onChange={e => setNodeCount(Number(e.target.value))} style={{ width: '50px' }} />
+                </div>
+                <div>
+                    <label>辺の数 (E): </label>
+                    <input type="number" value={edgeCount} onChange={e => setEdgeCount(Number(e.target.value))} style={{ width: '50px' }} />
+                </div>
+                
+                <button onClick={handleGenerateRandom} style={{ padding: '8px', cursor: 'pointer' }}>🎲 ランダム生成</button>
+                <button onClick={handleGenerateComplete} style={{ padding: '8px', cursor: 'pointer' }}>🕸️ 完全グラフ生成 (Vのみ使用)</button>
+
+                <hr style={{ width: '100%', borderTop: '1px solid #ccc' }} />
+
+                <h3 style={{ margin: 0 }}>表示オプション</h3>
+                <label>
+                    <input type="checkbox" checked={isHorizontal} onChange={e => {
+                        setIsHorizontal(e.target.checked);
+                        engine.load(e.target.checked ? "horizontal" : "vertical", "");
+                    }} /> 横長レイアウト
+                </label>
+                <label>
+                    <input type="checkbox" checked={isDirected} onChange={e => setIsDirected(e.target.checked)} /> 有向辺 (Directed)
+                </label>
+                <label>
+                    <input type="checkbox" checked={showWeights} onChange={e => setShowWeights(e.target.checked)} /> 重みを表示
+                </label>
+
+                <hr style={{ width: '100%', borderTop: '1px solid #ccc' }} />
+
+                <label style={{ fontWeight: 'bold' }}>
+                    <input type="checkbox" checked={isAutomaton} onChange={e => setIsAutomaton(e.target.checked)} /> オートマトンモード
+                </label>
+                
+                <div style={{ opacity: isAutomaton ? 1 : 0.5, pointerEvents: isAutomaton ? 'auto' : 'none', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div>
+                        <label>初期状態 (Start): </label>
+                        <input type="text" value={startNode} onChange={e => setStartNode(e.target.value)} style={{ width: '50px' }} />
+                    </div>
+                    <div>
+                        <label>受理状態 (Accept) カンマ区切り: </label>
+                        <input type="text" value={acceptingNodes} onChange={e => setAcceptingNodes(e.target.value)} style={{ width: '100%' }} placeholder="例: 1, 2" />
+                    </div>
+                </div>
             </div>
 
-            {isLoaded ? (
-                <div style={{ display: "flex"}}>
-                    <GraphRenderer engine={engine} isDirected={true} />
-                </div>
-            ) : (
-                <p>エンジンをロード中...</p>
+            {/* 右側：キャンバス */}
+            {isLoaded && (
+                <GraphRenderer 
+                    engine={engine} 
+                    isDirected={isDirected} 
+                    showWeights={showWeights}
+                    isAutomaton={isAutomaton}
+                    startNode={startNode}
+                    acceptingNodes={acceptingNodes}
+                />
             )}
         </div>
-    )
-}
+    );
+};

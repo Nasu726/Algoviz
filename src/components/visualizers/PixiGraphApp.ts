@@ -18,11 +18,13 @@ export class PixiGraphApp {
     private nodeSprites: PIXI.Container[] = [];
     private edgeWeightTexts: PIXI.Text[] = [];
     private nodeMetadata: NodeMeta[] = [];
-    // private circleTexture: PIXI.Texture | null = null;
     private fpsText!: PIXI.Text;
     private nodeRadius: number = 20.0;
-    private isDirected: boolean;
-    // private isAutomaton: boolean;
+    private isDirected: boolean = false;
+    private isAutomaton: boolean = false;
+    private showWeights: boolean = false;
+    private startNodeIndex: number = -1;
+    private acceptingNodeIndices: Set<number> = new Set();
     
     // 状態管理フラグ
     private isInitialized = false;
@@ -35,14 +37,44 @@ export class PixiGraphApp {
     constructor(
         container: HTMLDivElement, 
         engine: any, 
-        isDirected: boolean = false, 
-        // isAutomaton: boolean = false
     ) {
         this.container = container;
         this.engine = engine;
-        this.isDirected = isDirected;
-        // this.isAutomaton = isAutomaton;
         this.app = new PIXI.Application();
+    }
+
+    // ==========================================
+    // 追加: Reactから設定を受け取るメソッド
+    // ==========================================
+    public updateSettings(settings: {
+        isDirected: boolean;
+        showWeights: boolean;
+        isAutomaton: boolean;
+        startNode: string;
+        acceptingNodes: string;
+    }) {
+        this.isDirected = settings.isDirected;
+        this.showWeights = settings.showWeights;
+        this.isAutomaton = settings.isAutomaton;
+        
+        // テキストをパースしてインデックス化
+        this.startNodeIndex = parseInt(settings.startNode, 10);
+        this.acceptingNodeIndices.clear();
+        settings.acceptingNodes.split(',').forEach(s => {
+            const idx = parseInt(s.trim(), 10);
+            if (!isNaN(idx)) this.acceptingNodeIndices.add(idx);
+        });
+        
+        // nodeMetadataを上書き
+        this.nodeMetadata = [];
+        if (this.isAutomaton) {
+            if (!isNaN(this.startNodeIndex)) {
+                this.nodeMetadata[this.startNodeIndex] = { ...this.nodeMetadata[this.startNodeIndex], isStart: true };
+            }
+            this.acceptingNodeIndices.forEach(idx => {
+                this.nodeMetadata[idx] = { ...this.nodeMetadata[idx], isAccepting: true };
+            });
+        }
     }
 
     // 初期化処理（Reactから呼ばれる）
@@ -287,7 +319,7 @@ export class PixiGraphApp {
 
                 const actualRadius = this.nodeRadius + 2;
                 const textObj = this.edgeWeightTexts[i / 4];
-                textObj.visible = true;
+                textObj.visible = this.showWeights;
                 textObj.text = weight.toString();
 
                 if (fromIdx === toIdx) {
@@ -320,7 +352,7 @@ export class PixiGraphApp {
 
                     this.edgeGraphics.moveTo(startX, startY).bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, endX, endY);
                     
-                    // ★ 変更1：テキストの距離を、実際の曲線の頂点（loopDistanceの約75%）に合わせる
+                    // テキストの距離を、実際の曲線の頂点（loopDistanceの約75%）に合わせる
                     const textDist = loopDistance * 0.75 + 10; 
                     textObj.position.set(fx + textDist * Math.cos(baseAngle), fy + textDist * Math.sin(baseAngle));
 
@@ -440,6 +472,10 @@ export class PixiGraphApp {
                 const labelText = group.getChildByLabel("labelText") as PIXI.Text;
                 if (labelText) labelText.text = meta.label !== undefined ? meta.label : nodeIndex.toString();
 
+                // Label
+                const text = group.getChildByLabel("label") as PIXI.Text;
+                if (text) text.text = meta.label || (this.isAutomaton ? `q_${nodeIndex}` : `${nodeIndex}`); // ★ オートマトンならq_、違えば数字のみ
+
                 const acceptRing = group.getChildByLabel("acceptRing") as PIXI.Graphics;
                 if (acceptRing) {
                     acceptRing.clear();
@@ -454,6 +490,7 @@ export class PixiGraphApp {
 
                 const wText = group.getChildByLabel("weightText") as PIXI.Text;
                 if (wText) {
+                    wText.visible = this.showWeights;
                     wText.text = weight.toString();
                     
                     // ★ 自己ループも含めた上で、最も広く空いている角度を再計算！

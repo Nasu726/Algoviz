@@ -1,33 +1,53 @@
 import React, { useEffect, useRef } from 'react';
-import { PixiGraphApp } from './PixiGraphApp'; // 先ほど作ったクラスをインポート
+import { PixiGraphApp } from './PixiGraphApp';
 
 interface GraphRendererProps {
   engine: any;
-  isDirected?: boolean;
+  isDirected: boolean;
+  showWeights: boolean;
+  isAutomaton: boolean;
+  startNode: string;
+  acceptingNodes: string;
 }
 
-export const GraphRenderer: React.FC<GraphRendererProps> = ({ engine, isDirected = false }) => {
+export const GraphRenderer: React.FC<GraphRendererProps> = ({ 
+    engine, isDirected, showWeights, isAutomaton, startNode, acceptingNodes 
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const pixiAppRef = useRef<PixiGraphApp | null>(null);
 
+  // 初回マウント時のセットアップ
   useEffect(() => {
     if (!containerRef.current || !engine) return;
 
-    // 1. クラスをインスタンス化
-    const pixiApp = new PixiGraphApp(containerRef.current, engine, isDirected);
-    
-    // 2. 初期化を実行
-    pixiApp.init();
+    pixiAppRef.current = new PixiGraphApp(containerRef.current, engine);
+    pixiAppRef.current.init();
 
-    // 3. コンポーネントが消える時の後片付けは、クラスに丸投げするだけ！
     return () => {
-      pixiApp.destroy();
+      if (pixiAppRef.current) {
+        pixiAppRef.current.destroy();
+        pixiAppRef.current = null;
+      }
     };
-  }, [engine, isDirected]);
+  }, [engine]);
+
+  // 設定が変わった時にPixiJS側に通知
+  useEffect(() => {
+    if (pixiAppRef.current) {
+      pixiAppRef.current.updateSettings({
+        isDirected,
+        showWeights,
+        isAutomaton,
+        startNode,
+        acceptingNodes
+      });
+    }
+  }, [isDirected, showWeights, isAutomaton, startNode, acceptingNodes]);
 
   return (
     <div 
       ref={containerRef} 
-      style={{ border: '1px solid #ccc', marginTop: '20px', width: '800px', height: '600px' }} 
+      style={{ border: '1px solid #ccc', width: '800px', height: '600px', backgroundColor: '#fff' }} 
     />
   );
 };
