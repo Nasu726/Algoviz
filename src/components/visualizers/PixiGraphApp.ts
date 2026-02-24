@@ -34,10 +34,7 @@ export class PixiGraphApp {
     private isDragging = false;
     private lastPos = { x: 0, y: 0 };
 
-    constructor(
-        container: HTMLDivElement, 
-        engine: any, 
-    ) {
+    constructor(container: HTMLDivElement, engine: any) {
         this.container = container;
         this.engine = engine;
         this.app = new PIXI.Application();
