@@ -119,6 +119,18 @@ private:
             shape.cx = (min_x + max_x) / 2.0f;
             shape.cy = (min_y + max_y) / 2.0f;
 
+            // ノードの半径分、輪郭を中心から外側に押し出す
+            float margin = 30.0f; // ノード半径(20) + 隙間(10)
+            for (auto& pt : shape.hull) {
+                float dx = pt.x - shape.cx;
+                float dy = pt.y - shape.cy;
+                float dist = std::sqrt(dx * dx + dy * dy);
+                if (dist > 0.001f) {
+                    pt.x += (dx / dist) * margin;
+                    pt.y += (dy / dist) * margin;
+                }
+            }
+
             // 2. 半径（中心から最も遠い頂点までの距離）を計算
             float max_dist_sq = 0.0f;
             for (int u : components[c]) {
@@ -235,7 +247,7 @@ private:
         for (size_t i = 1; i < comp_shapes.size(); i++) {
             ComponentShape& current = comp_shapes[i];
             bool placed = false;
-            float step = 15.0f; // 探索の粗さ（小さいほど高密度になるが少し重い）
+            float step = 4.0f; // 探索の粗さ（小さいほど高密度になるが少し重い）
 
             // 画面中心から螺旋状（スパイラル）に空き地を探索
             for (float r = step; r < 5000.0f && !placed; r += step) {
@@ -355,7 +367,7 @@ private:
     void applySmartInitialLayout(GraphData* graph, const std::vector<std::vector<int>>& adj) {
         float center_x = 400.0f; // キャンバスの中心X
         float center_y = 300.0f; // キャンバスの中心Y
-        float density_threshold = 0.8f; // ★ この密度以上のグラフは円形に配置する
+        float density_threshold = 0.5f; // ★ この密度以上のグラフは円形に配置する
 
         for (size_t c = 0; c < components.size(); c++) {
             int n = components[c].size();
