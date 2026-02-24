@@ -20,7 +20,7 @@ export const GraphRenderer: React.FC<GraphRendererProps> = ({ engine }) => {
       if (isCancelled) return;
       containerRef.current!.appendChild(app.canvas);
 
-      // ★1. カメラの役割を果たす「世界コンテナ」を作成
+      // カメラの役割を果たす「世界コンテナ」を作成
       const world = new PIXI.Container();
       app.stage.addChild(world);
 
@@ -41,7 +41,7 @@ export const GraphRenderer: React.FC<GraphRendererProps> = ({ engine }) => {
       fpsText.y = 20;
       app.stage.addChild(fpsText); // FPSは画面に固定したいのでworldではなくstageに置く
 
-      // --- ★2. ドラッグ操作（パン）の実装 ---
+      // --- ドラッグ操作（パン）の実装 ---
       app.stage.eventMode = 'static'; // イベントを受け取る設定
       app.stage.hitArea = new PIXI.Rectangle(0, 0, 600, 400); // 画面全体でクリック判定
       
@@ -63,7 +63,7 @@ export const GraphRenderer: React.FC<GraphRendererProps> = ({ engine }) => {
       app.stage.on('pointerup', () => (isDragging = false));
       app.stage.on('pointerupoutside', () => (isDragging = false));
 
-      // --- ★3. ホイール操作（ズーム）の実装 ---
+      // --- ホイール操作（ズーム）の実装 ---
       onWheel = (e: WheelEvent) => {
         e.preventDefault(); // 画面全体がスクロールされるのを防ぐ
         const zoomFactor = 1.1;
@@ -85,7 +85,7 @@ export const GraphRenderer: React.FC<GraphRendererProps> = ({ engine }) => {
       };
       app.canvas.addEventListener('wheel', onWheel);
 
-      // --- ★4. カリング判定用の関数 ---
+      // --- カリング判定用の関数 ---
       const isVisible = (x: number, y: number) => {
         // 世界座標を画面座標に変換
         const screenX = x * world.scale.x + world.position.x;
