@@ -18,6 +18,7 @@ export class PixiGraphApp {
     private nodeSprites: PIXI.Container[] = [];
     private edgeWeightTexts: PIXI.Text[] = [];
     private nodeMetadata: NodeMeta[] = [];
+    private colors: number[] = [0x000000, 0x3498db, 0xe74c3c];
     private fpsText!: PIXI.Text;
     private nodeRadius: number = 20.0;
     private isDirected: boolean = false;
@@ -280,8 +281,8 @@ export class PixiGraphApp {
             edgeTotalCounts[edgeKey] = (edgeTotalCounts[edgeKey] || 0) + 1;
 
             if (fromIdx !== toIdx) { // 自己ループ以外
-                const fx = nodeArray[fromIdx * 4], fy = nodeArray[fromIdx * 4 + 1];
-                const tx = nodeArray[toIdx * 4], ty = nodeArray[toIdx * 4 + 1];
+                const fx = nodeArray[fromIdx * 5], fy = nodeArray[fromIdx * 5 + 1];
+                const tx = nodeArray[toIdx * 5], ty = nodeArray[toIdx * 5 + 1];
                 
                 const angleFrom = Math.atan2(ty - fy, tx - fx);
                 const angleTo = Math.atan2(fy - ty, fx - tx);
@@ -304,8 +305,8 @@ export class PixiGraphApp {
 
         for (let i = 0; i < edgeArray.length; i += 4) {
             const fromIdx = edgeArray[i], toIdx = edgeArray[i + 1], weight = edgeArray[i + 2];
-            const fx = nodeArray[fromIdx * 4], fy = nodeArray[fromIdx * 4 + 1];
-            const tx = nodeArray[toIdx * 4], ty = nodeArray[toIdx * 4 + 1];
+            const fx = nodeArray[fromIdx * 5], fy = nodeArray[fromIdx * 5 + 1];
+            const tx = nodeArray[toIdx * 5], ty = nodeArray[toIdx * 5 + 1];
 
             if (this.isVisible(fx, fy) || this.isVisible(tx, ty)) {
                 const minIdx = Math.min(fromIdx, toIdx), maxIdx = Math.max(fromIdx, toIdx);
@@ -450,7 +451,7 @@ export class PixiGraphApp {
         let visibleNodeCount = 0;
         let nodeIndex = 0;
 
-        for (let i = 0; i < nodeArray.length; i += 4) {
+        for (let i = 0; i < nodeArray.length; i += 5) {
             if (nodeIndex >= this.nodeSprites.length) break;
 
             const x = nodeArray[i], y = nodeArray[i + 1], weight = nodeArray[i + 2], colorId = nodeArray[i + 3];
@@ -460,7 +461,7 @@ export class PixiGraphApp {
                 group.visible = true;
                 group.x = x; group.y = y;
 
-                const borderColor = colorId === 0 ? 0x3498db : 0xe74c3c;
+                const borderColor = this.colors[colorId];
                 const bg = group.children[0] as PIXI.Graphics;
                 bg.clear().circle(0, 0, this.nodeRadius).fill(0xffffff).stroke({ width: 3, color: borderColor });
 
