@@ -120,7 +120,7 @@ private:
             shape.cy = (min_y + max_y) / 2.0f;
 
             // ノードの半径分、輪郭を中心から外側に押し出す
-            float margin = 30.0f; // ノード半径(20) + 隙間(10)
+            float margin = 50.0f; // ノード半径(20) + 隙間(70)
             for (auto& pt : shape.hull) {
                 float dx = pt.x - shape.cx;
                 float dy = pt.y - shape.cy;
@@ -141,8 +141,8 @@ private:
                 max_dist_sq = std::max(max_dist_sq, dx * dx + dy * dy);
             }
             
-            // ノード半径(20) + 隙間パディング(10) を余白として足す
-            shape.radius = std::sqrt(max_dist_sq) + 30.0f; 
+            // margin を余白として足す
+            shape.radius = std::sqrt(max_dist_sq) + margin; 
 
             comp_shapes.push_back(shape);
         }
@@ -363,11 +363,16 @@ private:
     // ==========================================
     // フェーズ2: 密度に基づくハイブリッド初期配置
     // ==========================================
+    float getDensityThreshold(float V, int maxK) {
+        if (V <= 1) return 1.0;
+        const float C = 3; // 許容平均次数
+        float density_threshold = C / (V - 1) * std::min((float)1.0, C / maxK);
+        return std::min((float)1.0, density_threshold);
+    }
 
     void applySmartInitialLayout(GraphData* graph, const std::vector<std::vector<int>>& adj) {
         float center_x = 400.0f; // キャンバスの中心X
         float center_y = 300.0f; // キャンバスの中心Y
-        float density_threshold = 0.5f; // ★ この密度以上のグラフは円形に配置する
 
         for (size_t c = 0; c < components.size(); c++) {
             int n = components[c].size();
@@ -386,12 +391,18 @@ private:
 
             // 1. コンポーネント内の辺の数 (E) をカウント
             int comp_edges = 0;
+            int maxK = 0;
             for (int u : components[c]) {
+                int k_count = 0;
                 for (int v : adj[u]) {
                     // 両方の頂点がこのコンポーネントに属しているか（通常は属している）
                     // 無向グラフの重複カウントを防ぐため u < v のみカウント
-                    if (u < v) comp_edges++; 
+                    if (u < v) {
+                        comp_edges++; 
+                        k_count++;
+                    }
                 }
+                maxK = std::max(maxK, k_count);
             }
 
             // 2. 密度の計算: D = 2E / V(V-1)
@@ -400,7 +411,7 @@ private:
             // ==================================================
             // 分岐 A: 高密度グラフ -> 円状配置 (Circular Layout)
             // ==================================================
-            if (density >= density_threshold) {
+            if (density >= getDensityThreshold(n, maxK)) {
                 is_circular_layout[c] = true;
                 // ★ PixiJS側の nodeRadius (20.0) を基準に、重ならない半径を計算
                 float nodeRadius = 20.0f;
