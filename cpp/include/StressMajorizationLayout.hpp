@@ -20,16 +20,218 @@ private:
     std::vector<float> d;
 
     std::vector<std::vector<int>> components;
+    std::vector<bool> is_circular_layout;
     std::vector<float> target_nx;
     std::vector<float> target_ny;
+
+    // ==========================================
+    // フェーズ2: 古典的MDSによる初期配置
+    // ==========================================
+
+    // 実対称行列の固有値分解を行うヤコビ法 (Jacobi Method)
+    void jacobiMethod(const std::vector<std::vector<float>>& A, std::vector<float>& eigenvalues, std::vector<std::vector<float>>& eigenvectors) {
+        int n = A.size();
+        std::vector<std::vector<float>> mat = A;
+        eigenvectors.assign(n, std::vector<float>(n, 0.0f));
+        for (int i = 0; i < n; i++) eigenvectors[i][i] = 1.0f;
+
+        int max_iter = 100 * n * n; 
+        float epsilon_jacobi = 1e-5f;
+
+        for (int iter = 0; iter < max_iter; iter++) {
+            float max_val = 0.0f;
+            int p = 0, q = 1;
+            // 非対角要素の最大値を探す
+            for (int i = 0; i < n; i++) {
+                for (int j = i + 1; j < n; j++) {
+                    if (std::abs(mat[i][j]) > max_val) {
+                        max_val = std::abs(mat[i][j]);
+                        p = i;
+                        q = j;
+                    }
+                }
+            }
+
+            if (max_val < epsilon_jacobi) break; // 収束
+
+            // ギブンス回転の角度を計算
+            float theta;
+            if (std::abs(mat[p][p] - mat[q][q]) < 1e-9f) {
+                theta = (mat[p][q] > 0) ? M_PI / 4.0f : -M_PI / 4.0f;
+            } else {
+                theta = 0.5f * std::atan2(2.0f * mat[p][q], mat[p][p] - mat[q][q]);
+            }
+
+            float c = std::cos(theta);
+            float s = std::sin(theta);
+
+            // 行列の更新
+            float app = mat[p][p], aqq = mat[q][q], apq = mat[p][q];
+            mat[p][p] = c * c * app - 2.0f * s * c * apq + s * s * aqq;
+            mat[q][q] = s * s * app + 2.0f * s * c * apq + c * c * aqq;
+            mat[p][q] = mat[q][p] = 0.0f;
+
+            for (int i = 0; i < n; i++) {
+                if (i != p && i != q) {
+                    float aip = mat[i][p], aiq = mat[i][q];
+                    mat[i][p] = mat[p][i] = c * aip - s * aiq;
+                    mat[i][q] = mat[q][i] = s * aip + c * aiq;
+                }
+            }
+
+            // 固有ベクトルの更新
+            for (int i = 0; i < n; i++) {
+                float eip = eigenvectors[i][p], eiq = eigenvectors[i][q];
+                eigenvectors[i][p] = c * eip - s * eiq;
+                eigenvectors[i][q] = s * eip + c * eiq;
+            }
+        }
+
+        eigenvalues.resize(n);
+        for (int i = 0; i < n; i++) eigenvalues[i] = mat[i][i];
+    }
+
+    // ==========================================
+    // フェーズ2: 密度に基づくハイブリッド初期配置
+    // ==========================================
+
+    void applySmartInitialLayout(GraphData* graph, const std::vector<std::vector<int>>& adj) {
+        float center_x = 400.0f; // キャンバスの中心X
+        float center_y = 300.0f; // キャンバスの中心Y
+        float density_threshold = 0.8f; // ★ この密度以上のグラフは円形に配置する
+
+        for (size_t c = 0; c < components.size(); c++) {
+            int n = components[c].size();
+            
+            // 頂点が2個以下の場合は直線配置
+            if (n <= 2) {
+                for (int i = 0; i < n; i++) {
+                    int u = components[c][i];
+                    target_nx[u] = center_x + i * baseDistance - (n - 1) * baseDistance / 2.0f;
+                    target_ny[u] = center_y;
+                    graph->nodeData[u * nodeStride] = target_nx[u];
+                    graph->nodeData[u * nodeStride + 1] = target_ny[u];
+                }
+                continue;
+            }
+
+            // 1. コンポーネント内の辺の数 (E) をカウント
+            int comp_edges = 0;
+            for (int u : components[c]) {
+                for (int v : adj[u]) {
+                    // 両方の頂点がこのコンポーネントに属しているか（通常は属している）
+                    // 無向グラフの重複カウントを防ぐため u < v のみカウント
+                    if (u < v) comp_edges++; 
+                }
+            }
+
+            // 2. 密度の計算: D = 2E / V(V-1)
+            float density = (2.0f * comp_edges) / (n * (n - 1.0f));
+
+            // ==================================================
+            // 分岐 A: 高密度グラフ -> 円状配置 (Circular Layout)
+            // ==================================================
+            if (density >= density_threshold) {
+                is_circular_layout[c] = true;
+                // ★ PixiJS側の nodeRadius (20.0) を基準に、重ならない半径を計算
+                float nodeRadius = 20.0f;
+                float padding = 10.0f; // ノード同士の隙間（お好みで調整）
+                
+                // ノードが重ならないために必要な円周 = 頂点数 × (直径 + 隙間)
+                float requiredCircumference = n * (nodeRadius * 2.0f + padding);
+                
+                // 円周 = 2πr より、必要な半径 r を逆算
+                float minRadius = requiredCircumference / (2.0f * (float)M_PI);
+
+                // 理想距離 (baseDistance) から求めた半径と比べて、大きい方を採用する
+                float defaultRadius = (n * baseDistance) / (2.0f * (float)M_PI);
+                float radius = std::max({baseDistance, defaultRadius, minRadius});
+
+                for (int i = 0; i < n; i++) {
+                    int u = components[c][i];
+                    float angle = 2.0f * M_PI * i / n;
+                    float x = center_x + radius * std::cos(angle);
+                    float y = center_y + radius * std::sin(angle);
+
+                    target_nx[u] = x;
+                    target_ny[u] = y;
+                    graph->nodeData[u * nodeStride] = x;
+                    graph->nodeData[u * nodeStride + 1] = y;
+                }
+                continue; // MDSの計算をスキップして次へ
+            }
+
+            // ==================================================
+            // 分岐 B: 通常グラフ -> 古典的MDS
+            // ==================================================
+            std::vector<std::vector<float>> D2(n, std::vector<float>(n, 0.0f));
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < n; j++) {
+                    int u = components[c][i];
+                    int v = components[c][j];
+                    float dist = d[u * nodeSize + v];
+                    D2[i][j] = dist * dist;
+                }
+            }
+
+            std::vector<float> row_mean(n, 0.0f);
+            float total_mean = 0.0f;
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < n; j++) row_mean[i] += D2[i][j];
+                total_mean += row_mean[i];
+                row_mean[i] /= n;
+            }
+            total_mean /= (n * n);
+
+            std::vector<std::vector<float>> B(n, std::vector<float>(n, 0.0f));
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < n; j++) {
+                    B[i][j] = -0.5f * (D2[i][j] - row_mean[i] - row_mean[j] + total_mean);
+                }
+            }
+
+            std::vector<float> eigenvalues;
+            std::vector<std::vector<float>> eigenvectors;
+            jacobiMethod(B, eigenvalues, eigenvectors);
+
+            std::vector<int> indices(n);
+            for(int i = 0; i < n; i++) indices[i] = i;
+            std::sort(indices.begin(), indices.end(), [&](int a, int b){
+                return eigenvalues[a] > eigenvalues[b];
+            });
+
+            float lambda1 = std::max(0.0f, eigenvalues[indices[0]]);
+            float lambda2 = std::max(0.0f, eigenvalues[indices[1]]);
+            float sqrt_l1 = std::sqrt(lambda1);
+            float sqrt_l2 = std::sqrt(lambda2);
+
+            for (int i = 0; i < n; i++) {
+                int u = components[c][i];
+                float x = eigenvectors[i][indices[0]] * sqrt_l1 + center_x;
+                float y = eigenvectors[i][indices[1]] * sqrt_l2 + center_y;
+                
+                if (x != x || y != y) {
+                    x = center_x + ((rand() % 100) - 50) / 10.0f;
+                    y = center_y + ((rand() % 100) - 50) / 10.0f;
+                }
+
+                target_nx[u] = x;
+                target_ny[u] = y;
+                graph->nodeData[u * nodeStride] = x;
+                graph->nodeData[u * nodeStride + 1] = y;
+            }
+        }
+    }
 
     // ==========================================
     // 内部処理用の分割関数群
     // ==========================================
 
-    // ① SMアルゴリズムの計算
+    // SMアルゴリズムの計算
     void calculateStressMajorization(GraphData* graph) {
         for(size_t c = 0; c < components.size(); c++) {
+            if (is_circular_layout[c]) continue;
+            
             for(int i : components[c]) {
                 float xi = graph->nodeData[i * nodeStride];
                 float yi = graph->nodeData[i * nodeStride + 1];
@@ -66,11 +268,13 @@ private:
         }
     }
 
-    // ② グローバル斥力（密グラフを円形に押し広げる）
+    // グローバル斥力（密グラフを円形に押し広げる）
     void applyNodeRepulsion() {
         float k = baseDistance; // 基準距離
         
         for(size_t c = 0; c < components.size(); c++) {
+            if (is_circular_layout[c]) continue;
+
             for(size_t i = 0; i < components[c].size(); i++) {
                 int u = components[c][i];
                 for(size_t j = i + 1; j < components[c].size(); j++) {
@@ -98,7 +302,7 @@ private:
         }
     }
 
-    // ③ 指向性（縦長・横長）に合わせた回転
+    // 指向性（縦長・横長）に合わせた回転
     void updateComponentOrientations(GraphData* graph) {
         for(size_t c = 0; c < components.size(); c++) {
             if (components[c].empty()) continue;
@@ -136,7 +340,7 @@ private:
         }
     }
 
-    // ④ フレキシブルな力学パッキング（Bubble Packing）
+    // フレキシブルな力学パッキング（Bubble Packing）
     void packComponentsForceDirected() {
         if (components.empty()) return;
 
@@ -212,7 +416,7 @@ private:
         }
     }
 
-    // ⑤ 重心のズレをキャンセルし、ドリフト（流され）を防ぐ
+    // 重心のズレをキャンセルし、ドリフト（流され）を防ぐ
     void removeComponentDrift(GraphData* graph) {
         for(size_t c = 0; c < components.size(); c++) {
             if (components[c].empty()) continue;
@@ -300,6 +504,9 @@ public:
                 components.push_back(comp);
             }
         }
+
+        is_circular_layout.assign(components.size(), false);
+        applySmartInitialLayout(graph, adj);
     }
 
     // ★ update は各関数を呼ぶだけでスッキリ！
@@ -311,17 +518,17 @@ public:
 
         // 2. 遊泳して画面外に流れてしまうのを防ぐ
         removeComponentDrift(graph);
-        
-        // 3. 密集を防ぎ、円形に膨らませる
-        applyNodeRepulsion();
 
-        // 4. 縦横の指向性に合わせて回転する
+        // 
+        applyNodeRepulsion();
+        
+        // 3. 縦横の指向性に合わせて回転する
         updateComponentOrientations(graph);
 
-        // 5. コンポーネント同士を泡のようにパッキングする
+        // 4. コンポーネント同士を泡のようにパッキングする
         packComponentsForceDirected();
 
-        // 6. イージングをかけて実際の座標を動かし、収束を判定する
+        // 5. イージングをかけて実際の座標を動かし、収束を判定する
         float max_movement = 0.0f;
         for (int i=0; i<nodeSize; i++){
             float xi = graph->nodeData[i * nodeStride];

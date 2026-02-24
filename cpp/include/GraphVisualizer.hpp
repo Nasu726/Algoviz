@@ -20,8 +20,8 @@ public:
         srand((unsigned int)time(nullptr));
 
         // 初期化時に10ノードのテストデータを作る
-        int nodeCount = 10;
-        int edgeCount = 10;
+        int nodeCount = 20;
+        int edgeCount = 20;
         graph = new GraphData(nodeCount, edgeCount);
         
         for (int i = 0; i < nodeCount; i++) {
@@ -30,9 +30,9 @@ public:
             float colorId = rand() % 2;
             graph->setNode(i, x, y, 0, colorId);
         }
-        if (false){
+        if (false) {
             for (int i=0; i< nodeCount; i++){
-                for (int j=i; j<nodeCount;  j++){
+                for (int j=i+1; j<nodeCount;  j++){
                     graph->addEdge(i, j, 0, 0);
                 }
             }
