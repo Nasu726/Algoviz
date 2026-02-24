@@ -25,6 +25,263 @@ private:
     std::vector<float> target_ny;
 
     // ==========================================
+    // フェーズ4: 輪郭（凸包）の抽出
+    // ==========================================
+
+    struct Point2D {
+        int id;
+        float x, y;
+    };
+
+    // 3点 O, A, B が作るベクトルの外積（Z成分）
+    // 正なら反時計回り(左折)、負なら時計回り(右折)、0なら同一直線上
+    float crossProduct(const Point2D& O, const Point2D& A, const Point2D& B) {
+        return (A.x - O.x) * (B.y - O.y) - (A.y - O.y) * (B.x - O.x);
+    }
+
+    // コンポーネントの頂点群から凸包（輪郭の多角形）を抽出する (Andrew's Monotone Chain)
+    std::vector<Point2D> getConvexHull(const std::vector<int>& component, GraphData* graph) {
+        int n = component.size();
+        if (n <= 2) {
+            // 頂点が2個以下の場合は、そのまま返す
+            std::vector<Point2D> hull;
+            for (int id : component) {
+                hull.push_back({id, graph->nodeData[id * nodeStride], graph->nodeData[id * nodeStride + 1]});
+            }
+            return hull;
+        }
+
+        std::vector<Point2D> P(n);
+        for (int i = 0; i < n; i++) {
+            int id = component[i];
+            P[i] = {id, graph->nodeData[id * nodeStride], graph->nodeData[id * nodeStride + 1]};
+        }
+
+        // X座標でソート（Xが同じならYでソート）
+        std::sort(P.begin(), P.end(), [](const Point2D& a, const Point2D& b) {
+            return a.x < b.x || (a.x == b.x && a.y < b.y);
+        });
+
+        std::vector<Point2D> hull(2 * n);
+        int k = 0;
+
+        // 下側凸包の構築
+        for (int i = 0; i < n; i++) {
+            while (k >= 2 && crossProduct(hull[k - 2], hull[k - 1], P[i]) <= 0) k--;
+            hull[k++] = P[i];
+        }
+
+        // 上側凸包の構築
+        for (int i = n - 2, t = k + 1; i >= 0; i--) {
+            while (k >= t && crossProduct(hull[k - 2], hull[k - 1], P[i]) <= 0) k--;
+            hull[k++] = P[i];
+        }
+
+        // 最後の頂点は最初の頂点と重複するので削る
+        hull.resize(k - 1);
+        return hull;
+    }
+
+    // ==========================================
+    // フェーズ5: パッキング準備 (バウンディング計算とソート)
+    // ==========================================
+
+    struct ComponentShape {
+        int id; // components配列のインデックス
+        std::vector<Point2D> hull;
+        float cx, cy;
+        float radius;
+    };
+
+    std::vector<ComponentShape> comp_shapes; // パッキング用の形状リスト
+
+    void preparePacking(GraphData* graph) {
+        comp_shapes.clear();
+
+        for (size_t c = 0; c < components.size(); c++) {
+            if (components[c].empty()) continue;
+
+            ComponentShape shape;
+            shape.id = c;
+            shape.hull = getConvexHull(components[c], graph);
+
+            // 1. 重心（バウンディングボックスの中心）を計算
+            float min_x = inf, max_x = -inf;
+            float min_y = inf, max_y = -inf;
+            for (int u : components[c]) {
+                float x = graph->nodeData[u * nodeStride];
+                float y = graph->nodeData[u * nodeStride + 1];
+                min_x = std::min(min_x, x);
+                max_x = std::max(max_x, x);
+                min_y = std::min(min_y, y);
+                max_y = std::max(max_y, y);
+            }
+            shape.cx = (min_x + max_x) / 2.0f;
+            shape.cy = (min_y + max_y) / 2.0f;
+
+            // 2. 半径（中心から最も遠い頂点までの距離）を計算
+            float max_dist_sq = 0.0f;
+            for (int u : components[c]) {
+                float x = graph->nodeData[u * nodeStride];
+                float y = graph->nodeData[u * nodeStride + 1];
+                float dx = x - shape.cx;
+                float dy = y - shape.cy;
+                max_dist_sq = std::max(max_dist_sq, dx * dx + dy * dy);
+            }
+            
+            // ノード半径(20) + 隙間パディング(10) を余白として足す
+            shape.radius = std::sqrt(max_dist_sq) + 30.0f; 
+
+            comp_shapes.push_back(shape);
+        }
+
+        // 3. 半径が大きい順（降順）にソート！
+        std::sort(comp_shapes.begin(), comp_shapes.end(), [](const ComponentShape& a, const ComponentShape& b) {
+            return a.radius > b.radius;
+        });
+    }
+
+    // ==========================================
+    // フェーズ6: 厳密パッキング (多角形交差判定 + 螺旋探索)
+    // ==========================================
+
+    // 線分上に点があるか
+    bool onSegment(Point2D p, Point2D q, Point2D r) {
+        return q.x <= std::max(p.x, r.x) && q.x >= std::min(p.x, r.x) &&
+               q.y <= std::max(p.y, r.y) && q.y >= std::min(p.y, r.y);
+    }
+
+    // 線分 p1-q1 と p2-q2 が交差しているか判定
+    bool doIntersect(Point2D p1, Point2D q1, Point2D p2, Point2D q2) {
+        float o1 = crossProduct(p1, q1, p2);
+        float o2 = crossProduct(p1, q1, q2);
+        float o3 = crossProduct(p2, q2, p1);
+        float o4 = crossProduct(p2, q2, q1);
+
+        if (((o1 > 0 && o2 < 0) || (o1 < 0 && o2 > 0)) &&
+            ((o3 > 0 && o4 < 0) || (o3 < 0 && o4 > 0))) return true;
+
+        if (o1 == 0 && onSegment(p1, p2, q1)) return true;
+        if (o2 == 0 && onSegment(p1, q2, q1)) return true;
+        if (o3 == 0 && onSegment(p2, p1, q2)) return true;
+        if (o4 == 0 && onSegment(p2, q1, q2)) return true;
+        return false;
+    }
+
+    // 点が多角形の中にあるか（Ray Casting法）
+    bool isPointInPolygon(Point2D pt, const std::vector<Point2D>& poly, float offsetX, float offsetY) {
+        int n = poly.size();
+        if (n < 3) return false;
+        bool inside = false;
+        for (int i = 0, j = n - 1; i < n; j = i++) {
+            float xi = poly[i].x + offsetX, yi = poly[i].y + offsetY;
+            float xj = poly[j].x + offsetX, yj = poly[j].y + offsetY;
+            if (((yi > pt.y) != (yj > pt.y)) &&
+                (pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi)) {
+                inside = !inside;
+            }
+        }
+        return inside;
+    }
+
+    // 2つのコンポーネントが衝突（重なり）しているかを判定
+    bool checkOverlap(const ComponentShape& s1, float dx1, float dy1,
+                      const ComponentShape& s2, float dx2, float dy2) {
+        // 【枝刈り1: 外接円による超高速判定】
+        float distSq = ((s1.cx + dx1) - (s2.cx + dx2)) * ((s1.cx + dx1) - (s2.cx + dx2)) +
+                       ((s1.cy + dy1) - (s2.cy + dy2)) * ((s1.cy + dy1) - (s2.cy + dy2));
+        float rSum = s1.radius + s2.radius;
+        if (distSq >= rSum * rSum) return false; // 円が重なっていないなら絶対に安全！
+
+        // 【枝刈り2: 頂点が少なすぎる場合は円判定のみで妥協（1~2頂点のグラフ用）】
+        int n1 = s1.hull.size();
+        int n2 = s2.hull.size();
+        if (n1 < 3 || n2 < 3) return true; // 円が重なっていて、かつ多角形じゃないなら衝突とする
+
+        // 【詳細判定: 凸包の線分交差テスト】
+        for (int i = 0; i < n1; i++) {
+            Point2D p1 = {0, s1.hull[i].x + dx1, s1.hull[i].y + dy1};
+            Point2D q1 = {0, s1.hull[(i+1)%n1].x + dx1, s1.hull[(i+1)%n1].y + dy1};
+            for (int j = 0; j < n2; j++) {
+                Point2D p2 = {0, s2.hull[j].x + dx2, s2.hull[j].y + dy2};
+                Point2D q2 = {0, s2.hull[(j+1)%n2].x + dx2, s2.hull[(j+1)%n2].y + dy2};
+                if (doIntersect(p1, q1, p2, q2)) return true; // 境界線が交差している
+            }
+        }
+
+        // 【詳細判定: 完全に内包されているかのテスト】
+        if (isPointInPolygon({0, s1.hull[0].x + dx1, s1.hull[0].y + dy1}, s2.hull, dx2, dy2)) return true;
+        if (isPointInPolygon({0, s2.hull[0].x + dx2, s2.hull[0].y + dy2}, s1.hull, dx1, dy1)) return true;
+
+        return false;
+    }
+
+    // 螺旋探索による厳密パッキングの実行
+    void packComponentsStrict(GraphData* graph) {
+        if (comp_shapes.empty()) return;
+
+        float center_x = 400.0f; // 画面中心
+        float center_y = 300.0f;
+
+        std::vector<float> final_dx(components.size(), 0.0f);
+        std::vector<float> final_dy(components.size(), 0.0f);
+
+        // 1番巨大なコンポーネントは無条件で画面ド真ん中に配置
+        ComponentShape& first = comp_shapes[0];
+        final_dx[first.id] = center_x - first.cx;
+        final_dy[first.id] = center_y - first.cy;
+
+        // 残りのコンポーネントを配置していく
+        for (size_t i = 1; i < comp_shapes.size(); i++) {
+            ComponentShape& current = comp_shapes[i];
+            bool placed = false;
+            float step = 15.0f; // 探索の粗さ（小さいほど高密度になるが少し重い）
+
+            // 画面中心から螺旋状（スパイラル）に空き地を探索
+            for (float r = step; r < 5000.0f && !placed; r += step) {
+                float d_theta = std::max(0.1f, step / r); // 外側に行くほど角度の刻みを細かくする
+                for (float theta = 0; theta < 2.0f * (float)M_PI; theta += d_theta) {
+                    float test_dx = (center_x + r * std::cos(theta)) - current.cx;
+                    float test_dy = (center_y + r * std::sin(theta)) - current.cy;
+
+                    bool overlap = false;
+                    // すでに配置済みの「自分より大きいパーツ群」すべてと衝突判定
+                    for (size_t j = 0; j < i; j++) {
+                        ComponentShape& placed_comp = comp_shapes[j];
+                        if (checkOverlap(current, test_dx, test_dy, placed_comp, final_dx[placed_comp.id], final_dy[placed_comp.id])) {
+                            overlap = true;
+                            break;
+                        }
+                    }
+
+                    // どこにもぶつからなかったら、そこを安住の地とする！
+                    if (!overlap) {
+                        final_dx[current.id] = test_dx;
+                        final_dy[current.id] = test_dy;
+                        placed = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 確定したオフセットを実際のノード座標に適用してピタッと止める
+        for (size_t i = 0; i < comp_shapes.size(); i++) {
+            int c_id = comp_shapes[i].id;
+            float dx = final_dx[c_id];
+            float dy = final_dy[c_id];
+            
+            for (int u : components[c_id]) {
+                target_nx[u] += dx;
+                target_ny[u] += dy;
+                // 一瞬で所定の位置にスナップさせる
+                graph->nodeData[u * nodeStride] = target_nx[u];
+                graph->nodeData[u * nodeStride + 1] = target_ny[u];
+            }
+        }
+    }
+
+    // ==========================================
     // フェーズ2: 古典的MDSによる初期配置
     // ==========================================
 
@@ -291,7 +548,7 @@ private:
                     float dist = std::max(0.01f, (float)std::sqrt(dx*dx + dy*dy));
                     
                     // FRモデルのクーロン斥力（距離が近いほど急激に強く、遠くても弱くかかり続ける）
-                    float force = (k * k) / dist * 0.03f; // 0.03f は引力とのバランス係数
+                    float force = (k * k) / dist * 0.1f; // 0.03f は引力とのバランス係数
                     
                     float fx = (dx/dist) * force;
                     float fy = (dy/dist) * force;
@@ -336,82 +593,6 @@ private:
                     graph->nodeData[i * nodeStride] = cx - c_ny;
                     graph->nodeData[i * nodeStride + 1] = cy + c_nx;
                 }
-            }
-        }
-    }
-
-    // フレキシブルな力学パッキング（Bubble Packing）
-    void packComponentsForceDirected() {
-        if (components.empty()) return;
-
-        std::vector<float> comp_cx(components.size(), 0.0f);
-        std::vector<float> comp_cy(components.size(), 0.0f);
-        std::vector<float> comp_r(components.size(), 0.0f); // コンポーネントの半径（泡の大きさ）
-
-        // 各コンポーネントの中心と半径を計算
-        for(size_t c = 0; c < components.size(); c++) {
-            if (components[c].empty()) continue;
-            float min_x = inf, max_x = -inf, min_y = inf, max_y = -inf;
-            for(int i : components[c]) {
-                if (target_nx[i] < min_x) min_x = target_nx[i];
-                if (target_nx[i] > max_x) max_x = target_nx[i];
-                if (target_ny[i] < min_y) min_y = target_ny[i];
-                if (target_ny[i] > max_y) max_y = target_ny[i];
-            }
-            comp_cx[c] = (min_x + max_x) / 2.0f;
-            comp_cy[c] = (min_y + max_y) / 2.0f;
-            
-            float w = max_x - min_x;
-            float h = max_y - min_y;
-            // 独立した1頂点でもしっかり領域を確保する (半径は少し大きめの25.0fに)
-            comp_r[c] = std::max(25.0f, (float)std::sqrt(w*w + h*h) / 2.0f); 
-        }
-
-        std::vector<float> force_x(components.size(), 0.0f);
-        std::vector<float> force_y(components.size(), 0.0f);
-        float padding = 20.0f; // 泡同士の隙間
-
-        // 泡同士の反発力（重ならないように押し返す）
-        for(size_t i = 0; i < components.size(); i++) {
-            for(size_t j = i + 1; j < components.size(); j++) {
-                float dx = comp_cx[i] - comp_cx[j];
-                float dy = comp_cy[i] - comp_cy[j];
-                
-                // ★修正1: 完全に重なっている場合、微小なランダム方向の力を与えて確実に分離させる
-                if (dx == 0.0f && dy == 0.0f) {
-                    dx = ((rand() % 100) - 50) / 1000.0f;
-                    dy = ((rand() % 100) - 50) / 1000.0f;
-                }
-
-                float dist = std::max(0.01f, (float)std::sqrt(dx*dx + dy*dy));
-                float minDist = comp_r[i] + comp_r[j] + padding;
-
-                if (dist < minDist) {
-                    float overlap = minDist - dist;
-                    // ★修正2: 引力に負けないよう、押し出す反発力を強めに設定 (0.5f)
-                    float fx = (dx/dist) * overlap * 0.5f; 
-                    float fy = (dy/dist) * overlap * 0.5f;
-                    force_x[i] += fx; force_y[i] += fy;
-                    force_x[j] -= fx; force_y[j] -= fy;
-                }
-            }
-        }
-
-        // 画面中心 (300, 200) への引力
-        for(size_t i = 0; i < components.size(); i++) {
-            float dx = 300.0f - comp_cx[i];
-            float dy = 200.0f - comp_cy[i];
-            // ★修正3: 全体を綺麗な円形にするため、X軸とY軸で均等な引力をかける
-            float force = 0.02f; // 反発力に負けるくらい弱めの引力にするのがコツ
-            force_x[i] += dx * force;
-            force_y[i] += dy * force;
-        }
-
-        // 計算した力をターゲット座標に適用
-        for(size_t c = 0; c < components.size(); c++) {
-            for(int i : components[c]) {
-                target_nx[i] += force_x[c];
-                target_ny[i] += force_y[c];
             }
         }
     }
@@ -519,14 +700,11 @@ public:
         // 2. 遊泳して画面外に流れてしまうのを防ぐ
         removeComponentDrift(graph);
 
-        // 
+        // 3. ノードの絡まりや縮こまりを解消するために斥力を与える。
         applyNodeRepulsion();
         
-        // 3. 縦横の指向性に合わせて回転する
+        // 4. 縦横の指向性に合わせて回転する
         updateComponentOrientations(graph);
-
-        // 4. コンポーネント同士を泡のようにパッキングする
-        packComponentsForceDirected();
 
         // 5. イージングをかけて実際の座標を動かし、収束を判定する
         float max_movement = 0.0f;
@@ -550,6 +728,10 @@ public:
             stable_count++;
             if (stable_count >= required_stable_frames) {
                 is_stable = true;
+
+                // 完全に静止した瞬間に、1回だけ厳密パッキングを実行！ ★★★
+                preparePacking(graph);       // フェーズ5: バウンディング計算とソート
+                packComponentsStrict(graph); // フェーズ6: 螺旋探索による多角形パッキング
             }
         } else {
             stable_count = 0; // 少しでも大きく動いたら最初から数え直し！
