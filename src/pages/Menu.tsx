@@ -13,12 +13,12 @@ export const MenuPage: React.FC = () => {
     }}>
       <h1 style={{ fontSize: '45px' }}>AlgoVizへようこそ</h1>
       <h3>利用可能なビジュアライザ</h3>
-      <button 
+      {/* <button 
         onClick={() => navigate('/graph')}
         style={{ fontSize: '20px', padding: '10px 20px', border: '1px solid' }}
       >
         グラフ
-      </button>
+      </button> */}
       <button 
         onClick={() => navigate('/brainfuck')} 
         style={{ fontSize: '20px', padding: '10px 20px', border: '1px solid' }}

@@ -100,7 +100,7 @@ function App() {
       {/* URLが '/brainfuck' のときはビジュアライザを表示 */}
       <Route path="/brainfuck" element={<BrainfuckWrapper engine={engineRef.current} />} />
 
-      <Route path="/graph" element={<GraphWrapper engine={engineRef.current} />} />
+      {/* <Route path="/graph" element={<GraphWrapper engine={engineRef.current} />} /> */}
     </Routes>
 
     </BrowserRouter>
