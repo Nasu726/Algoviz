@@ -142,9 +142,9 @@ public:
                             graph->addEdge(from, to, weight, 0);
                         }
                     }
+                    if (iss >> skip) skipExtension = (skip != 0);
                     layout.init(graph);
                 }
-                if (iss >> skip) skipExtension = (skip != 0);
             }
         }
         
@@ -153,9 +153,13 @@ public:
 
     bool step() override {
         if (skipExtension) {
-            while (!layout.update(graph)) {
-                continue;
+            int frame = 0, limit = 3000;
+            bool skipped = false;
+            while (!layout.update(graph) && frame < limit) {
+                frame++;
+                skipped = true;
             }
+            if (skipped) layout.forcePack(graph); // 時間切れで終わった場合にパッキングする
         } else {
             layout.update(graph);
         }

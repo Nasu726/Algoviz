@@ -717,6 +717,12 @@ public:
 
         return is_stable;
     }
+
+    void forcePack(GraphData* graph) {
+        is_stable = true;
+        preparePacking(graph);
+        packComponentsStrict(graph);
+    }
 };
 
 #endif
