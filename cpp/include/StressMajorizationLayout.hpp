@@ -25,7 +25,7 @@ private:
     std::vector<float> target_ny;
 
     // ==========================================
-    // フェーズ4: 輪郭（凸包）の抽出
+    // 輪郭（凸包）の抽出
     // ==========================================
 
     struct Point2D {
@@ -83,7 +83,7 @@ private:
     }
 
     // ==========================================
-    // フェーズ5: パッキング準備 (バウンディング計算とソート)
+    // パッキング準備 (バウンディング計算とソート)
     // ==========================================
 
     struct ComponentShape {
@@ -154,7 +154,7 @@ private:
     }
 
     // ==========================================
-    // フェーズ6: 厳密パッキング (多角形交差判定 + 螺旋探索)
+    // 厳密パッキング (多角形交差判定 + 螺旋探索)
     // ==========================================
 
     // 線分上に点があるか
@@ -409,7 +409,7 @@ private:
             float density = (2.0f * comp_edges) / (n * (n - 1.0f));
 
             // ==================================================
-            // 分岐 A: 高密度グラフ -> 円状配置 (Circular Layout)
+            // 高密度グラフ -> 円状配置 (Circular Layout)
             // ==================================================
             if (density >= getDensityThreshold(n, maxK)) {
                 is_circular_layout[c] = true;
@@ -442,7 +442,7 @@ private:
             }
 
             // ==================================================
-            // 分岐 B: 通常グラフ -> 古典的MDS
+            // 通常グラフ -> 古典的MDS
             // ==================================================
             std::vector<std::vector<float>> D2(n, std::vector<float>(n, 0.0f));
             for (int i = 0; i < n; i++) {
@@ -713,23 +713,20 @@ public:
         applySmartInitialLayout(graph, adj);
     }
 
-    // ★ update は各関数を呼ぶだけでスッキリ！
+    // update は各関数を呼ぶだけ
     bool update(GraphData* graph) {
         if (is_stable) return true;
 
         // 1. 各コンポーネント内の形を整える
         calculateStressMajorization(graph);
 
-        // 2. 遊泳して画面外に流れてしまうのを防ぐ
-        removeComponentDrift(graph);
-
-        // 3. ノードの絡まりや縮こまりを解消するために斥力を与える。
+        // 2. ノードの絡まりや縮こまりを解消するために斥力を与える。
         applyNodeRepulsion();
         
-        // 4. 縦横の指向性に合わせて回転する
+        // 3. 縦横の指向性に合わせて回転する
         updateComponentOrientations(graph);
 
-        // 5. イージングをかけて実際の座標を動かし、収束を判定する
+        // 4. イージングをかけて実際の座標を動かし、収束を判定する
         float max_movement = 0.0f;
         for (int i=0; i<nodeSize; i++){
             float xi = graph->nodeData[i * nodeStride];
@@ -746,15 +743,15 @@ public:
             graph->nodeData[i * nodeStride + 1] = new_y;
         }
 
-        //  収束判定のアップデート（忍耐カウンター）
+        // 5. 収束判定のアップデート（忍耐カウンター）
         if (max_movement < epsilon) {
             stable_count++;
             if (stable_count >= required_stable_frames) {
                 is_stable = true;
 
-                // 完全に静止した瞬間に、1回だけ厳密パッキングを実行！ ★★★
-                preparePacking(graph);       // フェーズ5: バウンディング計算とソート
-                packComponentsStrict(graph); // フェーズ6: 螺旋探索による多角形パッキング
+                // 完全に静止した瞬間に、1回だけ厳密パッキングを実行
+                preparePacking(graph);       // バウンディング計算とソート
+                packComponentsStrict(graph); // 螺旋探索による多角形パッキング
             }
         } else {
             stable_count = 0; // 少しでも大きく動いたら最初から数え直し！
