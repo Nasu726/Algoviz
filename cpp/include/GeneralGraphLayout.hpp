@@ -42,37 +42,40 @@ private:
     // コンポーネントの頂点群から凸包（輪郭の多角形）を抽出する (Andrew's Monotone Chain)
     std::vector<Point2D> getConvexHull(const std::vector<int>& component, GraphData* graph) {
         int n = component.size();
-        if (n <= 2) {
-            // 頂点が2個以下の場合は、そのまま返す
-            std::vector<Point2D> hull;
-            for (int id : component) {
-                hull.push_back({id, graph->nodeData[id * nodeStride], graph->nodeData[id * nodeStride + 1]});
-            }
-            return hull;
-        }
+        // 点ではなくノードの4隅を頂点として扱い、直線状の要素が面積0になる潰れるのを阻止。
+        float R = 40.0f; // ノード半径(20) + 余白(20)
 
-        std::vector<Point2D> P(n);
+        std::vector<Point2D> P;
+        P.reserve(n * 4);
         for (int i = 0; i < n; i++) {
             int id = component[i];
-            P[i] = {id, graph->nodeData[id * nodeStride], graph->nodeData[id * nodeStride + 1]};
+            float x = graph->nodeData[id * nodeStride];
+            float y = graph->nodeData[id * nodeStride + 1];
+
+            P.push_back({id, x - R, y - R});
+            P.push_back({id, x + R, y - R});
+            P.push_back({id, x - R, y + R});
+            P.push_back({id, x + R, y + R});
         }
+
+        int numPoints = P.size();
 
         // X座標でソート（Xが同じならYでソート）
         std::sort(P.begin(), P.end(), [](const Point2D& a, const Point2D& b) {
             return a.x < b.x || (a.x == b.x && a.y < b.y);
         });
 
-        std::vector<Point2D> hull(2 * n);
+        std::vector<Point2D> hull(2 * numPoints);
         int k = 0;
 
         // 下側凸包の構築
-        for (int i = 0; i < n; i++) {
+        for (int i = 0; i < numPoints; i++) {
             while (k >= 2 && crossProduct(hull[k - 2], hull[k - 1], P[i]) <= 0) k--;
             hull[k++] = P[i];
         }
 
         // 上側凸包の構築
-        for (int i = n - 2, t = k + 1; i >= 0; i--) {
+        for (int i = numPoints - 2, t = k + 1; i >= 0; i--) {
             while (k >= t && crossProduct(hull[k - 2], hull[k - 1], P[i]) <= 0) k--;
             hull[k++] = P[i];
         }
@@ -119,18 +122,6 @@ private:
             shape.cx = (min_x + max_x) / 2.0f;
             shape.cy = (min_y + max_y) / 2.0f;
 
-            // ノードの半径分、輪郭を中心から外側に押し出す
-            float margin = 50.0f; // ノード半径(20) + 隙間(70)
-            for (auto& pt : shape.hull) {
-                float dx = pt.x - shape.cx;
-                float dy = pt.y - shape.cy;
-                float dist = std::sqrt(dx * dx + dy * dy);
-                if (dist > 0.001f) {
-                    pt.x += (dx / dist) * margin;
-                    pt.y += (dy / dist) * margin;
-                }
-            }
-
             // 2. 半径（中心から最も遠い頂点までの距離）を計算
             float max_dist_sq = 0.0f;
             for (int u : components[c]) {
@@ -141,13 +132,13 @@ private:
                 max_dist_sq = std::max(max_dist_sq, dx * dx + dy * dy);
             }
             
-            // margin を余白として足す
-            shape.radius = std::sqrt(max_dist_sq) + margin; 
+            // 頂点を拡大した半径 R を余白として足す
+            shape.radius = std::sqrt(max_dist_sq) + 40.0f; 
 
             comp_shapes.push_back(shape);
         }
 
-        // 3. 半径が大きい順（降順）にソート！
+        // 3. 半径が大きい順（降順）にソート
         std::sort(comp_shapes.begin(), comp_shapes.end(), [](const ComponentShape& a, const ComponentShape& b) {
             return a.radius > b.radius;
         });
