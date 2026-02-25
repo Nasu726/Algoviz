@@ -29,4 +29,5 @@ cpp/std_headers
 
 # personal files
 next_plan.txt
+visualize_plan.md
 cpp/include/ForceDirectedLayout.hpp
