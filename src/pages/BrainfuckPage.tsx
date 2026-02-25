@@ -458,7 +458,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
                   }
                 }}
                 style={{ ...commonTextStyle, background: 'transparent', position: 'absolute', top: 0, left: 0, margin: 0, zIndex: 2 }} 
-                spellCheck={false} placeholder="Brainfuck Code"
+                spellCheck={false} placeholder="ここにコードを書く"
              />
           </div>
   
