@@ -1,6 +1,7 @@
 #ifndef GRAPH_VISUALIZER_HPP
 #define GRAPH_VISUALIZER_HPP
 
+#pragma once
 #include "IVisualizer.hpp"
 #include "GraphData.hpp"
 #include "GeneralGraphLayout.hpp"
@@ -70,6 +71,10 @@ private:
                 graph->addEdge(i, j, weight, 0);
             }
         }
+    }
+
+    void generateCustomGraph() {
+        return;
     }
 
 public:
