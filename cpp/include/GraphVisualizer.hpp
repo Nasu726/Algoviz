@@ -3,7 +3,7 @@
 
 #include "IVisualizer.hpp"
 #include "GraphData.hpp"
-#include "StressMajorizationLayout.hpp"
+#include "GeneralGraphLayout.hpp"
 #include <emscripten/val.h>
 #include <cstdlib>
 #include <ctime>
@@ -15,7 +15,7 @@ using namespace emscripten;
 class GraphVisualizer : public IVisualizer {
 private:
     GraphData* graph;
-    StressMajorizationLayout layout;
+    GeneralGraphLayout layout;
     bool skipExtension = false;
 
     // グラフを新しく作り直すヘルパー関数

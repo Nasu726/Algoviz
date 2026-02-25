@@ -8,7 +8,7 @@
 #include <cmath>
 #include <queue>
 
-class StressMajorizationLayout {
+class GeneralGraphLayout {
 private:
     float inf = 999999.0f;
     float baseDistance = 80.0f;
@@ -294,7 +294,7 @@ private:
     }
 
     // ==========================================
-    // フェーズ2: 古典的MDSによる初期配置
+    // 古典的MDSによる初期配置
     // ==========================================
 
     // 実対称行列の固有値分解を行うヤコビ法 (Jacobi Method)
@@ -361,7 +361,7 @@ private:
     }
 
     // ==========================================
-    // フェーズ2: 密度に基づくハイブリッド初期配置
+    // 密度に基づくハイブリッド初期配置
     // ==========================================
     float getDensityThreshold(float V, int maxK) {
         if (V <= 1) return 1.0;
