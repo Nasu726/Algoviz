@@ -24,6 +24,7 @@ export class PixiGraphApp {
     private isDirected: boolean = false;
     private isAutomaton: boolean = false;
     private showWeights: boolean = false;
+    private labelType: 'index' | 'name' = 'index';
     private startNodeIndex: number = -1;
     private acceptingNodeIndices: Set<number> = new Set();
     
@@ -35,6 +36,12 @@ export class PixiGraphApp {
     private isDragging = false;
     private lastPos = { x: 0, y: 0 };
 
+    // 数字を下付き文字（Unicode）に変換する関数
+    private toSubscript(num: number): string {
+        const subscripts = ['₀', '₁', '₂', '₃', '₄', '₅', '₆', '₇', '₈', '₉'];
+        return num.toString().split('').map(digit => subscripts[parseInt(digit, 10)]).join('');
+    }
+
     constructor(container: HTMLDivElement, engine: any) {
         this.container = container;
         this.engine = engine;
@@ -42,7 +49,7 @@ export class PixiGraphApp {
     }
 
     // ==========================================
-    // 追加: Reactから設定を受け取るメソッド
+    // Reactから設定を受け取るメソッド
     // ==========================================
     public updateSettings(settings: {
         isDirected: boolean;
@@ -50,10 +57,12 @@ export class PixiGraphApp {
         isAutomaton: boolean;
         startNode: string;
         acceptingNodes: string;
+        labelType: 'index' | 'name';
     }) {
         this.isDirected = settings.isDirected;
         this.showWeights = settings.showWeights;
         this.isAutomaton = settings.isAutomaton;
+        this.labelType = settings.labelType;
         
         // テキストをパースしてインデックス化
         this.startNodeIndex = parseInt(settings.startNode, 10);
@@ -133,7 +142,7 @@ export class PixiGraphApp {
             nodeGroup.addChild(startArrow);
 
             // 4. ノードのラベルテキスト
-            const labelText = new PIXI.Text({ text: '', style: { fontSize: 14, fill: 0x333333, fontWeight: 'bold' } });
+            const labelText = new PIXI.Text({ text: '', style: { fontSize: 16, fill: 0x333333, fontWeight: 'bold' } });
             labelText.anchor.set(0.5);
             labelText.label = "labelText";
             nodeGroup.addChild(labelText);
@@ -467,12 +476,20 @@ export class PixiGraphApp {
 
                 const meta = this.nodeMetadata[nodeIndex] || {};
                 
+                // labelText のみを取得してテキストを更新する
                 const labelText = group.getChildByLabel("labelText") as PIXI.Text;
-                if (labelText) labelText.text = meta.label !== undefined ? meta.label : nodeIndex.toString();
-
-                // Label
-                const text = group.getChildByLabel("label") as PIXI.Text;
-                if (text) text.text = meta.label || (this.isAutomaton ? `q_${nodeIndex}` : `${nodeIndex}`); // ★ オートマトンならq_、違えば数字のみ
+                if (labelText) {
+                    if (meta.label !== undefined) {
+                        // 1. 個別に設定されたラベルがあれば最優先
+                        labelText.text = meta.label;
+                    } else if (this.labelType === 'name' || this.isAutomaton) {
+                        // 2. 状態名モード、またはオートマトンモードなら q_0 形式
+                        labelText.text = `q${this.toSubscript(nodeIndex)}`;
+                    } else {
+                        // 3. 通常はインデックス番号
+                        labelText.text = `${nodeIndex}`;
+                    }
+                }
 
                 const acceptRing = group.getChildByLabel("acceptRing") as PIXI.Graphics;
                 if (acceptRing) {

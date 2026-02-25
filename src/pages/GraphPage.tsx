@@ -11,10 +11,11 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     const [isHorizontal, setIsHorizontal] = useState(true);
 
     // テスト環境用のState
-    const [nodeCount, setNodeCount] = useState(5);
-    const [edgeCount, setEdgeCount] = useState(7);
+    const [nodeCount, setNodeCount] = useState("5");
+    const [edgeCount, setEdgeCount] = useState("7");
     const [isDirected, setIsDirected] = useState(true);
     const [showWeights, setShowWeights] = useState(true);
+    const [labelType, setLabelType] = useState<'index' | 'name'>('index');
 
     const [skipExtension, setSkipExtension] = useState(true);
     const [allowSelfLoop, setAllowSelfLoop] = useState(true);
@@ -52,6 +53,16 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
         );
     };
 
+    // 空欄でフォーカスが外れたら 0 を補完する 
+    const handleBlur = (setter: React.Dispatch<React.SetStateAction<string>>, value: string) => {
+        if (value.trim() === "") setter("0");
+    };
+
+    // 数字以外の入力を弾く 
+    const handleNumberChange = (setter: React.Dispatch<React.SetStateAction<string>>) => (e: React.ChangeEvent<HTMLInputElement>) => {
+        setter(e.target.value.replace(/[^0-9]/g, ''));
+    };
+
     return (
         <div style={{ padding: "20px", fontFamily: 'sans-serif', display: "flex", flexDirection: "row", gap: "20px" }}>
             {/* 左側：コントロールパネル */}
@@ -65,15 +76,15 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
 
                 <div>
                     <label>頂点数 (V): </label>
-                    <input type="number" value={nodeCount} onChange={e => setNodeCount(Number(e.target.value))} style={{ width: '50px' }} />
+                    <input type="text" value={nodeCount} onChange={handleNumberChange(setNodeCount)} onBlur={() => handleBlur(setNodeCount, nodeCount)} style={{ width: '50px' }} />
                 </div>
                 <div>
                     <label>辺の数 (E): </label>
-                    <input type="number" value={edgeCount} onChange={e => setEdgeCount(Number(e.target.value))} style={{ width: '50px' }} />
+                    <input type="text" value={edgeCount} onChange={handleNumberChange(setEdgeCount)} onBlur={() => handleBlur(setEdgeCount, edgeCount)} style={{ width: '50px' }} />
                 </div>
                 
-                <button onClick={handleGenerateRandom} style={{ padding: '8px', cursor: 'pointer' }}>🎲 ランダム生成</button>
-                <button onClick={handleGenerateComplete} style={{ padding: '8px', cursor: 'pointer' }}>🕸️ 完全グラフ生成 (Vのみ使用)</button>
+                <button onClick={handleGenerateRandom} style={{ padding: '8px', cursor: 'pointer' }}> ランダム生成 </button>
+                <button onClick={handleGenerateComplete} style={{ padding: '8px', cursor: 'pointer' }}> 完全グラフ生成 </button>
 
                 <hr style={{ width: '100%', borderTop: '1px solid #ccc' }} />
 
@@ -104,6 +115,13 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
                 <label style={{ fontWeight: 'bold' }}>
                     <input type="checkbox" checked={isAutomaton} onChange={e => setIsAutomaton(e.target.checked)} /> オートマトンモード
                 </label>
+                <div style={{ marginBottom: '5px' }}>
+                <label>頂点の表示名: </label>
+                    <select value={labelType} onChange={e => setLabelType(e.target.value as 'index' | 'name')} style={{ width: '100%' }}>
+                        <option value="index">インデックス (0, 1...)</option>
+                        <option value="name">状態名 (q_0, q_1...)</option>
+                    </select>
+                </div>
                 
                 <div style={{ opacity: isAutomaton ? 1 : 0.5, pointerEvents: isAutomaton ? 'auto' : 'none', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <div>
@@ -126,6 +144,7 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
                     isAutomaton={isAutomaton}
                     startNode={startNode}
                     acceptingNodes={acceptingNodes}
+                    labelType={labelType}
                 />
             )}
         </div>

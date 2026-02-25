@@ -8,10 +8,11 @@ interface GraphRendererProps {
   isAutomaton: boolean;
   startNode: string;
   acceptingNodes: string;
+  labelType: 'index' | 'name';
 }
 
 export const GraphRenderer: React.FC<GraphRendererProps> = ({ 
-    engine, isDirected, showWeights, isAutomaton, startNode, acceptingNodes 
+    engine, isDirected, showWeights, isAutomaton, startNode, acceptingNodes, labelType 
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const pixiAppRef = useRef<PixiGraphApp | null>(null);
@@ -39,10 +40,11 @@ export const GraphRenderer: React.FC<GraphRendererProps> = ({
         showWeights,
         isAutomaton,
         startNode,
-        acceptingNodes
+        acceptingNodes,
+        labelType
       });
     }
-  }, [isDirected, showWeights, isAutomaton, startNode, acceptingNodes]);
+  }, [isDirected, showWeights, isAutomaton, startNode, acceptingNodes, labelType]);
 
   return (
     <div 
