@@ -36,17 +36,19 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
         const skip = skipExtension ? 1 : 0;
         const selfLoop = allowSelfLoop ? 1 : 0;
         const sameEdge = allowSameEdge ? 1 : 0;
+        const isDir = isDirected ? 1 : 0;
         engine.load(
             isHorizontal ? "horizontal" : "vertical",
-            `random ${nodeCount} ${edgeCount} ${skip} ${selfLoop} ${sameEdge}`
+            `random ${nodeCount} ${edgeCount} ${skip} ${selfLoop} ${sameEdge} ${isDir}`
         );
     };
 
     const handleGenerateComplete = () => {
         const skip = skipExtension ? 1 : 0;
+        const isDir = isDirected ? 1 : 0;
         engine.load(
             isHorizontal ? "horizontal" : "vertical", 
-            `complete ${nodeCount} ${skip}`
+            `complete ${nodeCount} ${skip} ${isDir}`
         );
     };
 

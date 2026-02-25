@@ -19,7 +19,7 @@ private:
     bool skipExtension = false;
 
     // グラフを新しく作り直すヘルパー関数
-    void generateRandom(int v, int e, bool allowSelfLoop, bool allowSameEdge) {
+    void generateRandom(int v, int e, bool allowSelfLoop, bool allowSameEdge,bool isDirected) {
         delete graph;
         graph = new GraphData(v, e);
         for (int i = 0; i < v; i++) {
@@ -28,7 +28,7 @@ private:
 
         std::vector<std::pair<int, int>> possibleEdges;
         for (int i = 0; i < v; i++) {
-            for (int j = 0; j < v; j++) {
+            for (int j = (isDirected ? 0 : i); j < v; j++) {
                 if (!allowSelfLoop && i == j) continue;
                 possibleEdges.push_back({i, j});
             }
@@ -75,7 +75,7 @@ public:
     GraphVisualizer() {
         srand((unsigned int)time(nullptr));
         graph = nullptr;
-        generateRandom(5, 7, false, false);
+        generateRandom(5, 7, false, false, false);
         layout.init(graph);
     }
 
@@ -94,13 +94,13 @@ public:
             std::string cmd;
             iss >> cmd;
             if (cmd == "random") {
-                int v, e, skip = 0, selfLoop = 0, sameEdge = 0;
+                int v, e, skip = 0, selfLoop = 0, sameEdge = 0, isDir = 0;
                 iss >> v >> e;
                 if (iss >> skip) skipExtension = (skip != 0);
-                if (iss >> selfLoop >> sameEdge) {
-                    generateRandom(v, e, selfLoop != 0, sameEdge != 0);
+                if (iss >> selfLoop >> sameEdge >> isDir) {
+                    generateRandom(v, e, selfLoop != 0, sameEdge != 0, isDir != 0);
                 } else {
-                    generateRandom(v, e, false, false);
+                    generateRandom(v, e, false, false, false);
                 }
                 layout.init(graph);
             } else if (cmd == "complete") {
