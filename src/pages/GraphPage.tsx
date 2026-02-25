@@ -9,6 +9,7 @@ interface GraphProps {
 export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     const [isLoaded, setIsLoaded] = useState(false);
     const [isHorizontal, setIsHorizontal] = useState(true);
+    const [inputBuffer, setInputBuffer] = useState("");
 
     // テスト環境用のState
     const [nodeCount, setNodeCount] = useState("5");
@@ -29,9 +30,16 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     useEffect(() => {
         if (!engine) return;
         engine.setAlgorithm("graph");
-        engine.load(isHorizontal ? "horizontal" : "vertical", "");
+        engine.load(isHorizontal ? "horizontal" : "vertical", "random 5 7");
         setIsLoaded(true);
+        const state = engine.getState({});
+        if (state && state.graphText) setInputBuffer(state.graphText);
     }, [engine]);
+
+    useEffect(() => {
+        if (!engine) return;
+        engine.load("setStartNode", isAutomaton ? startNode : "-1");
+    }, [isAutomaton, startNode, engine]);
 
     const handleGenerateRandom = () => {
         const skip = skipExtension ? 1 : 0;
@@ -42,6 +50,8 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
             isHorizontal ? "horizontal" : "vertical",
             `random ${nodeCount} ${edgeCount} ${skip} ${selfLoop} ${sameEdge} ${isDir}`
         );
+        const state = engine.getState({});
+        if (state && state.graphText) setInputBuffer(state.graphText);
     };
 
     const handleGenerateComplete = () => {
@@ -51,6 +61,18 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
             isHorizontal ? "horizontal" : "vertical", 
             `complete ${nodeCount} ${skip} ${isDir}`
         );
+        const state = engine.getState({});
+        if (state && state.graphText) setInputBuffer(state.graphText);
+    };
+
+    const handleGenerateFromText = () => {
+        const skip = skipExtension ? 1 : 0;
+        engine.load(
+            isHorizontal ? "horizontal" : "vertical",
+            `custom ${inputBuffer} ${skip}`
+        );
+        const state = engine.getState({});
+        if (state && state.graphText) setInputBuffer(state.graphText);
     };
 
     // 空欄でフォーカスが外れたら 0 を補完する 
@@ -85,6 +107,19 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
                 
                 <button onClick={handleGenerateRandom} style={{ padding: '8px', cursor: 'pointer' }}> ランダム生成 </button>
                 <button onClick={handleGenerateComplete} style={{ padding: '8px', cursor: 'pointer' }}> 完全グラフ生成 </button>
+
+                {/* テキスト入出力エリア */}
+                <hr style={{ width: '100%', borderTop: '1px solid #ccc' }} />
+                <h3 style={{ margin: 0 }}>グラフ入力</h3>
+                <textarea 
+                    value={inputBuffer} 
+                    onChange={e => setInputBuffer(e.target.value)}
+                    style={{ width: '100%', height: '120px', fontFamily: 'monospace', whiteSpace: 'pre', resize: 'vertical' }}
+                    placeholder="頂点数 辺数&#10;始点 終点 (重み)&#10;始点 終点 (重み)&#10;始点 終点 (重み)&#10;..."
+                />
+                <button onClick={handleGenerateFromText} style={{ padding: '8px', cursor: 'pointer' }}>
+                    📝 テキストから生成
+                </button>
 
                 <hr style={{ width: '100%', borderTop: '1px solid #ccc' }} />
 
