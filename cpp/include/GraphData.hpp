@@ -8,9 +8,10 @@ using namespace emscripten;
 class GraphData {
 public:
     std::vector<float> nodeData; // [x0, y0, weight0, color0, x1, y1, weight1, color1, ...]
-    std::vector<float> edgeData;   // [from0, to0, weight0, color0, from1, to1, ...]
+    std::vector<float> edgeData; // [from0, to0, weight0, color0, from1, to1, ...]
     const int NODE_STRIDE = 5;   // 1ノードあたりのデータ数
     const int EDGE_STRIDE = 4;   // 1エッジあたりのデータ数
+    int startNodeIndex = -1;     // オートマトンの初期状態のインデックス
 
     GraphData(int maxNodes, int maxEdges) {
         nodeData.reserve(maxNodes * NODE_STRIDE);
