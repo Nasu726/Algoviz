@@ -1,5 +1,5 @@
-#ifndef STRESS_MAJORIZATION_LAYOUT_HPP
-#define STRESS_MAJORIZATION_LAYOUT_HPP
+#ifndef GENERAL_GRAPH_LAYOUT_HPP
+#define GENERAL_GRAPH_LAYOUT_HPP
 
 #pragma once
 #include "GraphData.hpp"
