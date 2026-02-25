@@ -56,7 +56,7 @@ private:
         }
     }
 
-    void generateComplete(int v) {
+    void generateComplete(int v, bool isDirected) {
         delete graph;
         int e = v * (v - 1) / 2;
         graph = new GraphData(v, e);
@@ -64,7 +64,8 @@ private:
             graph->setNode(i, rand() % 600 + 100, rand() % 400 + 100, 0, 0);
         }
         for (int i = 0; i < v; i++) {
-            for (int j = i + 1; j < v; j++) {
+            for (int j = (isDirected ? 0 : i + 1); j < v; j++) {
+                if (i == j) continue;
                 float weight = rand() % 100;
                 graph->addEdge(i, j, weight, 0);
             }
@@ -104,10 +105,14 @@ public:
                 }
                 layout.init(graph);
             } else if (cmd == "complete") {
-                int v, skip = 0;
+                int v, skip = 0, isDir = 0;
                 iss >> v;
                 if (iss >> skip) skipExtension = (skip != 0);
-                generateComplete(v);
+                if (iss >> isDir) {
+                    generateComplete(v, isDir  != 0);
+                } else {
+                    generateComplete(v, false);
+                }
                 layout.init(graph);
             }
         }
