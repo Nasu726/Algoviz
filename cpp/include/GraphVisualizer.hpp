@@ -93,6 +93,14 @@ public:
         // source 引数を使って向きを設定
         if (source == "horizontal")    layout.preferHorizontal = true;
         else if (source == "vertical") layout.preferHorizontal = false;
+        else if (source == "setStartNode") {
+            int startIdx;
+            std::istringstream iss(input);
+            if (iss >> startIdx && graph) {
+                graph->startNodeIndex = startIdx;
+            }
+            return;
+        }
 
         // Reactから送られたコマンドの解析
         if (!input.empty()) {
@@ -114,11 +122,29 @@ public:
                 iss >> v;
                 if (iss >> skip) skipExtension = (skip != 0);
                 if (iss >> isDir) {
-                    generateComplete(v, isDir  != 0);
+                    generateComplete(v, isDir != 0);
                 } else {
                     generateComplete(v, false);
                 }
                 layout.init(graph);
+            } else if (cmd == "custom") {
+                int v, e, skip = 0;
+                if (iss >> v >>e) {
+                    delete graph;
+                    graph = new GraphData(v, e);
+                    for (int i = 0; i < v; i++) {
+                        graph->setNode(i, i, i, 0, 0);
+                    }
+                    for (int i = 0; i < e; i++) {
+                        int from, to;
+                        float weight = 0;
+                        if (iss >> from >> to >> weight) {
+                            graph->addEdge(from, to, weight, 0);
+                        }
+                    }
+                    layout.init(graph);
+                }
+                if (iss >> skip) skipExtension = (skip != 0);
             }
         }
         
@@ -143,9 +169,22 @@ public:
     val getState(val params) override {
         // 状態として GraphData のインスタンスをそのままJSに渡す
         val state = val::object();
+        if (graph) {
+            state.set("nodes", graph->getNodeView());
+            state.set("edges", graph->getEdgeView());
 
-        state.set("nodes", graph->getNodeView());
-        state.set("edges", graph->getEdgeView());
+            std::ostringstream oss;
+            int v = graph->nodeData.size() / graph->NODE_STRIDE;
+            int e = graph->edgeData.size() / graph->EDGE_STRIDE;
+            oss << v << " " << e << "\n";
+            for (int i = 0; i < e; i++) {
+                int from = graph->edgeData[i * graph->EDGE_STRIDE];
+                int to   = graph->edgeData[i * graph->EDGE_STRIDE + 1];
+                float weight = graph->edgeData[i * graph->EDGE_STRIDE + 2];
+                oss << from << " " << to << " " << weight << "\n";
+            }
+            state.set("graphText", oss.str());
+        }
 
         return state;
     }
