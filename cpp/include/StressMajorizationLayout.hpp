@@ -620,39 +620,6 @@ private:
         }
     }
 
-    // 重心のズレをキャンセルし、ドリフト（流され）を防ぐ
-    void removeComponentDrift(GraphData* graph) {
-        for(size_t c = 0; c < components.size(); c++) {
-            if (components[c].empty()) continue;
-            
-            float sum_x = 0.0f, sum_y = 0.0f;
-            float t_sum_x = 0.0f, t_sum_y = 0.0f;
-            
-            for(int i : components[c]) {
-                sum_x += graph->nodeData[i * nodeStride];
-                sum_y += graph->nodeData[i * nodeStride + 1];
-                t_sum_x += target_nx[i];
-                t_sum_y += target_ny[i];
-            }
-            
-            int n = components[c].size();
-            float cx = sum_x / n;        // 現在の重心
-            float cy = sum_y / n;
-            float t_cx = t_sum_x / n;    // 計算後の重心
-            float t_cy = t_sum_y / n;
-
-            // 意図しない全体のズレ（ドリフト量）
-            float drift_x = t_cx - cx;
-            float drift_y = t_cy - cy;
-            
-            // ドリフト量をすべてのターゲット座標から引き算して相殺する
-            for(int i : components[c]) {
-                target_nx[i] -= drift_x;
-                target_ny[i] -= drift_y;
-            }
-        }
-    }
-
 public:
     bool is_stable = false;
     float epsilon = 0.5f;
