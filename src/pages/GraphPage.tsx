@@ -78,6 +78,7 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     // 空欄でフォーカスが外れたら 0 を補完する 
     const handleBlur = (setter: React.Dispatch<React.SetStateAction<string>>, value: string) => {
         if (value.trim() === "") setter("0");
+        if (Number(value.trim()) > 100) setter("100");
     };
 
     // 数字以外の入力を弾く 
