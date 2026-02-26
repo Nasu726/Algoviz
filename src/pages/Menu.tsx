@@ -26,6 +26,7 @@ export const MenuPage: React.FC = () => {
         Brainfuck
       </button>
       <h4>他のビジュアライザはこれから追加されます</h4>
+      <a href="https://github.com/Nasu726/AlgoViz" target="_blank"><img src="github-mark.png" alt="GitHubのリポジトリページ" width="30" height="30" /></a>
     </div>
   );
 };
