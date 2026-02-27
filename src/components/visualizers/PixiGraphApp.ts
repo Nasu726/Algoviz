@@ -125,21 +125,16 @@ export class PixiGraphApp {
             acceptRing.label = "acceptRing";
             nodeGroup.addChild(acceptRing);
 
-            // 3. "start ->" の矢印
+            // 3. "start ->" の矢印 
             const startArrow = new PIXI.Graphics();
             startArrow.label = "startArrow";
-            const arrowLength = 40;
-            const startLineX = -this.nodeRadius - arrowLength;
-            const endLineX = -this.nodeRadius - 2;
-            startArrow.moveTo(startLineX, 0).lineTo(endLineX, 0);
-            startArrow.moveTo(endLineX, 0).lineTo(endLineX - 8, -6);
-            startArrow.moveTo(endLineX, 0).lineTo(endLineX - 8, 6);
-            startArrow.stroke({ width: 2, color: 0x555555 }); // 白背景で見えるように濃いグレー
-            const startText = new PIXI.Text({ text: 'start', style: { fontSize: 12, fill: 0x555555, fontWeight: 'bold' } });
-            startText.anchor.set(0.5, 1.0);
-            startText.position.set(startLineX + arrowLength / 2, -2);
-            startArrow.addChild(startText);
             nodeGroup.addChild(startArrow);
+
+            // 矢印用のテキスト
+            const startText = new PIXI.Text({ text: 'start', style: { fontSize: 14, fill: 0x555555, fontWeight: 'bold' } });
+            startText.label = "startText";
+            startText.anchor.set(0.5, 0.5);
+            nodeGroup.addChild(startText);
 
             // 4. ノードのラベルテキスト
             const labelText = new PIXI.Text({ text: '', style: { fontSize: 16, fill: 0x333333, fontWeight: 'bold' } });
@@ -331,7 +326,7 @@ export class PixiGraphApp {
 
                 if (fromIdx === toIdx) {
                     // ----------------------------------------
-                    // ★ 自己ループの処理
+                    // 自己ループの処理
                     // ----------------------------------------
                     let baseAngle: number;
                     
@@ -370,13 +365,13 @@ export class PixiGraphApp {
                     }
                 } else {
                     // ----------------------------------------
-                    // ★ 通常の辺・多重辺の処理
+                    // 通常の辺・多重辺の処理
                     // ----------------------------------------
                     const dx = tx - fx, dy = ty - fy;
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     const midX = (fx + tx) / 2, midY = (fy + ty) / 2;
 
-                    // ★ 変更2：総数に応じて対称的なオフセットを計算する
+                    // 総数に応じて対称的なオフセットを計算する
                     let offset = 0;
                     if (totalEdges > 1) {
                         const spacing = 22; // 曲線の膨らみ幅
@@ -501,7 +496,44 @@ export class PixiGraphApp {
                 }
 
                 const startArrow = group.getChildByLabel("startArrow") as PIXI.Graphics;
-                if (startArrow) startArrow.visible = !!meta.isStart;
+                const startText = group.getChildByLabel("startText") as PIXI.Text;
+                if (meta.isStart) {
+                    // if (startArrow) startArrow.visible = !!meta.isStart;
+                    if (startArrow) startArrow.visible = true;
+                    if (startText) startText.visible = true;
+
+                    const bestAngle = this.getLargestGapAngle(nodeAngles[nodeIndex], x, y);
+
+                    if (startArrow && startText) { 
+                        startArrow.clear();
+                        // 矢印の寸法と配置（近すぎる問題を解決するためギャップを広げる）
+                        const gap = 20;         // ノードとの隙間
+                        const arrowLen = 45;    // 矢印の長さ
+                        
+                        // 矢印の先端（ノード側）と後端（外側）の座標
+                        const tipX = Math.cos(bestAngle) * (this.nodeRadius + gap);
+                        const tipY = Math.sin(bestAngle) * (this.nodeRadius + gap);
+                        const tailX = Math.cos(bestAngle) * (this.nodeRadius + gap + arrowLen);
+                        const tailY = Math.sin(bestAngle) * (this.nodeRadius + gap + arrowLen);
+
+                        startArrow.moveTo(tailX, tailY).lineTo(tipX, tipY);
+
+                        // 矢印の傘（先端から後端に向けて描画）
+                        const headAngle = bestAngle + Math.PI; // 矢印の進行方向
+                        const wingAngle = Math.PI / 6;
+                        const arrowSize = 10;
+                        startArrow.moveTo(tipX, tipY).lineTo(tipX - arrowSize * Math.cos(headAngle - wingAngle), tipY - arrowSize * Math.sin(headAngle - wingAngle));
+                        startArrow.moveTo(tipX, tipY).lineTo(tipX - arrowSize * Math.cos(headAngle + wingAngle), tipY - arrowSize * Math.sin(headAngle + wingAngle));
+                        startArrow.stroke({ width: 2, color: 0x555555 });
+
+                        // テキストの配置（常に水平で読みやすく、矢印のさらに外側に置く）
+                        const textDist = this.nodeRadius + gap + arrowLen + 18;
+                        startText.position.set(Math.cos(bestAngle) * textDist, Math.sin(bestAngle) * textDist);
+                    }
+                } else {
+                    if (startArrow) startArrow.visible = false;
+                    if (startText) startText.visible = false;
+                }
 
                 const wText = group.getChildByLabel("weightText") as PIXI.Text;
                 if (wText) {
