@@ -43,7 +43,6 @@ private:
     std::vector<Point2D> getConvexHull(const std::vector<int>& component, GraphData* graph) {
         int n = component.size();
         // 点ではなくノードの4隅を頂点として扱い、直線状の要素が面積0になる潰れるのを阻止。
-        float R = 40.0f; // ノード半径(20) + 余白(20)
 
         std::vector<Point2D> P;
         P.reserve(n * 4);
@@ -51,6 +50,8 @@ private:
             int id = component[i];
             float x = graph->nodeData[id * nodeStride];
             float y = graph->nodeData[id * nodeStride + 1];
+
+            float R = (id == graph->startNodeIndex) ? 120.0f : 40.0f;
 
             P.push_back({id, x - R, y - R});
             P.push_back({id, x + R, y - R});
