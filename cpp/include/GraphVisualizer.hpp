@@ -17,7 +17,7 @@ class GraphVisualizer : public IVisualizer {
 private:
     GraphData* graph;
     GeneralGraphLayout layout;
-    bool skipExtension = false;
+    bool skipExtension = true;
 
     // グラフを新しく作り直すヘルパー関数
     void generateRandom(int v, int e, bool allowSelfLoop, bool allowSameEdge,bool isDirected) {
