@@ -9,7 +9,8 @@ export const MenuPage: React.FC = () => {
       height: '100vh', width: '100vw',
       textAlign: 'center', alignItems: 'center',
       justifyContent: 'center',
-      overflow: 'hidden', fontFamily: 'sans-serif' 
+      overflow: 'hidden', fontFamily: 'sans-serif',
+      backgroundColor: '#ffffff', color: '#000000' 
     }}>
       <h1 style={{ fontSize: '45px' }}>AlgoVizへようこそ</h1>
       <h3>利用可能なビジュアライザ</h3>

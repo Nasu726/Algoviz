@@ -260,6 +260,8 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
   const commonTextStyle: React.CSSProperties = {
     width: '100%', height: '100%',
     fontFamily: 'Consolas',
+    backgroundColor: '#fff',
+    color: '#000000',
     fontSize: '20px',
     lineHeight: '1.5',
     padding: '10px',
@@ -341,6 +343,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
           flex: '5', 
           borderBottom: '1px solid #ccc',
           backgroundColor: '#fcfcfc',
+          color: '#000000',
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center',
           position: 'relative',
@@ -397,7 +400,8 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
       <div style={{ 
         flex: '6', 
         display: 'flex', flexDirection: 'column',
-        backgroundColor: '#eee'
+        backgroundColor: '#eee',
+        color: '#000000',
       }}>
   
         {/* ボタン群 */}
@@ -411,13 +415,14 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
           alignItems: 'center', 
           gap: '10px',
           backgroundColor: '#f5f5f5',
+          color: '#000000',
         }}>
-           <button onClick={handleLoad} style={{ padding: '8px 8px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap' }}>ロード</button>
-           <button onClick={executeButton} disabled={!state} style={{ padding: '8px 12px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap' }}>
+           <button onClick={handleLoad} style={{ padding: '8px 8px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap', backgroundColor: '#f5f5f5', color: '#000000' }}>ロード</button>
+           <button onClick={executeButton} disabled={!state} style={{ padding: '8px 12px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap', backgroundColor: '#f5f5f5', color: '#000000' }}>
              {isPlaying ? "停止" : "実行"}
            </button>
-           <button onClick={stepBack} disabled={!state || isPlaying} style={{ padding: '8px 8px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap' }}>戻る</button>
-           <button onClick={stepButton} disabled={!state || isPlaying} style={{ padding: '8px 8px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap' }}>進む</button>
+           <button onClick={stepBack} disabled={!state || isPlaying} style={{ padding: '8px 8px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap', backgroundColor: '#f5f5f5', color: '#000000' }}>戻る</button>
+           <button onClick={stepButton} disabled={!state || isPlaying} style={{ padding: '8px 8px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap', backgroundColor: '#f5f5f5', color: '#000000' }}>進む</button>
            <div style={{ 
              display: 'flex',       // グループの中身も横並びにする
              alignItems: 'center',  // 縦の真ん中で揃える
@@ -428,7 +433,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
                 <input type="range" min="0" max="1000" value={1000-Math.sqrt(1000*delay)} onChange={(e) => {const x=Number(e.target.value);setDelay((x-1000)*(x-1000)/1000)}} style={{ marginLeft: '0.5em' }}/>
               </span>
               <label style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', userSelect: 'none', flexShrink: 0, whiteSpace: 'nowrap'}}>
-                <input type='checkbox' checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} style={{ padding: '8px 8px'}}/>
+                <input type='checkbox' checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} style={{ padding: '8px 8px' }}/>
                 自動追従
               </label>
             </div>
@@ -438,7 +443,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
         <div style={{ flex: '8', display: 'flex', flexDirection: 'row' }}>
   
           {/* コードエディタ */}
-          <div style={{ flex: '6', borderRight: '1px solid #ccc', position: 'relative', backgroundColor: '#fff' }}>
+          <div style={{ flex: '6', borderRight: '1px solid #ccc', position: 'relative', backgroundColor: '#fff', color: '#000' }}>
              {state && !editorMode && (
                <div ref={highlightDivRef} style={{ ...commonTextStyle, position: 'absolute', top: 0, left: 0, pointerEvents: 'none', color: 'transparent', margin: 0, zIndex: 1 }}>
                  {code.substring(0, state.pc)}
