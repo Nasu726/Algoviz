@@ -1,28 +1,13 @@
 import { useEffect, useState, useRef } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 
+import { MenuPage } from './pages/Menu';
 import { BrainfuckPage } from './pages/BrainfuckPage';
+import { GraphPage } from './pages/GraphPage';
 
 function MainMenu() {
-  const navigate = useNavigate();
   return (
-    <div style={{ 
-      display: 'flex', flexDirection: 'column', 
-      height: '100vh', width: '100vw',
-      textAlign: 'center', alignItems: 'center',
-      justifyContent: 'center',
-      overflow: 'hidden', fontFamily: 'sans-serif' 
-    }}>
-      <h1 style={{ fontSize: '45px' }}>ビジュアライザへようこそ</h1>
-      <h3>利用可能なビジュアライザ</h3>
-      <button 
-        onClick={() => navigate('/brainfuck')} 
-        style={{ fontSize: '20px', padding: '10px 20px', border: '1px solid' }}
-      >
-        Brainfuck
-      </button>
-      <h4>他のビジュアライザはこれから追加されます</h4>
-    </div>
+    <MenuPage/>
   );
 }
 
@@ -32,6 +17,16 @@ function BrainfuckWrapper({ engine }: { engine: any }) {
     <BrainfuckPage 
       engine={engine} 
       onBack={() => navigate('/')} // ★ '/' (トップ) へ遷移
+    />
+  );
+}
+
+function GraphWrapper({engine}: {engine: any}){
+  const navigate = useNavigate();
+  return (
+    <GraphPage
+      engine={engine}
+      onBack={() => navigate("/")}
     />
   );
 }
@@ -104,6 +99,8 @@ function App() {
 
       {/* URLが '/brainfuck' のときはビジュアライザを表示 */}
       <Route path="/brainfuck" element={<BrainfuckWrapper engine={engineRef.current} />} />
+
+      {/* <Route path="/graph" element={<GraphWrapper engine={engineRef.current} />} /> */}
     </Routes>
 
     </BrowserRouter>

@@ -3,6 +3,7 @@
 #include <iostream>
 #include "include/IVisualizer.hpp"
 #include "include/Brainfuck.hpp"
+#include "include/GraphVisualizer.hpp"
 
 using namespace emscripten;
 
@@ -19,9 +20,9 @@ public:
     void setAlgorithm(std::string name) {
         if (name == "brainfuck") {
             currentAlgo = std::make_unique<Brainfuck>();
-        } 
-        // 将来ここに else if (name == "bubble_sort") ... を追加
-        else {
+        } else if (name == "graph") {
+            currentAlgo = std::make_unique<GraphVisualizer>();
+        } else {
             std::cerr << "Unknown algorithm: " << name << std::endl;
         }
     }
