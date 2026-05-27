@@ -32,6 +32,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
   
   // ビジュアライザの状態
   const [state, setState] = useState<VisualizerState | null>(null);
+  const [mod256, setModint] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [delay, setDelay] = useState(300);
   const [viewSize, setViewSize] = useState(20);
@@ -244,6 +245,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
     if (!engine) return;
     try {
       engine.setAlgorithm("brainfuck");
+      engine.setBrainfuckModint(mod256);
       engine.load(code, input);
       setCameraStart(-(viewSize+1)/2);
       const newState = engine.getState({ start: cameraStart, range: viewSize });
@@ -384,6 +386,80 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
           setCameraStart(nextCameraStart);
         }}
       >
+        <div
+          style={{
+            position: 'absolute',
+            top: '12px',
+            right: '12px',
+            zIndex: 20,
+            userSelect: 'none',
+          }}
+        >
+          <label style={{ display: 'inline-block', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={mod256}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setModint(checked);
+                if (engine && engine.setBrainfuckModint) engine.setBrainfuckModint(checked);
+                try {handleLoad();} catch (err) {/* 良くないけど、致命的な影響はないので握りつぶす */}
+              }}
+              style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }}
+            />
+
+            <div
+              style={{
+                position: 'relative',
+                width: 100,
+                height: 34,
+                borderRadius: 999,
+                backgroundColor: mod256 ? '#26a69a' : '#90a4ae',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+                display: 'flex',
+                alignItems: 'center',
+                padding: 4,
+                boxSizing: 'border-box',
+              }}
+              aria-hidden
+            >
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: '50%',
+                  backgroundColor: '#fff',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+                  transform: mod256 ? 'translateX(64px)' : 'translateX(0)',
+                  transition: 'transform 0.18s ease',
+                  zIndex: 2,
+                }}
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  textAlign: 'center',
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: 12,
+                  pointerEvents: 'none',
+                  zIndex: 1,
+
+                  transform: mod256 ? 'translateX(-12px)' : 'translateX(12px)',
+                  transition: 'transform 220ms cubic-bezier(.2,.8,.2,1)',
+                  willChange: 'transform',
+                  userSelect: 'none',
+
+                }}
+              >
+                {mod256 ? 'mod 256' : 'mod 128'}
+              </div>
+            </div>
+          </label>
+        </div>
+
          { !state ? (
             <div>Ready (Press Load)</div>
          ) : (
@@ -395,7 +471,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
           />
          )}
       </div>
-  
+      
       {/* === [2] 下部: 操作部 === */}
       <div style={{ 
         flex: '6', 
@@ -507,6 +583,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
           <li><b>進む</b>：プログラムの次の命令を読んで状態を更新する。ステップ実行</li>
           <li><b>実行速度</b>：実行速度を変更できる。バーを一番左にすると1秒ごとに1ステップ実行され、一番右にすると限りなく高速に実行される</li>
           <li><b>自動追従</b>：チェックボックスにチェックが入っている間、ポインタが指すセルを自動でフォーカスして追う。チェックを外すか画面上部をクリックして左右に動かすと手動制御に切り替わる</li>
+          <li><b>mod128/256</b>：セルの値が取りうる範囲を設定できる。mod128のときは0～127、mod256のときは0～255を取る。</li>
         </ul>
         <h4>画面下部</h4>
         <ul>
@@ -516,6 +593,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
         </ul>
         <h4>その他細かい仕様</h4>
         <ul>
+          <li>EOF は -1 です。7bit モードでは127、8bit モードでは255にあたります。</li>
           <li>コードが編集されると次回実行時に自動でロードされる。現在の状態を確認しながら編集でき、実行時は自動でリロードされてスムーズな体験を提供する</li>
           <li>過去1000ステップ分の実行履歴を保持するため、ステップバックは1000回まで可能。</li>
         </ul>

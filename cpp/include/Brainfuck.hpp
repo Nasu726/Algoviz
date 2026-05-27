@@ -18,7 +18,8 @@ private:
     std::unordered_map<std::size_t, std::string> nameBuffer;
     std::string errorMessage;            // エラーメッセージ
 
-    long long int stepCount = 0;               // 実行ステップ数カウント 
+    long long int stepCount = 0;     // 実行ステップ数カウント 
+    int modi = 256;                  // セルの値の範囲を決定
     bool error = false;              // エラーフラグ
 
     struct Snapshot {
@@ -50,4 +51,6 @@ public:
     void stepBack() override;
     emscripten::val getState(emscripten::val params) override;
     std::string getOutput() override;
+
+    void setBrainfuckModint(const bool mod256);
 };
