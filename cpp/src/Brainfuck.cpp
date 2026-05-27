@@ -99,13 +99,15 @@ bool Brainfuck::step() {
                 return false;
             }
             break;
-        case '+': tape[ptr]++; break;
-        case '-': tape[ptr]--; break;
+        case '+': tape[ptr] = (tape[ptr] + 1) % modi; break;
+        case '-': tape[ptr] = (tape[ptr] + modi - 1) % modi; break;
         case '.': outputBuffer += static_cast<char>(tape[ptr]); break;
         case ',':
             if (!inputBuffer.empty()) {
-                tape[ptr] = static_cast<uint8_t>(inputBuffer.front());
+                tape[ptr] = static_cast<uint8_t>(inputBuffer.front()) % modi;
                 inputBuffer.erase(0, 1);
+            } else {
+                tape[ptr] = modi - 1;
             }
             break;
         case '[':
@@ -189,4 +191,12 @@ val Brainfuck::getState(val params) {
 
 std::string Brainfuck::getOutput() {
     return outputBuffer;
+}
+
+void Brainfuck::setBrainfuckModint(const bool mod256) {
+    if (mod256) {
+        modi = 256;
+    } else {
+        modi = 128;
+    }
 }

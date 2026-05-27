@@ -10,7 +10,7 @@ using namespace emscripten;
 class VisualizerEngine {
 private:
     std::unique_ptr<IVisualizer> currentAlgo;
-
+    bool mod256 = true;
 public:
     VisualizerEngine() {
         // 初期状態としてBrainfuckをセット
@@ -20,6 +20,8 @@ public:
     void setAlgorithm(std::string name) {
         if (name == "brainfuck") {
             currentAlgo = std::make_unique<Brainfuck>();
+            Brainfuck* bf = dynamic_cast<Brainfuck*>(currentAlgo.get());
+            if (bf) bf->setBrainfuckModint(mod256);
         } else if (name == "graph") {
             currentAlgo = std::make_unique<GraphVisualizer>();
         } else {
@@ -49,6 +51,13 @@ public:
         if (currentAlgo) return currentAlgo->getOutput();
         return "";
     }
+
+    void setBrainfuckModint(const bool mod256) {
+        if (currentAlgo) {
+            Brainfuck* bf = dynamic_cast<Brainfuck*>(currentAlgo.get());
+            if (bf) bf->setBrainfuckModint(mod256);
+        }
+    }
 };
 
 // JSへの公開定義
@@ -60,5 +69,6 @@ EMSCRIPTEN_BINDINGS(my_module) {
         .function("step", &VisualizerEngine::step)
         .function("stepBack", &VisualizerEngine::stepBack)
         .function("getState", &VisualizerEngine::getState)
-        .function("getOutput", &VisualizerEngine::getOutput);
+        .function("getOutput", &VisualizerEngine::getOutput)
+        .function("setBrainfuckModint", &VisualizerEngine::setBrainfuckModint);
 }

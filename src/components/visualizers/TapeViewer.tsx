@@ -1,5 +1,5 @@
 import React from 'react';
-import { char } from '../../utils/functions'; // パスは環境に合わせて調整してください
+import { char } from '../../utils/functions';
 
 // 必要なデータ（Props）の定義
 interface TapeViewerProps {
