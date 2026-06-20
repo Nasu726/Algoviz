@@ -25,7 +25,7 @@ interface BrainfuckPageProps {
 
 export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) => {
   // コード・入出力
-  const [code, setCode] = useState("++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.");
+  const [code, setCode] = useState("+++++++++++[>++++++>+++++++++>++++++++>++++>+++>+<<<<<<-]>++++++.>++.+++++++..+++.>>.>-.<<-.<.+++.------.--------.>>>+.>-.");
   const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
   const [editorMode, setEditorMode] = useState(true);
