@@ -15,6 +15,8 @@ interface VisualizerState {
   code: string;
   isError: boolean;
   errorMessage: string;
+  interrupted: boolean; // runToEnd がステップ上限で打ち切られた
+  stepLimit: bigint;    // そのステップ上限
 }
 
 // ★大事：Props（親から受け取るもの）を定義
@@ -73,6 +75,12 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
     }
   }, [state]); // stateが変わるたびにチェックする
 
+  // ステップ上限による中断の通知。state から導出するので、
+  // 1ステップでも進める / 戻る / ロードすれば自動的に消える。
+  const notice = state?.interrupted
+    ? `ステップ上限 (${Number(state.stepLimit).toLocaleString()} ステップ) に達したため中断しました。「一気に実行」をもう一度押すと続きから実行します。`
+    : "";
+
   // ===  自動ロード (準備完了時に実行) ===
   useEffect(() => {
     if (engine && !state) {
@@ -84,7 +92,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
   useEffect(() => {
     if (!tapeContainerRef.current) return;
     const observer = new ResizeObserver((entries) => {
-      for (let entry of entries) {
+      for (const entry of entries) {
         // テープエリアの幅に合わせて表示セル数を計算（+4 はスクロール時の余白）
         const newSize = Math.ceil(entry.contentRect.width / (CELL_WIDTH+4));
         setViewSize(newSize);
@@ -138,6 +146,27 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
     }
   }, isPlaying ? delay : null);
 
+  const runToEnd = () => {
+    if (!engine) return;
+    if (isPlaying) setIsPlaying(false);
+    if (state && (code !== state.code || state.stepCount === 0n)) {
+      handleLoad();
+    }
+
+    try {
+        // C++側でステップ上限まで一気に回す。上限に達した場合は
+        // newState.interrupted が立ち、通知バナーで知らせる。
+        engine.runToEnd();
+
+        const newState = engine.getState({ start: cameraStart, range: viewSize });
+        setState(newState);
+        if (autoScroll) setCameraStart(newState.ptr - (viewSize + 1) / 2);
+        setOutput(engine.getOutput());
+    } catch (e) {
+        console.error("RunToEnd Error:", e);
+    }
+  };
+
   const backToMenu = () => {
     if (window.confirm("ビジュアライザ一覧へ戻りますか？（未保存の内容は失われます）")){
       onBack();
@@ -161,30 +190,14 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
     if (!engine) return;
 
     try {
-      const result = engine.step();
-      const tempState = engine.getState({ start: cameraStart, range: viewSize });
-
-      // デバッグ用: 期待通りのデータが来ているかコンソールで確認できるようにする
-      console.log("Engine State:", tempState);
-
-      let nextCameraStart = cameraStart;
-      if (autoScroll) {
-        nextCameraStart = tempState.ptr - (viewSize+1) / 2;
-      }
-
-      const newState = engine.getState({ start: nextCameraStart, range: viewSize });
+      const alive = engine.step();
+      const newState = engine.getState({ start: cameraStart, range: viewSize });
 
       setState(newState);
-      setCameraStart(nextCameraStart);
-      
-      // 出力取得の優先順位: getOutput関数 > state.output > 空文字
-      if (engine.getOutput) {
-          setOutput(engine.getOutput());
-      } else if (newState && typeof newState.output === 'string') {
-          setOutput(newState.output);
-      }
+      if (autoScroll) setCameraStart(newState.ptr - (viewSize+1) / 2);
+      setOutput(engine.getOutput());
 
-      if (!result) setIsPlaying(false);
+      if (!alive) setIsPlaying(false);
     } catch (e) {
       console.error("Execution Error:", e);
       setIsPlaying(false);
@@ -219,20 +232,11 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
 
     try {
       engine.stepBack();
-      const currentState = engine.getState({ start: cameraStart, range: viewSize });
+      const newState = engine.getState({ start: cameraStart, range: viewSize });
 
-      if(autoScroll) {
-        setCameraStart(currentState.ptr - (viewSize+1) / 2);
-        setState(engine.getState({ start: currentState.ptr - viewSize / 2, range: viewSize }));
-      } else {
-        setState(currentState);
-      }
-
-      if (engine.getOutput) {
-        setOutput(engine.getOutput());
-      } else {
-        setOutput(currentState.output);
-      }
+      setState(newState);
+      if (autoScroll) setCameraStart(newState.ptr - (viewSize+1) / 2);
+      setOutput(engine.getOutput());
 
     } catch (e) {
       console.error("StepBack Error:", e);
@@ -247,10 +251,13 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
       engine.setAlgorithm("brainfuck");
       engine.setBrainfuckModint(mod256);
       engine.load(code, input);
-      setCameraStart(-(viewSize+1)/2);
-      const newState = engine.getState({ start: cameraStart, range: viewSize });
-      setState(newState);
+      // setCameraStart は次のレンダーまで反映されないので、
+      // getState には計算した値をそのまま渡す
+      const newStart = -(viewSize+1)/2;
+      setCameraStart(newStart);
+      setState(engine.getState({ start: newStart, range: viewSize }));
       setOutput("");
+
       setIsPlaying(false);
       setEditorMode(false);
     } catch (e) {
@@ -386,6 +393,23 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
           setCameraStart(nextCameraStart);
         }}
       >
+        {notice && (
+          <div style={{
+            position: 'absolute',
+            top: '12px', left: '12px', right: '130px',
+            zIndex: 20,
+            display: 'flex', alignItems: 'center', gap: '10px',
+            padding: '8px 12px',
+            backgroundColor: '#fff8e1',
+            border: '1px solid #ffb300',
+            borderRadius: '4px',
+            color: '#5d4037',
+            fontSize: '13px',
+          }}>
+            <span style={{ flex: 1 }}>{notice}</span>
+          </div>
+        )}
+
         <div
           style={{
             position: 'absolute',
@@ -403,7 +427,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
                 const checked = e.target.checked;
                 setModint(checked);
                 if (engine && engine.setBrainfuckModint) engine.setBrainfuckModint(checked);
-                try {handleLoad();} catch (err) {/* 良くないけど、致命的な影響はないので握りつぶす */}
+                try {handleLoad();} catch { /* ロード失敗は次の実行時に再試行されるので握りつぶす */ }
               }}
               style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }}
             />
@@ -508,6 +532,9 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
               <span style={{padding: '0px 0px 0px 0px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap' }}>実行速度
                 <input type="range" min="0" max="1000" value={1000-Math.sqrt(1000*delay)} onChange={(e) => {const x=Number(e.target.value);setDelay((x-1000)*(x-1000)/1000)}} style={{ marginLeft: '0.5em' }}/>
               </span>
+              <button onClick={runToEnd} disabled={!state} style={{ padding: '8px 8px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap', backgroundColor: '#fcfcfc', color: '#ff0000' }}>
+                一気に実行
+              </button>
               <label style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', userSelect: 'none', flexShrink: 0, whiteSpace: 'nowrap'}}>
                 <input type='checkbox' checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} style={{ padding: '8px 8px' }}/>
                 自動追従

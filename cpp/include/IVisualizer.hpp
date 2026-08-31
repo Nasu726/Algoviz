@@ -12,6 +12,8 @@ public:
     // 1ステップ実行 (true: 継続, false: 終了/エラー)
     virtual bool step() = 0;
 
+    virtual void runToEnd() { while (step()) {} }
+
     // ステップバック
     virtual void stepBack() = 0;
 

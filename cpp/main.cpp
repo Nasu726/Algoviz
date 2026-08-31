@@ -39,6 +39,10 @@ public:
         return false;
     }
 
+    void runToEnd() {
+        if (currentAlgo) currentAlgo->runToEnd();
+    }
+
     void stepBack() {
         if (currentAlgo) currentAlgo->stepBack();
     }
@@ -53,6 +57,7 @@ public:
     }
 
     void setBrainfuckModint(const bool mod256) {
+        this->mod256 = mod256;
         if (currentAlgo) {
             Brainfuck* bf = dynamic_cast<Brainfuck*>(currentAlgo.get());
             if (bf) bf->setBrainfuckModint(mod256);
@@ -67,6 +72,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
         .function("setAlgorithm", &VisualizerEngine::setAlgorithm)
         .function("load", &VisualizerEngine::load)
         .function("step", &VisualizerEngine::step)
+        .function("runToEnd", &VisualizerEngine::runToEnd)
         .function("stepBack", &VisualizerEngine::stepBack)
         .function("getState", &VisualizerEngine::getState)
         .function("getOutput", &VisualizerEngine::getOutput)
