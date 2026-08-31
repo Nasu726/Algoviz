@@ -1,9 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useInterval } from 'react-use';
 import { VisualizerShell } from '../components/ui/VisualizerShell';
 import { PlaybackControls } from '../components/ui/PlaybackControls';
-import { speedUp, speedDown } from '../components/ui/playbackSpeed';
 import { useKeyboardShortcuts } from '../hooks/keyboardShortcut';
+import { usePlayback } from '../hooks/usePlayback';
 import { TapeViewer } from '../components/visualizers/TapeViewer';
 import type { VisualizerEngine, BrainfuckState, TapeCell } from '../types/engine';
 
@@ -23,8 +22,6 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
   // ビジュアライザの状態
   const [state, setState] = useState<BrainfuckState | null>(null);
   const [mod256, setModint] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [delay, setDelay] = useState(300);
   const [viewSize, setViewSize] = useState(20);
   const [cameraStart, setCameraStart] = useState(-10.0);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -36,6 +33,9 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 475);
   const [lastTouchX, setLastTouchX] = useState<number | null>(null);
   const [isHelpPopupOpen, setIsHelpPopupOpen] = useState(false);
+
+  const { isPlaying, setIsPlaying, delay, setDelay, onSpeedUp, onSpeedDown } =
+    usePlayback(() => stepExecution());
 
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const highlightDivRef = useRef<HTMLDivElement>(null);
@@ -61,7 +61,8 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
       
       return () => clearTimeout(timer);
     }
-  }, [state]); // stateが変わるたびにチェックする
+    // setIsPlaying は useState の setter なので、依存に入れても再実行はされない
+  }, [state, setIsPlaying]); // stateが変わるたびにチェックする
 
   // ステップ上限による中断の通知。state から導出するので、
   // 1ステップでも進める / 戻る / ロードすれば自動的に消える。
@@ -134,13 +135,6 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
     // pc が動いたときだけスクロールし直す
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.pc, autoScroll]);
-
-  // === 実行ループ ===
-  useInterval(() => {
-    if (isPlaying && engine) {
-      stepExecution();
-    }
-  }, isPlaying ? delay : null);
 
   const runToEnd = () => {
     if (!engine) return;
@@ -297,8 +291,8 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
     onFocus: () => !isHelpPopupOpen ? setAutoScroll(!autoScroll) : null,
     onStepNext: !isHelpPopupOpen ? stepButton : undefined,
     onStepBack: !isHelpPopupOpen ? stepBack : undefined,
-    onSpeedUp: () => { if (!isHelpPopupOpen) setDelay(speedUp(delay)); },
-    onSpeedDown: () => { if (!isHelpPopupOpen) setDelay(speedDown(delay)); },
+    onSpeedUp: () => { if (!isHelpPopupOpen) onSpeedUp(); },
+    onSpeedDown: () => { if (!isHelpPopupOpen) onSpeedDown(); },
   });
 
   const help = (

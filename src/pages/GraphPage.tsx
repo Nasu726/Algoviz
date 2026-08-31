@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useInterval } from 'react-use';
 import { GraphRenderer } from '../components/visualizers/GraphRenderer';
 import { VisualizerShell } from '../components/ui/VisualizerShell';
 import { SidebarLayout } from '../components/ui/SidebarLayout';
@@ -10,7 +9,7 @@ import { defaultSettings, engineAlgorithm, isTraversal, VARIANT_TITLE } from '..
 import type { GraphSettings, GraphVariant } from '../components/graph/types';
 import { useKeyboardShortcuts } from '../hooks/keyboardShortcut';
 import { useLayoutTier } from '../hooks/useLayoutTier';
-import { speedUp, speedDown } from '../components/ui/playbackSpeed';
+import { usePlayback } from '../hooks/usePlayback';
 import type { VisualizerEngine, GraphState } from '../types/engine';
 
 interface Props {
@@ -33,11 +32,17 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     const [automatonStart, setAutomatonStart] = useState('0');
     const [acceptingNodes, setAcceptingNodes] = useState('1, 2');
 
-    const [isPlaying, setIsPlaying] = useState(false);
-    const [delay, setDelay] = useState(300);
     const [state, setState] = useState<GraphState | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const [isHelpOpen, setIsHelpOpen] = useState(false);
+
+    // 1手進めて状態を読み直す。readState はこの下で定義しているが、
+    // 呼ばれるのはタイマーが回ってからなので届く。
+    const { isPlaying, setIsPlaying, delay, setDelay, toggle, onSpeedUp, onSpeedDown } =
+        usePlayback(() => {
+            if (!engine.step()) setIsPlaying(false);
+            readState();
+        });
 
     // 生成コマンドを組み立てるときに常に最新の設定を読めるようにしておく。
     // useEffect の依存配列に全部並べると、設定を変えるたびにグラフが作り直されてしまう。
@@ -117,13 +122,6 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [startNode, goalNode, automatonStart, acceptingNodes]);
 
-    // === 再生ループ ===
-    useInterval(() => {
-        if (!isPlaying || !engine) return;
-        if (!engine.step()) setIsPlaying(false);
-        readState();
-    }, isPlaying ? delay : null);
-
     const handleReset = () => { setIsPlaying(false); engine.load('resetTraversal', ''); readState(); };
     const handleStep = () => { setIsPlaying(false); engine.step(); readState(); };
     const handleStepBack = () => { setIsPlaying(false); engine.stepBack(); readState(); };
@@ -147,11 +145,11 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         onEsc: !isHelpOpen ? onBack : undefined,
         onHelp: () => setIsHelpOpen(!isHelpOpen),
         onSave: !isHelpOpen ? handleGenerateFromText : undefined,
-        onPlayPause: !isHelpOpen && traversal ? () => setIsPlaying(!isPlaying) : undefined,
+        onPlayPause: !isHelpOpen && traversal ? toggle : undefined,
         onStepNext: !isHelpOpen && traversal ? handleStep : undefined,
         onStepBack: !isHelpOpen && traversal ? handleStepBack : undefined,
-        onSpeedUp: () => { if (!isHelpOpen) setDelay(speedUp(delay)); },
-        onSpeedDown: () => { if (!isHelpOpen) setDelay(speedDown(delay)); },
+        onSpeedUp: () => { if (!isHelpOpen) onSpeedUp(); },
+        onSpeedDown: () => { if (!isHelpOpen) onSpeedDown(); },
     });
 
     const maxNodes = state?.maxNodes ?? 50;
@@ -183,7 +181,7 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
             goalNode={goalNode} setGoalNode={setGoalNode}
             isPlaying={isPlaying} delay={delay} setDelay={setDelay}
             onReset={handleReset}
-            onPlayPause={() => setIsPlaying(!isPlaying)}
+            onPlayPause={toggle}
             onStepBack={handleStepBack}
             onStepNext={handleStep}
             onRunToEnd={handleRunToEnd}
