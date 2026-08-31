@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useInterval } from 'react-use';
 import { GraphRenderer } from '../components/visualizers/GraphRenderer';
-import { Popup } from '../components/ui/popup';
+import { VisualizerShell } from '../components/ui/VisualizerShell';
 import { GraphSetupPanel } from '../components/graph/GraphSetupPanel';
 import { TraversalPanel } from '../components/graph/TraversalPanel';
 import { GraphHelp } from '../components/graph/GraphHelp';
@@ -142,12 +142,8 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         generate(`custom ${f.skip} ${f.dir} ${f.nodeW} ${f.wt}\n${latest.current.settings.inputBuffer}`);
     };
 
-    const backToMenu = () => {
-        if (window.confirm('ビジュアライザ一覧へ戻りますか？')) onBack();
-    };
-
     useKeyboardShortcuts({
-        onEsc: !isHelpOpen ? backToMenu : undefined,
+        onEsc: !isHelpOpen ? onBack : undefined,
         onHelp: () => setIsHelpOpen(!isHelpOpen),
         onSave: !isHelpOpen ? handleGenerateFromText : undefined,
         onPlayPause: !isHelpOpen && traversal ? () => setIsPlaying(!isPlaying) : undefined,
@@ -203,38 +199,6 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         flexShrink: 0, overflowY: 'auto', padding: '15px', background: '#f8f9fa',
     };
 
-    const header = (
-        <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: compact ? '8px 10px' : '10px 20px',
-            backgroundColor: '#263238', color: 'white', flexShrink: 0,
-        }}>
-            <button onClick={backToMenu} style={{ cursor: 'pointer', fontSize: compact ? '12px' : '16px' }}>
-                ◀ 戻る
-            </button>
-            <h2 style={{ margin: 0, fontSize: compact ? '14px' : '18px' }}>{VARIANT_TITLE[variant]}</h2>
-            <button
-                onClick={() => setIsHelpOpen(true)}
-                style={{ cursor: 'pointer', fontWeight: 'bold', fontSize: compact ? '12px' : '16px' }}
-            >
-                ヘルプ ❓
-            </button>
-        </div>
-    );
-
-    const help = (
-        <Popup title={`${VARIANT_TITLE[variant]} のヘルプ`} isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)}>
-            <GraphHelp variant={variant} maxNodes={maxNodes} />
-        </Popup>
-    );
-
-    const page: React.CSSProperties = {
-        display: 'flex', flexDirection: 'column',
-        height: '100vh', width: '100vw',
-        margin: 0, overflow: 'hidden', fontFamily: 'sans-serif',
-        backgroundColor: '#fff', color: '#000',
-    };
-
     // 3つの配置で DOM の構造を変えないのが肝心。
     // キャンバスの位置が変わると GraphRenderer が再マウントされ、
     // PixiJS のアプリが作り直されてカメラ位置も失われる。
@@ -243,9 +207,15 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     const wide = tier === 'wide';
 
     return (
-        <div style={page}>
-            {header}
-
+        <VisualizerShell
+            title={VARIANT_TITLE[variant]}
+            compact={compact}
+            onBack={onBack}
+            backConfirm="ビジュアライザ一覧へ戻りますか？"
+            isHelpOpen={isHelpOpen}
+            setIsHelpOpen={setIsHelpOpen}
+            help={<GraphHelp variant={variant} maxNodes={maxNodes} />}
+        >
             <div style={{
                 display: 'flex',
                 flexDirection: narrow ? 'column' : 'row',
@@ -285,8 +255,6 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
                     </div>
                 )}
             </div>
-
-            {help}
-        </div>
+        </VisualizerShell>
     );
 };
