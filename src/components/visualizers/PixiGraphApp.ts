@@ -84,6 +84,8 @@ export class PixiGraphApp {
         if (width <= 0 || height <= 0) return;
         this.app.renderer.resize(width, height);
         this.app.stage.hitArea = new PIXI.Rectangle(0, 0, this.app.screen.width, this.app.screen.height);
+        // 表示領域が変わったので、次のフレームで全体が収まるよう合わせ直す
+        this.needsFit = true;
     }
 
     // 初期化処理（Reactから呼ばれる）
