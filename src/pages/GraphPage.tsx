@@ -29,6 +29,7 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
 
     const orientation = () => isHorizontal ? "horizontal" : "vertical";
     const skipFlag = () => skipExtension ? 1 : 0;
+    const dirFlag = () => isDirected ? 1 : 0;
 
     // C++ が持っているグラフの内容をテキスト欄へ吸い出す。
     // グラフのテキスト化は要求したときだけ行われる (描画ループの毎フレーム生成を避けるため)。
@@ -50,9 +51,9 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
         if (!engine) return;
         engine.setAlgorithm(isAutomaton ? "automaton" : "graph");
         if (inputBuffer.trim()) {
-            engine.load(orientation(), `custom ${skipFlag()}\n${inputBuffer}`);
+            engine.load(orientation(), `custom ${skipFlag()} ${dirFlag()}\n${inputBuffer}`);
         } else {
-            engine.load(orientation(), `random 5 7 ${skipFlag()} 0 0 ${isDirected ? 1 : 0}`);
+            engine.load(orientation(), `random 5 7 ${skipFlag()} 0 0 ${dirFlag()}`);
         }
         applyAutomatonSettings();
         syncText();
@@ -67,17 +68,16 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     const handleGenerateRandom = () => {
         const selfLoop = allowSelfLoop ? 1 : 0;
         const sameEdge = allowSameEdge ? 1 : 0;
-        const isDir = isDirected ? 1 : 0;
         engine.load(
             orientation(),
-            `random ${nodeCount} ${edgeCount} ${skipFlag()} ${selfLoop} ${sameEdge} ${isDir}`
+            `random ${nodeCount} ${edgeCount} ${skipFlag()} ${selfLoop} ${sameEdge} ${dirFlag()}`
         );
         applyAutomatonSettings();
         syncText();
     };
 
     const handleGenerateComplete = () => {
-        engine.load(orientation(), `complete ${nodeCount} ${skipFlag()} ${isDirected ? 1 : 0}`);
+        engine.load(orientation(), `complete ${nodeCount} ${skipFlag()} ${dirFlag()}`);
         applyAutomatonSettings();
         syncText();
     };
@@ -85,7 +85,7 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     const handleGenerateFromText = () => {
         // skip はグラフ本文より前に置く。本文が複数行あるので、
         // 後ろに付けると最終行の辺と区別できない。
-        engine.load(orientation(), `custom ${skipFlag()}\n${inputBuffer}`);
+        engine.load(orientation(), `custom ${skipFlag()} ${dirFlag()}\n${inputBuffer}`);
         applyAutomatonSettings();
         syncText();
     };

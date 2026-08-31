@@ -153,6 +153,34 @@ const a2 = engine.getState({});
 checkEq('初期状態', a2.startNodeIndex, 2);
 checkEq('受理状態は範囲内だけ', a2.acceptingStates.length, 2);
 
+// --- BFS / DFS ---
+console.log('- Traversal');
+engine.setAlgorithm('traversal');
+// 0-1-2-3 の道と 0-3 の近道
+engine.load('horizontal', 'custom 1 0\n4 4\n0 1\n1 2\n2 3\n0 3\n');
+engine.load('setTraversal', 'bfs 0 3');
+
+const t0 = engine.getState({});
+checkEq('開始時のフロンティアは始点だけ', t0.frontier.length, 1);
+checkEq('まだ終わっていない', t0.finished, false);
+
+engine.runToEnd();
+const t1 = engine.getState({});
+checkEq('経路が見つかる', t1.found, true);
+checkEq('BFS なので最短の2頂点', t1.path.length, 2);
+checkEq('経路の始点', t1.path[0], 0);
+checkEq('経路の終点', t1.path[t1.path.length - 1], 3);
+check('戻れる履歴がある', t1.canStepBack);
+
+engine.stepBack();
+checkEq('戻ると未完了に戻る', engine.getState({}).finished, false);
+
+engine.load('setTraversal', 'dfs 0 -1');
+engine.runToEnd();
+const t2 = engine.getState({});
+checkEq('DFS で全頂点を訪問', t2.visitOrder.length, 4);
+checkEq('探索名が返る', t2.algorithm, 'dfs');
+
 console.log('');
 if (failures === 0) {
     console.log(`OK: ${checks} checks passed`);

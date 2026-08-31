@@ -5,6 +5,7 @@
 #include "include/Brainfuck.hpp"
 #include "include/GraphVisualizer.hpp"
 #include "include/AutomatonVisualizer.hpp"
+#include "include/TraversalVisualizer.hpp"
 
 using namespace emscripten;
 
@@ -27,6 +28,8 @@ public:
             currentAlgo = std::make_unique<GraphVisualizer>();
         } else if (name == "automaton") {
             currentAlgo = std::make_unique<AutomatonVisualizer>();
+        } else if (name == "traversal") {
+            currentAlgo = std::make_unique<TraversalVisualizer>();
         } else {
             std::cerr << "Unknown algorithm: " << name << std::endl;
         }

@@ -16,6 +16,7 @@
 #include "../cpp/include/Brainfuck.hpp"
 #include "../cpp/include/GraphVisualizer.hpp"
 #include "../cpp/include/AutomatonVisualizer.hpp"
+#include "../cpp/include/TraversalVisualizer.hpp"
 
 using emscripten::val;
 
@@ -652,7 +653,7 @@ static void testNodeCountIsClamped() {
     }
     {   // テキスト入力経由でも同じ
         GraphVisualizer g;
-        g.load("horizontal", "custom 1\n500 0\n");
+        g.load("horizontal", "custom 1 0\n500 0\n");
         CHECK_EQ(readGraph(g).v, GraphVisualizer::MAX_NODES);
     }
     {
@@ -670,7 +671,7 @@ static void testCustomGraphParsing() {
     beginTest("テキストからグラフを生成する");
 
     GraphVisualizer g;
-    g.load("horizontal", "custom 1\n4 3\n0 1 5\n1 2 7\n2 3 9\n");
+    g.load("horizontal", "custom 1 0\n4 3\n0 1 5\n1 2 7\n2 3 9\n");
     ParsedGraph pg = readGraph(g);
 
     CHECK_EQ(pg.v, 4);
@@ -686,7 +687,7 @@ static void testCustomGraphOptionalWeight() {
     beginTest("重みを省略したテキストも読める");
 
     GraphVisualizer g;
-    g.load("horizontal", "custom 1\n3 2\n0 1\n1 2\n");
+    g.load("horizontal", "custom 1 0\n3 2\n0 1\n1 2\n");
     ParsedGraph pg = readGraph(g);
 
     CHECK_EQ(pg.v, 3);
@@ -702,7 +703,7 @@ static void testCustomGraphRejectsOutOfRangeVertices() {
 
     // ここで弾かないと隣接リスト構築で範囲外アクセスになる
     GraphVisualizer g;
-    g.load("horizontal", "custom 1\n3 4\n0 1\n1 99\n-5 2\n2 0\n");
+    g.load("horizontal", "custom 1 0\n3 4\n0 1\n1 99\n-5 2\n2 0\n");
     ParsedGraph pg = readGraph(g);
 
     CHECK_EQ(pg.v, 3);
@@ -717,7 +718,7 @@ static void testCustomGraphIgnoresJunkLines() {
     beginTest("空行やゴミ行があっても壊れない");
 
     GraphVisualizer g;
-    g.load("horizontal", "custom 1\n3 2\n\n0 1 3\n\nhello\n1 2 4\n");
+    g.load("horizontal", "custom 1 0\n3 2\n\n0 1 3\n\nhello\n1 2 4\n");
     ParsedGraph pg = readGraph(g);
     CHECK_EQ(pg.v, 3);
     CHECK_EQ((int)pg.edges.size(), 2);
@@ -734,10 +735,10 @@ static void testLayoutProducesFiniteCoordinates() {
         "random 12 18 1 0 0 0",
         "random 30 40 1 1 1 1",
         "complete 10 1 0",
-        "custom 1\n6 2\n0 1\n2 3\n",   // 非連結（孤立点あり）
-        "custom 1\n1 0\n",             // 頂点1個
-        "custom 1\n2 1\n0 1\n",        // 直線
-        "custom 1\n5 0\n",             // 全部孤立
+        "custom 1 0\n6 2\n0 1\n2 3\n",   // 非連結（孤立点あり）
+        "custom 1 0\n1 0\n",             // 頂点1個
+        "custom 1 0\n2 1\n0 1\n",        // 直線
+        "custom 1 0\n5 0\n",             // 全部孤立
     };
 
     for (const char* c : cases) {
@@ -846,7 +847,7 @@ static void testColorChannelReachesTheView() {
     beginTest("塗った色が JS へ渡す配列に載る");
 
     ColorProbe g;
-    g.load("horizontal", "custom 1\n4 3\n0 1\n1 2\n2 3\n");
+    g.load("horizontal", "custom 1 0\n4 3\n0 1\n1 2\n2 3\n");
 
     g.paintNode(0, NODE_START);
     g.paintNode(1, NODE_FRONTIER);
@@ -872,7 +873,7 @@ static void testResetColors() {
     beginTest("resetColors で全部が既定色に戻る");
 
     ColorProbe g;
-    g.load("horizontal", "custom 1\n3 2\n0 1\n1 2\n");
+    g.load("horizontal", "custom 1 0\n3 2\n0 1\n1 2\n");
     g.paintNode(0, NODE_PATH);
     g.paintNode(2, NODE_VISITED);
     g.paintEdge(1, EDGE_ACTIVE);
@@ -886,7 +887,7 @@ static void testColorSettersIgnoreOutOfRange() {
     beginTest("範囲外の添字に色を塗っても壊れない");
 
     ColorProbe g;
-    g.load("horizontal", "custom 1\n2 1\n0 1\n");
+    g.load("horizontal", "custom 1 0\n2 1\n0 1\n");
     g.paintNode(-1, NODE_PATH);
     g.paintNode(99, NODE_PATH);
     g.paintEdge(-1, EDGE_PATH);
@@ -931,7 +932,7 @@ static void testAutomatonStartAndAcceptingStates() {
     beginTest("初期状態と受理状態を C++ が保持する");
 
     AutomatonVisualizer a;
-    a.load("horizontal", "custom 1\n5 2\n0 1\n1 2\n");
+    a.load("horizontal", "custom 1 0\n5 2\n0 1\n1 2\n");
 
     a.load("setStartNode", "2");
     CHECK_EQ(a.getState(val::object())["startNodeIndex"].as<int>(), 2);
@@ -954,15 +955,420 @@ static void testAutomatonDropsStaleStatesOnRegenerate() {
     beginTest("グラフを作り直すと範囲外になった状態指定が消える");
 
     AutomatonVisualizer a;
-    a.load("horizontal", "custom 1\n10 0\n");
+    a.load("horizontal", "custom 1 0\n10 0\n");
     a.load("setStartNode", "8");
     a.load("setAccepting", "7, 9");
     CHECK_EQ(a.getState(val::object())["startNodeIndex"].as<int>(), 8);
 
     // 3頂点に作り直すと 7,8,9 は存在しなくなる
-    a.load("horizontal", "custom 1\n3 0\n");
+    a.load("horizontal", "custom 1 0\n3 0\n");
     CHECK_EQ(a.getState(val::object())["startNodeIndex"].as<int>(), -1);
     CHECK_EQ(a.getState(val::object())["acceptingStates"]["length"].as<int>(), 0);
+}
+
+// ==========================================
+// BFS / DFS
+// ==========================================
+
+// テキスト形式のグラフを参照実装で解くためのヘルパー
+struct RefGraph {
+    int v = 0;
+    std::vector<std::pair<int, int>> edges;
+    std::vector<std::vector<int>> adj;
+
+    RefGraph(int v_, std::vector<std::pair<int, int>> es, bool directed) : v(v_), edges(es) {
+        adj.assign(v, {});
+        for (auto& e : es) {
+            adj[e.first].push_back(e.second);
+            if (!directed && e.first != e.second) adj[e.second].push_back(e.first);
+        }
+    }
+
+    // 到達可能な頂点集合（参照実装）
+    std::vector<char> reachableFrom(int s) const {
+        std::vector<char> seen(v, 0);
+        if (s < 0 || s >= v) return seen;
+        std::vector<int> stack{s};
+        seen[s] = 1;
+        while (!stack.empty()) {
+            int u = stack.back(); stack.pop_back();
+            for (int w : adj[u]) if (!seen[w]) { seen[w] = 1; stack.push_back(w); }
+        }
+        return seen;
+    }
+
+    bool hasEdge(int a, int b, bool directed) const {
+        for (auto& e : edges) {
+            if (e.first == a && e.second == b) return true;
+            if (!directed && e.first == b && e.second == a) return true;
+        }
+        return false;
+    }
+};
+
+static std::string traversalCmd(const std::string& mode, int s, int g) {
+    std::ostringstream oss;
+    oss << mode << " " << s << " " << g;
+    return oss.str();
+}
+
+// 探索を最後まで進める。
+// 探索を完了させた step は false を返すが、その1手も状態を変えている
+// (履歴にも積まれる) ので、呼んだ回数をそのまま返す。
+static int runTraversal(TraversalVisualizer& t, int limit = 200000) {
+    int steps = 0;
+    while (steps < limit) {
+        bool alive = t.step();
+        steps++;
+        if (!alive) break;
+    }
+    return steps;
+}
+
+// 比較したい可視状態だけを抜き出す
+struct TravRec {
+    std::vector<int> order, frontier, path;
+    int current = -1;
+    bool finished = false, found = false;
+
+    bool operator==(const TravRec& o) const {
+        return order == o.order && frontier == o.frontier && path == o.path &&
+               current == o.current && finished == o.finished && found == o.found;
+    }
+};
+
+static std::vector<int> valToVector(val arr) {
+    std::vector<int> out;
+    int n = arr["length"].as<int>();
+    for (int i = 0; i < n; i++) out.push_back(arr[i].as<int>());
+    return out;
+}
+
+static TravRec readTrav(TraversalVisualizer& t) {
+    val s = t.getState(val::object());
+    TravRec r;
+    r.order    = valToVector(s["visitOrder"]);
+    r.frontier = valToVector(s["frontier"]);
+    r.path     = valToVector(s["path"]);
+    r.current  = s["current"].as<int>();
+    r.finished = s["finished"].as<bool>();
+    r.found    = s["found"].as<bool>();
+    return r;
+}
+
+static void testTraversalVisitsExactlyTheReachableSet() {
+    beginTest("到達可能な頂点集合が参照実装と一致する");
+
+    struct Case { const char* text; int v; std::vector<std::pair<int,int>> es; bool directed; };
+    const Case cases[] = {
+        // 連結
+        {"custom 1 0\n5 4\n0 1\n1 2\n2 3\n3 4\n", 5, {{0,1},{1,2},{2,3},{3,4}}, false},
+        // 非連結（4,5 は孤立した別成分）
+        {"custom 1 0\n6 3\n0 1\n1 2\n4 5\n",      6, {{0,1},{1,2},{4,5}},       false},
+        // 有向。0 からは 3 に届かない
+        {"custom 1 1\n4 3\n0 1\n1 2\n3 0\n",      4, {{0,1},{1,2},{3,0}},       true},
+        // 自己ループと多重辺
+        {"custom 1 0\n3 4\n0 0\n0 1\n0 1\n1 2\n", 3, {{0,0},{0,1},{0,1},{1,2}}, false},
+        // 孤立点のみ
+        {"custom 1 0\n3 0\n",                     3, {},                        false},
+    };
+
+    for (const auto& c : cases) {
+        RefGraph ref(c.v, c.es, c.directed);
+        std::vector<char> expected = ref.reachableFrom(0);
+
+        for (const char* mode : {"bfs", "dfs"}) {
+            TraversalVisualizer t;
+            t.load("horizontal", c.text);
+            t.load("setTraversal", traversalCmd(mode, 0, -1));
+            runTraversal(t);
+
+            std::vector<int> order = valToVector(t.getState(val::object())["visitOrder"]);
+            std::vector<char> got(c.v, 0);
+            for (int u : order) got[u] = 1;
+
+            g_checks++;
+            if (got != expected) {
+                g_failures++;
+                std::cerr << "  FAIL [" << g_currentTest << "] " << mode
+                          << " : " << c.text << std::endl;
+            }
+        }
+    }
+}
+
+static void testTraversalVisitsEachVertexOnce() {
+    beginTest("各頂点をちょうど1回だけ訪問する");
+
+    for (const char* mode : {"bfs", "dfs"}) {
+        TraversalVisualizer t;
+        t.load("horizontal", "custom 1 0\n8 10\n0 1\n0 2\n1 3\n2 3\n3 4\n4 5\n5 6\n6 7\n7 4\n2 6\n");
+        t.load("setTraversal", traversalCmd(mode, 0, -1));
+        runTraversal(t);
+
+        std::vector<int> order = valToVector(t.getState(val::object())["visitOrder"]);
+        std::set<int> unique(order.begin(), order.end());
+        CHECK_EQ(order.size(), unique.size());
+        CHECK_EQ((int)order.size(), 8);
+    }
+}
+
+static void testBfsFindsShortestPath() {
+    beginTest("BFS が見つける経路は最短");
+
+    // 0-1-2-3 の道と 0-3 の近道。BFS なら 0->3 の1辺で着く
+    TraversalVisualizer t;
+    t.load("horizontal", "custom 1 0\n4 4\n0 1\n1 2\n2 3\n0 3\n");
+    t.load("setTraversal", traversalCmd("bfs", 0, 3));
+    runTraversal(t);
+
+    val state = t.getState(val::object());
+    CHECK(state["found"].as<bool>());
+    std::vector<int> path = valToVector(state["path"]);
+    CHECK_EQ((int)path.size(), 2);
+    if (path.size() >= 2) {
+        CHECK_EQ(path.front(), 0);
+        CHECK_EQ(path.back(), 3);
+    }
+}
+
+static void testPathIsActuallyWalkable() {
+    beginTest("見つかった経路が実際に辺を辿れる");
+
+    struct Case { const char* text; int v; std::vector<std::pair<int,int>> es; bool directed; int s, g; };
+    const Case cases[] = {
+        {"custom 1 0\n6 6\n0 1\n1 2\n2 3\n3 4\n4 5\n0 5\n", 6, {{0,1},{1,2},{2,3},{3,4},{4,5},{0,5}}, false, 0, 4},
+        {"custom 1 1\n5 5\n0 1\n1 2\n2 3\n3 4\n0 4\n",      5, {{0,1},{1,2},{2,3},{3,4},{0,4}},       true,  0, 3},
+        {"custom 1 0\n7 6\n0 1\n1 2\n2 3\n3 4\n4 5\n5 6\n", 7, {{0,1},{1,2},{2,3},{3,4},{4,5},{5,6}}, false, 0, 6},
+    };
+
+    for (const auto& c : cases) {
+        RefGraph ref(c.v, c.es, c.directed);
+        for (const char* mode : {"bfs", "dfs"}) {
+            TraversalVisualizer t;
+            t.load("horizontal", c.text);
+            t.load("setTraversal", traversalCmd(mode, c.s, c.g));
+            runTraversal(t);
+
+            val state = t.getState(val::object());
+            CHECK(state["found"].as<bool>());
+            std::vector<int> path = valToVector(state["path"]);
+
+            g_checks++;
+            bool ok = path.size() >= 2 && path.front() == c.s && path.back() == c.g;
+            for (size_t i = 0; ok && i + 1 < path.size(); i++) {
+                if (!ref.hasEdge(path[i], path[i + 1], c.directed)) ok = false;
+            }
+            if (!ok) {
+                g_failures++;
+                std::cerr << "  FAIL [" << g_currentTest << "] " << mode
+                          << " の経路が辿れない: " << c.text << std::endl;
+            }
+        }
+    }
+}
+
+static void testNoPathWhenUnreachable() {
+    beginTest("到達できない終点なら経路は見つからない");
+
+    for (const char* mode : {"bfs", "dfs"}) {
+        TraversalVisualizer t;
+        t.load("horizontal", "custom 1 0\n5 2\n0 1\n3 4\n");
+        t.load("setTraversal", traversalCmd(mode, 0, 4));
+        runTraversal(t);
+
+        val state = t.getState(val::object());
+        CHECK(!state["found"].as<bool>());
+        CHECK(state["finished"].as<bool>());
+        CHECK_EQ(state["path"]["length"].as<int>(), 0);
+    }
+}
+
+static void testDfsGoesDeepBeforeWide() {
+    beginTest("DFS は横に広がる前に深く潜る");
+
+    // 0 から 1 と 4 へ。1 の先は 2 -> 3 と続く。
+    // DFS なら 0,1,2,3 と潜ってから 4 に来る。BFS なら 0,1,4 が先。
+    const char* text = "custom 1 1\n5 4\n0 1\n1 2\n2 3\n0 4\n";
+
+    {
+        TraversalVisualizer t;
+        t.load("horizontal", text);
+        t.load("setTraversal", traversalCmd("dfs", 0, -1));
+        runTraversal(t);
+        std::vector<int> order = valToVector(t.getState(val::object())["visitOrder"]);
+        CHECK_EQ((int)order.size(), 5);
+        if (order.size() == 5) {
+            CHECK(order[0] == 0 && order[1] == 1 && order[2] == 2 && order[3] == 3 && order[4] == 4);
+        }
+    }
+    {
+        TraversalVisualizer t;
+        t.load("horizontal", text);
+        t.load("setTraversal", traversalCmd("bfs", 0, -1));
+        runTraversal(t);
+        std::vector<int> order = valToVector(t.getState(val::object())["visitOrder"]);
+        CHECK_EQ((int)order.size(), 5);
+        // 0 の隣 (1 と 4) が先に並ぶ
+        if (order.size() == 5) {
+            CHECK(order[0] == 0 && order[1] == 1 && order[2] == 4);
+        }
+    }
+}
+
+static void testStepCountIsBounded() {
+    beginTest("ステップ数が頂点数と辺数で抑えられる");
+
+    // 1ステップ = 「辺を1本見る」か「頂点を1つ処理し終える」なので
+    // 概ね V + 2E に収まる (無向は両向きから見るので 2E)
+    for (const char* mode : {"bfs", "dfs"}) {
+        TraversalVisualizer t;
+        t.load("horizontal", "random 20 30 1 0 0 0");
+        t.load("setTraversal", traversalCmd(mode, 0, -1));
+        int steps = runTraversal(t);
+        CHECK(steps <= 20 + 2 * 30 + 5);
+    }
+}
+
+static void testStepBackReturnsToInitialState() {
+    beginTest("stepBack を戻しきると初期状態に一致する");
+
+    for (const char* mode : {"bfs", "dfs"}) {
+        TraversalVisualizer t;
+        t.load("horizontal", "custom 1 0\n6 7\n0 1\n0 2\n1 3\n2 3\n3 4\n4 5\n2 5\n");
+        t.load("setTraversal", traversalCmd(mode, 0, 5));
+
+        TravRec initial = readTrav(t);
+        CHECK(runTraversal(t) > 0);
+
+        // UI の「戻る」と同じように、戻せなくなるまで戻す
+        int guard = 0;
+        while (t.getState(val::object())["canStepBack"].as<bool>() && guard++ < 100000) {
+            t.stepBack();
+        }
+
+        CHECK(readTrav(t) == initial);
+        CHECK(!t.getState(val::object())["canStepBack"].as<bool>());
+    }
+}
+
+static void testStepBackRestoresEveryIntermediateState() {
+    beginTest("stepBack が各時点の状態を正確に復元する");
+
+    TraversalVisualizer t;
+    t.load("horizontal", "custom 1 0\n5 5\n0 1\n1 2\n2 3\n3 4\n0 4\n");
+    t.load("setTraversal", traversalCmd("bfs", 0, -1));
+
+    // recs[i] = i 手進めたあとの状態
+    std::vector<TravRec> recs;
+    recs.push_back(readTrav(t));
+    for (int i = 0; i < 100; i++) {
+        bool alive = t.step();
+        recs.push_back(readTrav(t));
+        if (!alive) break;
+    }
+    CHECK((int)recs.size() > 3);
+
+    for (int i = (int)recs.size() - 1; i >= 0; i--) {
+        g_checks++;
+        if (!(readTrav(t) == recs[i])) {
+            g_failures++;
+            std::cerr << "  FAIL [" << g_currentTest << "] " << i
+                      << " 手目の状態が復元されていない" << std::endl;
+            break;
+        }
+        if (i > 0) t.stepBack();
+    }
+}
+
+static void testRunToEndMatchesRepeatedStep() {
+    beginTest("runToEnd と step の繰り返しが一致する");
+
+    for (const char* mode : {"bfs", "dfs"}) {
+        TraversalVisualizer a, b;
+        const char* text = "custom 1 0\n7 8\n0 1\n0 2\n1 3\n2 4\n3 5\n4 5\n5 6\n1 6\n";
+        a.load("horizontal", text);
+        b.load("horizontal", text);
+        a.load("setTraversal", traversalCmd(mode, 0, 6));
+        b.load("setTraversal", traversalCmd(mode, 0, 6));
+
+        runTraversal(a);
+        b.runToEnd();
+
+        val sa = a.getState(val::object()), sb = b.getState(val::object());
+        CHECK(valToVector(sa["visitOrder"]) == valToVector(sb["visitOrder"]));
+        CHECK(valToVector(sa["path"]) == valToVector(sb["path"]));
+        CHECK_EQ(sa["found"].as<bool>(), sb["found"].as<bool>());
+    }
+}
+
+static void testTraversalColorsNodesAndEdges() {
+    beginTest("探索の進行がノードと辺の色に反映される");
+
+    TraversalVisualizer t;
+    t.load("horizontal", "custom 1 0\n4 3\n0 1\n1 2\n2 3\n");
+    t.load("setTraversal", traversalCmd("bfs", 0, 3));
+
+    // 開始直後: 始点だけが処理中、他は未訪問
+    val nodes = t.getState(val::object())["nodes"];
+    CHECK_EQ((int)nodes[3].as<float>(), (int)NODE_VISITING);
+    CHECK_EQ((int)nodes[7].as<float>(), (int)NODE_DEFAULT);
+
+    t.runToEnd();
+    val done = t.getState(val::object());
+    CHECK(done["found"].as<bool>());
+
+    // 経路上の頂点は NODE_PATH、経路の辺は EDGE_PATH
+    val n2 = done["nodes"];
+    val e2 = done["edges"];
+    for (int v : valToVector(done["path"])) {
+        CHECK_EQ((int)n2[v * 4 + 3].as<float>(), (int)NODE_PATH);
+    }
+    int pathEdges = 0;
+    for (int i = 0; i < 3; i++) if ((int)e2[i * 4 + 3].as<float>() == (int)EDGE_PATH) pathEdges++;
+    CHECK_EQ(pathEdges, 3);
+}
+
+static void testTraversalResetsWhenGraphChanges() {
+    beginTest("グラフを作り直すと探索がやり直しになる");
+
+    TraversalVisualizer t;
+    t.load("horizontal", "custom 1 0\n5 4\n0 1\n1 2\n2 3\n3 4\n");
+    t.load("setTraversal", traversalCmd("bfs", 0, 4));
+    t.runToEnd();
+    CHECK(t.getState(val::object())["finished"].as<bool>());
+
+    t.load("horizontal", "custom 1 0\n3 2\n0 1\n1 2\n");
+    val s = t.getState(val::object());
+    CHECK(!s["finished"].as<bool>());
+    CHECK_EQ(s["visitOrder"]["length"].as<int>(), 1); // 始点だけ
+    CHECK_EQ(s["goalNode"].as<int>(), -1);            // 範囲外になった終点は外れる
+}
+
+static void testTraversalHandlesInvalidStart() {
+    beginTest("始点が範囲外でも壊れない");
+
+    TraversalVisualizer t;
+    t.load("horizontal", "custom 1 0\n3 2\n0 1\n1 2\n");
+    t.load("setTraversal", traversalCmd("bfs", 99, -1));
+
+    // 範囲外の始点は 0 に丸められる
+    CHECK_EQ(t.getState(val::object())["startNode"].as<int>(), 0);
+    t.runToEnd();
+    CHECK_EQ(t.getState(val::object())["visitOrder"]["length"].as<int>(), 3);
+}
+
+static void testStartEqualsGoal() {
+    beginTest("始点と終点が同じなら即座に見つかる");
+
+    TraversalVisualizer t;
+    t.load("horizontal", "custom 1 0\n4 3\n0 1\n1 2\n2 3\n");
+    t.load("setTraversal", traversalCmd("bfs", 2, 2));
+
+    val s = t.getState(val::object());
+    CHECK(s["found"].as<bool>());
+    CHECK(s["finished"].as<bool>());
+    CHECK_EQ(s["path"]["length"].as<int>(), 1);
 }
 
 // ==========================================
@@ -1010,6 +1416,22 @@ int main() {
     testAutomatonIsAlwaysDirected();
     testAutomatonStartAndAcceptingStates();
     testAutomatonDropsStaleStatesOnRegenerate();
+
+    std::cout << std::endl << "=== BFS / DFS ===" << std::endl;
+    testTraversalVisitsExactlyTheReachableSet();
+    testTraversalVisitsEachVertexOnce();
+    testBfsFindsShortestPath();
+    testPathIsActuallyWalkable();
+    testNoPathWhenUnreachable();
+    testDfsGoesDeepBeforeWide();
+    testStepCountIsBounded();
+    testStepBackReturnsToInitialState();
+    testStepBackRestoresEveryIntermediateState();
+    testRunToEndMatchesRepeatedStep();
+    testTraversalColorsNodesAndEdges();
+    testTraversalResetsWhenGraphChanges();
+    testTraversalHandlesInvalidStart();
+    testStartEqualsGoal();
 
     std::cout << std::endl;
     if (g_failures == 0) {

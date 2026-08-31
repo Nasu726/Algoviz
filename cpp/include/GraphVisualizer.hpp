@@ -140,11 +140,12 @@ protected:
     }
 
     // "V E" の行に続けて "from to [重み]" が E 行。重みは省略できる。
-    bool generateCustom(std::istringstream& iss) {
+    bool generateCustom(std::istringstream& iss, bool isDirected) {
         int v = 0, e = 0;
         if (!(iss >> v >> e)) return false;
         v = std::clamp(v, 0, MAX_NODES);
         e = std::clamp(e, 0, MAX_EDGES);
+        generatedDirected = isDirected || forceDirected();
         graph = std::make_unique<GraphData>(v, e);
         for (int i = 0; i < v; i++) graph->setNode(i, (float)i, (float)i, 0, 0);
 
@@ -220,12 +221,12 @@ public:
             generateComplete(v, dir != 0);
             rebuild();
         } else if (cmd == "custom") {
-            // skip はグラフ本文より前に置く。本文が複数行なので、
+            // skip と向きはグラフ本文より前に置く。本文が複数行なので、
             // 後ろに付けると行の区切りと衝突する。
-            int skip = 1;
-            iss >> skip;
+            int skip = 1, dir = 0;
+            iss >> skip >> dir;
             skipExtension = (skip != 0);
-            if (generateCustom(iss)) rebuild();
+            if (generateCustom(iss, dir != 0)) rebuild();
         } else {
             layout.is_stable = false;
         }
