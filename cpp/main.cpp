@@ -4,6 +4,8 @@
 #include "include/IVisualizer.hpp"
 #include "include/Brainfuck.hpp"
 #include "include/GraphVisualizer.hpp"
+#include "include/AutomatonVisualizer.hpp"
+#include "include/TraversalVisualizer.hpp"
 
 using namespace emscripten;
 
@@ -24,6 +26,10 @@ public:
             if (bf) bf->setBrainfuckModint(mod256);
         } else if (name == "graph") {
             currentAlgo = std::make_unique<GraphVisualizer>();
+        } else if (name == "automaton") {
+            currentAlgo = std::make_unique<AutomatonVisualizer>();
+        } else if (name == "traversal") {
+            currentAlgo = std::make_unique<TraversalVisualizer>();
         } else {
             std::cerr << "Unknown algorithm: " << name << std::endl;
         }
@@ -34,14 +40,25 @@ public:
         if (currentAlgo) currentAlgo->load(source, input);
     }
 
+    // 事前計算(グラフならレイアウト収束)を1単位進める
+    bool prepare() {
+        if (currentAlgo) return currentAlgo->prepare();
+        return true;
+    }
+
     bool step() {
         if (currentAlgo) return currentAlgo->step();
         return false;
     }
 
+    void runToEnd() {
+        if (currentAlgo) currentAlgo->runToEnd();
+    }
+
     void stepBack() {
         if (currentAlgo) currentAlgo->stepBack();
     }
+
     val getState(val params) {
         if (currentAlgo) return currentAlgo->getState(params);
         return val::null();
@@ -53,6 +70,7 @@ public:
     }
 
     void setBrainfuckModint(const bool mod256) {
+        this->mod256 = mod256;
         if (currentAlgo) {
             Brainfuck* bf = dynamic_cast<Brainfuck*>(currentAlgo.get());
             if (bf) bf->setBrainfuckModint(mod256);
@@ -66,7 +84,9 @@ EMSCRIPTEN_BINDINGS(my_module) {
         .constructor<>()
         .function("setAlgorithm", &VisualizerEngine::setAlgorithm)
         .function("load", &VisualizerEngine::load)
+        .function("prepare", &VisualizerEngine::prepare)
         .function("step", &VisualizerEngine::step)
+        .function("runToEnd", &VisualizerEngine::runToEnd)
         .function("stepBack", &VisualizerEngine::stepBack)
         .function("getState", &VisualizerEngine::getState)
         .function("getOutput", &VisualizerEngine::getOutput)

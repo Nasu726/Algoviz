@@ -1,15 +1,34 @@
 import * as PIXI from 'pixi.js';
+import type { VisualizerEngine, GraphState } from '../../types/engine';
 
-export interface NodeMeta {
-    label?: string;
-    isStart?: boolean;
-    isAccepting?: boolean;
-}
+// C++ 側 GraphData の配列レイアウト。ここを変えるときは GraphData.hpp も揃える。
+const NODE_STRIDE = 4; // [x, y, weight, colorId]
+const EDGE_STRIDE = 4; // [from, to, weight, colorId]
+
+// colorId → 実際の配色。C++ 側 (GraphColors.hpp) は「意味」だけを持ち、
+// 見た目はここで決める。並び順は GraphColors.hpp の enum と揃えること。
+//
+//   0 未訪問 / 1 フロンティア / 2 訪問中 / 3 訪問済み / 4 経路上 / 5 始点 / 6 終点
+export const NODE_STROKE = [0x263238, 0xf39c12, 0xe74c3c, 0x90a4ae, 0x27ae60, 0x2980b9, 0x8e44ad];
+const NODE_FILL   = [0xffffff, 0xfff3e0, 0xffebee, 0xeceff1, 0xe8f5e9, 0xe3f2fd, 0xf3e5f5];
+
+//   0 通常 / 1 探索木 / 2 今たどっている / 3 調べ終わった / 4 経路上
+export const EDGE_COLOR  = [0x999999, 0x3498db, 0xe74c3c, 0xcfd8dc, 0x27ae60];
+const EDGE_WIDTH  = [2, 3, 4, 2, 4];
+
+// この縮尺より小さいと文字が数ピクセルにしか描かれず読めない。
+// 描いても情報にならないうえに、辺の多いグラフでは描画コストの主因になる。
+const TEXT_MIN_SCALE = 0.4;
+
+const nodeStroke = (id: number) => NODE_STROKE[id] ?? NODE_STROKE[0];
+const nodeFill   = (id: number) => NODE_FILL[id] ?? NODE_FILL[0];
+const edgeColor  = (id: number) => EDGE_COLOR[id] ?? EDGE_COLOR[0];
+const edgeWidth  = (id: number) => EDGE_WIDTH[id] ?? EDGE_WIDTH[0];
 
 export class PixiGraphApp {
     private app: PIXI.Application;
     private container: HTMLDivElement;
-    private engine: any;
+    private engine: VisualizerEngine;
     
     // PixiJSのオブジェクト群
     private world!: PIXI.Container;
@@ -17,20 +36,20 @@ export class PixiGraphApp {
     private nodeContainer!: PIXI.Container;
     private nodeSprites: PIXI.Container[] = [];
     private edgeWeightTexts: PIXI.Text[] = [];
-    private nodeMetadata: NodeMeta[] = [];
-    private colors: number[] = [0x000000, 0x3498db, 0xe74c3c];
     private fpsText!: PIXI.Text;
     private nodeRadius: number = 20.0;
     private isDirected: boolean = false;
     private isAutomaton: boolean = false;
     private showWeights: boolean = false;
     private labelType: 'index' | 'name' = 'index';
-    private startNodeIndex: number = -1;
-    private acceptingNodeIndices: Set<number> = new Set();
     
     // 状態管理フラグ
     private isInitialized = false;
     private isDestroyed = false;
+
+    // グラフが差し替わったら一度だけカメラを合わせ直すための状態
+    private lastGeneration = -1;
+    private needsFit = false;
 
     // マウス操作用
     private isDragging = false;
@@ -42,7 +61,7 @@ export class PixiGraphApp {
         return num.toString().split('').map(digit => subscripts[parseInt(digit, 10)]).join('');
     }
 
-    constructor(container: HTMLDivElement, engine: any) {
+    constructor(container: HTMLDivElement, engine: VisualizerEngine) {
         this.container = container;
         this.engine = engine;
         this.app = new PIXI.Application();
@@ -52,36 +71,21 @@ export class PixiGraphApp {
     // Reactから設定を受け取るメソッド
     // ==========================================
     public updateSettings(settings: {
-        isDirected: boolean;
         showWeights: boolean;
-        isAutomaton: boolean;
-        startNode: string;
-        acceptingNodes: string;
         labelType: 'index' | 'name';
     }) {
-        this.isDirected = settings.isDirected;
         this.showWeights = settings.showWeights;
-        this.isAutomaton = settings.isAutomaton;
         this.labelType = settings.labelType;
-        
-        // テキストをパースしてインデックス化
-        this.startNodeIndex = parseInt(settings.startNode, 10);
-        this.acceptingNodeIndices.clear();
-        settings.acceptingNodes.split(',').forEach(s => {
-            const idx = parseInt(s.trim(), 10);
-            if (!isNaN(idx)) this.acceptingNodeIndices.add(idx);
-        });
-        
-        // nodeMetadataを上書き
-        this.nodeMetadata = [];
-        if (this.isAutomaton) {
-            if (!isNaN(this.startNodeIndex)) {
-                this.nodeMetadata[this.startNodeIndex] = { ...this.nodeMetadata[this.startNodeIndex], isStart: true };
-            }
-            this.acceptingNodeIndices.forEach(idx => {
-                this.nodeMetadata[idx] = { ...this.nodeMetadata[idx], isAccepting: true };
-            });
-        }
+    }
+
+    // キャンバスのサイズを外側の要素に合わせる
+    public resize(width: number, height: number) {
+        if (!this.isInitialized || this.isDestroyed) return;
+        if (width <= 0 || height <= 0) return;
+        this.app.renderer.resize(width, height);
+        this.app.stage.hitArea = new PIXI.Rectangle(0, 0, this.app.screen.width, this.app.screen.height);
+        // 表示領域が変わったので、次のフレームで全体が収まるよう合わせ直す
+        this.needsFit = true;
     }
 
     // 初期化処理（Reactから呼ばれる）
@@ -112,47 +116,6 @@ export class PixiGraphApp {
         this.nodeContainer = new PIXI.Container();
         this.world.addChild(this.nodeContainer);
 
-        // ノード用のコンテナ（箱）を100個あらかじめ作っておく
-        for (let i = 0; i < 100; i++) {
-            const nodeGroup = new PIXI.Container();
-
-            // 1. 白抜きの円
-            const bg = new PIXI.Graphics();
-            nodeGroup.addChild(bg);
-
-            // 2. 二重丸（Accepting）用の輪っか
-            const acceptRing = new PIXI.Graphics();
-            acceptRing.label = "acceptRing";
-            nodeGroup.addChild(acceptRing);
-
-            // 3. "start ->" の矢印 
-            const startArrow = new PIXI.Graphics();
-            startArrow.label = "startArrow";
-            nodeGroup.addChild(startArrow);
-
-            // 矢印用のテキスト
-            const startText = new PIXI.Text({ text: 'start', style: { fontSize: 14, fill: 0x555555, fontWeight: 'bold' } });
-            startText.label = "startText";
-            startText.anchor.set(0.5, 0.5);
-            nodeGroup.addChild(startText);
-
-            // 4. ノードのラベルテキスト
-            const labelText = new PIXI.Text({ text: '', style: { fontSize: 16, fill: 0x333333, fontWeight: 'bold' } });
-            labelText.anchor.set(0.5);
-            labelText.label = "labelText";
-            nodeGroup.addChild(labelText);
-
-            // 5. ノードの重みテキスト（緑色）
-            const weightText = new PIXI.Text({ text: '', style: { fontSize: 13, fill: 0x27ae60, stroke: { color: 0xffffff, width: 3 }, fontWeight: 'bold' } });
-            weightText.anchor.set(0.5);
-            weightText.label = "weightText";
-            nodeGroup.addChild(weightText);
-
-            nodeGroup.visible = false;
-            this.nodeContainer.addChild(nodeGroup);
-            this.nodeSprites.push(nodeGroup);
-        }
-
         this.fpsText = new PIXI.Text({ text: 'FPS: 0', style: { fontSize: 16, fill: 0x000000 } });
         this.fpsText.x = 10;
         this.fpsText.y = 20;
@@ -166,10 +129,82 @@ export class PixiGraphApp {
         this.isInitialized = true;
     }
 
+    // ノード1個分の表示部品をまとめて作る。
+    // 頂点数はグラフごとに変わるので、必要になった分だけ作って使い回す
+    // (エッジの重みテキストと同じ方式)。
+    private createNodeGroup(): PIXI.Container {
+        const nodeGroup = new PIXI.Container();
+
+        // 1. 白抜きの円
+        const bg = new PIXI.Graphics();
+        nodeGroup.addChild(bg);
+
+        // 2. 二重丸（Accepting）用の輪っか
+        const acceptRing = new PIXI.Graphics();
+        acceptRing.label = "acceptRing";
+        nodeGroup.addChild(acceptRing);
+
+        // 3. "start ->" の矢印
+        const startArrow = new PIXI.Graphics();
+        startArrow.label = "startArrow";
+        nodeGroup.addChild(startArrow);
+
+        // 矢印用のテキスト
+        const startText = new PIXI.Text({ text: 'start', style: { fontSize: 14, fill: 0x555555, fontWeight: 'bold' } });
+        startText.label = "startText";
+        startText.anchor.set(0.5, 0.5);
+        nodeGroup.addChild(startText);
+
+        // 4. ノードのラベルテキスト
+        const labelText = new PIXI.Text({ text: '', style: { fontSize: 16, fill: 0x333333, fontWeight: 'bold' } });
+        labelText.anchor.set(0.5);
+        labelText.label = "labelText";
+        nodeGroup.addChild(labelText);
+
+        // 5. ノードの重みテキスト（緑色）
+        const weightText = new PIXI.Text({ text: '', style: { fontSize: 13, fill: 0x27ae60, stroke: { color: 0xffffff, width: 3 }, fontWeight: 'bold' } });
+        weightText.anchor.set(0.5);
+        weightText.label = "weightText";
+        nodeGroup.addChild(weightText);
+
+        nodeGroup.visible = false;
+        this.nodeContainer.addChild(nodeGroup);
+        return nodeGroup;
+    }
+
+    // グラフ全体が画面に収まるようにカメラを合わせる
+    private fitToView(nodeArray: Float32Array) {
+        if (nodeArray.length === 0) return;
+
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (let i = 0; i < nodeArray.length; i += NODE_STRIDE) {
+            const x = nodeArray[i], y = nodeArray[i + 1];
+            if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+            minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+            minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+        }
+        if (!Number.isFinite(minX)) return;
+
+        const pad = this.nodeRadius + 40;
+        const w = (maxX - minX) + pad * 2;
+        const h = (maxY - minY) + pad * 2;
+        const vw = this.app.screen.width;
+        const vh = this.app.screen.height;
+
+        const scale = Math.max(0.05, Math.min(2, Math.min(vw / w, vh / h)));
+        this.world.scale.set(scale);
+        this.world.position.set(
+            vw / 2 - ((minX + maxX) / 2) * scale,
+            vh / 2 - ((minY + maxY) / 2) * scale
+        );
+    }
+
     // ★ イベント設定
     private setupEvents() {
         this.app.stage.eventMode = 'static';
-        this.app.stage.hitArea = new PIXI.Rectangle(0, 0, this.app.canvas.width, this.app.canvas.height);
+        // canvas.width は devicePixelRatio 倍のデバイスピクセル。
+        // 当たり判定やカリングは論理サイズ (app.screen) で見る。
+        this.app.stage.hitArea = new PIXI.Rectangle(0, 0, this.app.screen.width, this.app.screen.height);
 
         this.app.stage.on('pointerdown', (e) => {
             this.isDragging = true;
@@ -212,7 +247,8 @@ export class PixiGraphApp {
     private isVisible(x: number, y: number): boolean {
         const screenX = x * this.world.scale.x + this.world.position.x;
         const screenY = y * this.world.scale.y + this.world.position.y;
-        return screenX >= -50 && screenX <= this.app.canvas.width + 50 && screenY >= -50 && screenY <= this.app.canvas.height + 50;
+        return screenX >= -50 && screenX <= this.app.screen.width + 50 &&
+               screenY >= -50 && screenY <= this.app.screen.height + 50;
     }
 
     // ノードの座標(fx, fy)と、既に使用されている角度の配列から、最大の隙間の角度を返す関数
@@ -253,15 +289,42 @@ export class PixiGraphApp {
     private renderLoop = () => {
         if (this.isDestroyed) return;
 
-        this.engine.step();
-        const state = this.engine.getState({});
+        // レイアウトの収束計算だけを進める。アルゴリズムの1手 (step) は
+        // 再生コントロール側が叩くので、描画ループからは呼ばない。
+        this.engine.prepare();
+        const state = this.engine.getState<GraphState>({});
         const nodeArray = new Float32Array(state.nodes);
         const edgeArray = new Float32Array(state.edges);
 
         // ==========================================
-        // 1. エッジテキストプールの準備
+        // 1. 表示部品プールの準備（頂点数・辺数に合わせて伸ばす）
         // ==========================================
-        const edgeCount = edgeArray.length / 4;
+        const nodeCount = nodeArray.length / NODE_STRIDE;
+        while (this.nodeSprites.length < nodeCount) {
+            this.nodeSprites.push(this.createNodeGroup());
+        }
+
+        // グラフが作り直されたら、レイアウトが落ち着いた時点で全体を画面に収める
+        if (state.generation !== this.lastGeneration) {
+            this.lastGeneration = state.generation;
+            this.needsFit = true;
+        }
+        if (this.needsFit && state.layoutStable) {
+            this.needsFit = false;
+            this.fitToView(nodeArray);
+        }
+
+        // グラフ自身の性質は C++ が唯一の情報源
+        this.isDirected = !!state.isDirected;
+        this.isAutomaton = !!state.isAutomaton;
+        const startIdx: number = state.startNodeIndex ?? -1;
+        const accepting: Set<number> = new Set(state.acceptingStates ?? []);
+
+        // 縮尺が小さいときは文字を全部省く
+        const readable = this.world.scale.x >= TEXT_MIN_SCALE;
+        const showText = this.showWeights && readable;
+
+        const edgeCount = edgeArray.length / EDGE_STRIDE;
         while (this.edgeWeightTexts.length < edgeCount) {
             const text = new PIXI.Text({ text: '', style: { fontSize: 13, fill: 0xe74c3c, stroke: { color: 0xffffff, width: 3 }, fontWeight: 'bold' } });
             text.anchor.set(0.5);
@@ -276,7 +339,7 @@ export class PixiGraphApp {
         const nodeAngles: { [nodeIdx: number]: number[] } = {};
         const edgeTotalCounts: { [key: string]: number } = {}; // ★追加: ペア間の辺の総数
 
-        for (let i = 0; i < edgeArray.length; i += 4) {
+        for (let i = 0; i < edgeArray.length; i += EDGE_STRIDE) {
             const fromIdx = edgeArray[i], toIdx = edgeArray[i + 1];
             
             // ペア間の辺の総数をカウント（A->BもB->Aも同じペアとしてまとめる）
@@ -285,8 +348,8 @@ export class PixiGraphApp {
             edgeTotalCounts[edgeKey] = (edgeTotalCounts[edgeKey] || 0) + 1;
 
             if (fromIdx !== toIdx) { // 自己ループ以外
-                const fx = nodeArray[fromIdx * 5], fy = nodeArray[fromIdx * 5 + 1];
-                const tx = nodeArray[toIdx * 5], ty = nodeArray[toIdx * 5 + 1];
+                const fx = nodeArray[fromIdx * NODE_STRIDE], fy = nodeArray[fromIdx * NODE_STRIDE + 1];
+                const tx = nodeArray[toIdx * NODE_STRIDE], ty = nodeArray[toIdx * NODE_STRIDE + 1];
                 
                 const angleFrom = Math.atan2(ty - fy, tx - fx);
                 const angleTo = Math.atan2(fy - ty, fx - tx);
@@ -304,15 +367,24 @@ export class PixiGraphApp {
         // ==========================================
         this.edgeGraphics.clear();
         const edgeCounts: { [key: string]: number } = {};
-        const arrowPolygons: number[][] = [];
+        const arrowPolygons: { pts: number[]; color: number }[] = [];
         const selfLoopBaseAngles: { [nodeIdx: number]: number } = {};
 
-        for (let i = 0; i < edgeArray.length; i += 4) {
+        for (let i = 0; i < edgeArray.length; i += EDGE_STRIDE) {
             const fromIdx = edgeArray[i], toIdx = edgeArray[i + 1], weight = edgeArray[i + 2];
-            const fx = nodeArray[fromIdx * 5], fy = nodeArray[fromIdx * 5 + 1];
-            const tx = nodeArray[toIdx * 5], ty = nodeArray[toIdx * 5 + 1];
+            const fx = nodeArray[fromIdx * NODE_STRIDE], fy = nodeArray[fromIdx * NODE_STRIDE + 1];
+            const tx = nodeArray[toIdx * NODE_STRIDE], ty = nodeArray[toIdx * NODE_STRIDE + 1];
 
-            if (this.isVisible(fx, fy) || this.isVisible(tx, ty)) {
+            const colorId = edgeArray[i + 3];
+            const strokeStyle = { width: edgeWidth(colorId) / this.world.scale.x, color: edgeColor(colorId) };
+            const textObj = this.edgeWeightTexts[i / EDGE_STRIDE];
+
+            // 画面外の辺のテキストも必ず隠す。ここで落とさないと
+            // 前のグラフの重みが画面に取り残される。
+            const onScreen = this.isVisible(fx, fy) || this.isVisible(tx, ty);
+            textObj.visible = onScreen && showText;
+
+            if (onScreen) {
                 const minIdx = Math.min(fromIdx, toIdx), maxIdx = Math.max(fromIdx, toIdx);
                 const edgeKey = `${minIdx}-${maxIdx}`;
                 const count = edgeCounts[edgeKey] || 0;
@@ -320,8 +392,6 @@ export class PixiGraphApp {
                 const totalEdges = edgeTotalCounts[edgeKey]; // ★そのペア間に何本の辺があるか
 
                 const actualRadius = this.nodeRadius + 2;
-                const textObj = this.edgeWeightTexts[i / 4];
-                textObj.visible = this.showWeights;
                 textObj.text = weight.toString();
 
                 if (fromIdx === toIdx) {
@@ -352,7 +422,7 @@ export class PixiGraphApp {
                     const startX = fx + actualRadius * Math.cos(outAngle), startY = fy + actualRadius * Math.sin(outAngle);
                     const endX = fx + actualRadius * Math.cos(inAngle), endY = fy + actualRadius * Math.sin(inAngle);
 
-                    this.edgeGraphics.moveTo(startX, startY).bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, endX, endY);
+                    this.edgeGraphics.moveTo(startX, startY).bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, endX, endY).stroke(strokeStyle);
                     
                     // テキストの距離を、実際の曲線の頂点（loopDistanceの約75%）に合わせる
                     const textDist = loopDistance * 0.75 + 10; 
@@ -361,7 +431,7 @@ export class PixiGraphApp {
                     if (this.isDirected) {
                         const dirX = endX - cp2X, dirY = endY - cp2Y;
                         const arrowAngle = Math.atan2(dirY, dirX), arrowSize = 10, wingAngle = Math.PI / 6;
-                        arrowPolygons.push([endX, endY, endX - arrowSize * Math.cos(arrowAngle - wingAngle), endY - arrowSize * Math.sin(arrowAngle - wingAngle), endX - arrowSize * Math.cos(arrowAngle + wingAngle), endY - arrowSize * Math.sin(arrowAngle + wingAngle)]);
+                        arrowPolygons.push({ color: edgeColor(colorId), pts: [endX, endY, endX - arrowSize * Math.cos(arrowAngle - wingAngle), endY - arrowSize * Math.sin(arrowAngle - wingAngle), endX - arrowSize * Math.cos(arrowAngle + wingAngle), endY - arrowSize * Math.sin(arrowAngle + wingAngle)] });
                     }
                 } else {
                     // ----------------------------------------
@@ -399,7 +469,7 @@ export class PixiGraphApp {
                         const startX = fx + ndx * actualRadius, startY = fy + ndy * actualRadius;
                         const endX = tx - ndx * actualRadius, endY = ty - ndy * actualRadius;
 
-                        this.edgeGraphics.moveTo(startX, startY).lineTo(endX, endY);
+                        this.edgeGraphics.moveTo(startX, startY).lineTo(endX, endY).stroke(strokeStyle);
 
                         // 直線の場合は進行方向の左側に配置
                         const nx = -ndy, ny = ndx;
@@ -407,7 +477,7 @@ export class PixiGraphApp {
 
                         if (this.isDirected) {
                             const arrowAngle = Math.atan2(ndy, ndx), arrowSize = 10, wingAngle = Math.PI / 6;
-                            arrowPolygons.push([endX, endY, endX - arrowSize * Math.cos(arrowAngle - wingAngle), endY - arrowSize * Math.sin(arrowAngle - wingAngle), endX - arrowSize * Math.cos(arrowAngle + wingAngle), endY - arrowSize * Math.sin(arrowAngle + wingAngle)]);
+                            arrowPolygons.push({ color: edgeColor(colorId), pts: [endX, endY, endX - arrowSize * Math.cos(arrowAngle - wingAngle), endY - arrowSize * Math.sin(arrowAngle - wingAngle), endX - arrowSize * Math.cos(arrowAngle + wingAngle), endY - arrowSize * Math.sin(arrowAngle + wingAngle)] });
                         }
                     } else {
                         // 曲線
@@ -422,7 +492,7 @@ export class PixiGraphApp {
                         const lenTo = Math.sqrt(vToControlX ** 2 + vToControlY ** 2);
                         const endX = tx + (vToControlX / lenTo) * actualRadius, endY = ty + (vToControlY / lenTo) * actualRadius;
 
-                        this.edgeGraphics.moveTo(startX, startY).quadraticCurveTo(controlX, controlY, endX, endY);
+                        this.edgeGraphics.moveTo(startX, startY).quadraticCurveTo(controlX, controlY, endX, endY).stroke(strokeStyle);
 
                         // 曲線の頂点にテキストを配置
                         const apexX = 0.25 * startX + 0.5 * controlX + 0.25 * endX;
@@ -437,16 +507,15 @@ export class PixiGraphApp {
                         if (this.isDirected) {
                             const dirX = endX - controlX, dirY = endY - controlY;
                             const arrowAngle = Math.atan2(dirY, dirX), arrowSize = 10, wingAngle = Math.PI / 6;
-                            arrowPolygons.push([endX, endY, endX - arrowSize * Math.cos(arrowAngle - wingAngle), endY - arrowSize * Math.sin(arrowAngle - wingAngle), endX - arrowSize * Math.cos(arrowAngle + wingAngle), endY - arrowSize * Math.sin(arrowAngle + wingAngle)]);
+                            arrowPolygons.push({ color: edgeColor(colorId), pts: [endX, endY, endX - arrowSize * Math.cos(arrowAngle - wingAngle), endY - arrowSize * Math.sin(arrowAngle - wingAngle), endX - arrowSize * Math.cos(arrowAngle + wingAngle), endY - arrowSize * Math.sin(arrowAngle + wingAngle)] });
                         }
                     }
                 }
             }
         }
         
-        this.edgeGraphics.stroke({ width: 2 / this.world.scale.x, color: 0x999999 });
-        for (const poly of arrowPolygons) {
-            this.edgeGraphics.poly(poly).fill({ color: 0x999999 });
+        for (const arrow of arrowPolygons) {
+            this.edgeGraphics.poly(arrow.pts).fill({ color: arrow.color });
         }
 
         // ==========================================
@@ -455,9 +524,7 @@ export class PixiGraphApp {
         let visibleNodeCount = 0;
         let nodeIndex = 0;
 
-        for (let i = 0; i < nodeArray.length; i += 5) {
-            if (nodeIndex >= this.nodeSprites.length) break;
-
+        for (let i = 0; i < nodeArray.length; i += NODE_STRIDE) {
             const x = nodeArray[i], y = nodeArray[i + 1], weight = nodeArray[i + 2], colorId = nodeArray[i + 3];
             const group = this.nodeSprites[nodeIndex];
 
@@ -465,23 +532,21 @@ export class PixiGraphApp {
                 group.visible = true;
                 group.x = x; group.y = y;
 
-                const borderColor = this.colors[colorId];
+                const borderColor = nodeStroke(colorId);
                 const bg = group.children[0] as PIXI.Graphics;
-                bg.clear().circle(0, 0, this.nodeRadius).fill(0xffffff).stroke({ width: 3, color: borderColor });
+                bg.clear().circle(0, 0, this.nodeRadius)
+                  .fill(nodeFill(colorId))
+                  .stroke({ width: 3, color: borderColor });
 
-                const meta = this.nodeMetadata[nodeIndex] || {};
                 
                 // labelText のみを取得してテキストを更新する
                 const labelText = group.getChildByLabel("labelText") as PIXI.Text;
                 if (labelText) {
-                    if (meta.label !== undefined) {
-                        // 1. 個別に設定されたラベルがあれば最優先
-                        labelText.text = meta.label;
-                    } else if (this.labelType === 'name' || this.isAutomaton) {
-                        // 2. 状態名モード、またはオートマトンモードなら q_0 形式
+                    labelText.visible = readable;
+                    if (this.labelType === 'name' || this.isAutomaton) {
+                        // 状態名モード、またはオートマトンなら q₀ 形式
                         labelText.text = `q${this.toSubscript(nodeIndex)}`;
                     } else {
-                        // 3. 通常はインデックス番号
                         labelText.text = `${nodeIndex}`;
                     }
                 }
@@ -489,7 +554,7 @@ export class PixiGraphApp {
                 const acceptRing = group.getChildByLabel("acceptRing") as PIXI.Graphics;
                 if (acceptRing) {
                     acceptRing.clear();
-                    if (meta.isAccepting) {
+                    if (accepting.has(nodeIndex)) {
                         acceptRing.circle(0, 0, this.nodeRadius - 4).stroke({ width: 2, color: borderColor });
                         acceptRing.visible = true;
                     } else acceptRing.visible = false;
@@ -497,8 +562,7 @@ export class PixiGraphApp {
 
                 const startArrow = group.getChildByLabel("startArrow") as PIXI.Graphics;
                 const startText = group.getChildByLabel("startText") as PIXI.Text;
-                if (meta.isStart) {
-                    // if (startArrow) startArrow.visible = !!meta.isStart;
+                if (this.isAutomaton && nodeIndex === startIdx) {
                     if (startArrow) startArrow.visible = true;
                     if (startText) startText.visible = true;
 
@@ -537,7 +601,7 @@ export class PixiGraphApp {
 
                 const wText = group.getChildByLabel("weightText") as PIXI.Text;
                 if (wText) {
-                    wText.visible = this.showWeights;
+                    wText.visible = showText;
                     wText.text = weight.toString();
                     
                     // ★ 自己ループも含めた上で、最も広く空いている角度を再計算！

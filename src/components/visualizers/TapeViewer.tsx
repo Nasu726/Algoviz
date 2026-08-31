@@ -1,9 +1,10 @@
 import React from 'react';
 import { char } from '../../utils/functions';
+import type { TapeCell } from '../../types/engine';
 
 // 必要なデータ（Props）の定義
 interface TapeViewerProps {
-  tapeData: any[];     // 表示用のセル配列
+  tapeData: TapeCell[]; // 表示用のセル配列
   ptr: number;         // ポインタ位置
   stepCount: bigint;   // ステップ数
   offsetPx: number;    // スライド用のアニメーション量

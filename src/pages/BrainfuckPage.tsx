@@ -1,25 +1,15 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useInterval } from 'react-use';
 import { Popup } from '../components/ui/popup';
+import { PlaybackControls } from '../components/ui/PlaybackControls';
+import { speedUp, speedDown } from '../components/ui/playbackSpeed';
 import { useKeyboardShortcuts } from '../hooks/keyboardShortcut';
 import { TapeViewer } from '../components/visualizers/TapeViewer';
-
-// App.tsxの「型定義」をそのままコピーしてここに貼る
-interface TapeCell { index: number; value: number; exists: boolean; name: string; }
-interface VisualizerState {
-  pc: number;
-  ptr: number;
-  tape: TapeCell[];     // 配列であることを期待
-  output: string;
-  stepCount: bigint;   // 任意項目にしておく
-  code: string;
-  isError: boolean;
-  errorMessage: string;
-}
+import type { VisualizerEngine, BrainfuckState, TapeCell } from '../types/engine';
 
 // ★大事：Props（親から受け取るもの）を定義
 interface BrainfuckPageProps {
-  engine: any;       // Wasmのインスタンス
+  engine: VisualizerEngine; // Wasmのインスタンス
   onBack: () => void; // メニューに戻るための命令
 }
 
@@ -31,7 +21,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
   const [editorMode, setEditorMode] = useState(true);
   
   // ビジュアライザの状態
-  const [state, setState] = useState<VisualizerState | null>(null);
+  const [state, setState] = useState<BrainfuckState | null>(null);
   const [mod256, setModint] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [delay, setDelay] = useState(300);
@@ -73,18 +63,26 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
     }
   }, [state]); // stateが変わるたびにチェックする
 
+  // ステップ上限による中断の通知。state から導出するので、
+  // 1ステップでも進める / 戻る / ロードすれば自動的に消える。
+  const notice = state?.interrupted
+    ? `ステップ上限 (${Number(state.stepLimit).toLocaleString()} ステップ) に達したため中断しました。「一気に実行」をもう一度押すと続きから実行します。`
+    : "";
+
   // ===  自動ロード (準備完了時に実行) ===
   useEffect(() => {
     if (engine && !state) {
       handleLoad();
     }
+    // Wasm エンジンが用意できた1回だけ走らせたい
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine]);
 
   // === ResizeObserver による画面サイズ監視を追加 ===
   useEffect(() => {
     if (!tapeContainerRef.current) return;
     const observer = new ResizeObserver((entries) => {
-      for (let entry of entries) {
+      for (const entry of entries) {
         // テープエリアの幅に合わせて表示セル数を計算（+4 はスクロール時の余白）
         const newSize = Math.ceil(entry.contentRect.width / (CELL_WIDTH+4));
         setViewSize(newSize);
@@ -98,11 +96,15 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
   useEffect(() => {
     if (isPlaying) setIsPlaying(false);
     setEditorMode(true);
+    // コードが編集されたときだけ反応する
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
   // === 自動スクロール ===
   useEffect(() => {
     if (state && autoScroll) setCameraStart(state.ptr - (viewSize+1) / 2);
+    // 追従の切り替えと表示幅の変化にだけ反応する (実行中は各ステップ側で追従している)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoScroll, viewSize]);
 
   // どんな描画更新があっても、強制的に背面divのスクロールを手前と一致させる
@@ -129,7 +131,9 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
       textAreaRef.current.scrollTop = highlightDivRef.current.scrollTop;
       textAreaRef.current.scrollLeft = highlightDivRef.current.scrollLeft;
     }
-  }, [state?.pc, autoScroll]); // pc が変わるたびに実行
+    // pc が動いたときだけスクロールし直す
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.pc, autoScroll]);
 
   // === 実行ループ ===
   useInterval(() => {
@@ -137,6 +141,27 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
       stepExecution();
     }
   }, isPlaying ? delay : null);
+
+  const runToEnd = () => {
+    if (!engine) return;
+    if (isPlaying) setIsPlaying(false);
+    if (state && (code !== state.code || state.stepCount === 0n)) {
+      handleLoad();
+    }
+
+    try {
+        // C++側でステップ上限まで一気に回す。上限に達した場合は
+        // newState.interrupted が立ち、通知バナーで知らせる。
+        engine.runToEnd();
+
+        const newState = engine.getState<BrainfuckState>({ start: cameraStart, range: viewSize });
+        setState(newState);
+        if (autoScroll) setCameraStart(newState.ptr - (viewSize + 1) / 2);
+        setOutput(engine.getOutput());
+    } catch (e) {
+        console.error("RunToEnd Error:", e);
+    }
+  };
 
   const backToMenu = () => {
     if (window.confirm("ビジュアライザ一覧へ戻りますか？（未保存の内容は失われます）")){
@@ -161,30 +186,14 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
     if (!engine) return;
 
     try {
-      const result = engine.step();
-      const tempState = engine.getState({ start: cameraStart, range: viewSize });
-
-      // デバッグ用: 期待通りのデータが来ているかコンソールで確認できるようにする
-      console.log("Engine State:", tempState);
-
-      let nextCameraStart = cameraStart;
-      if (autoScroll) {
-        nextCameraStart = tempState.ptr - (viewSize+1) / 2;
-      }
-
-      const newState = engine.getState({ start: nextCameraStart, range: viewSize });
+      const alive = engine.step();
+      const newState = engine.getState<BrainfuckState>({ start: cameraStart, range: viewSize });
 
       setState(newState);
-      setCameraStart(nextCameraStart);
-      
-      // 出力取得の優先順位: getOutput関数 > state.output > 空文字
-      if (engine.getOutput) {
-          setOutput(engine.getOutput());
-      } else if (newState && typeof newState.output === 'string') {
-          setOutput(newState.output);
-      }
+      if (autoScroll) setCameraStart(newState.ptr - (viewSize+1) / 2);
+      setOutput(engine.getOutput());
 
-      if (!result) setIsPlaying(false);
+      if (!alive) setIsPlaying(false);
     } catch (e) {
       console.error("Execution Error:", e);
       setIsPlaying(false);
@@ -219,20 +228,11 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
 
     try {
       engine.stepBack();
-      const currentState = engine.getState({ start: cameraStart, range: viewSize });
+      const newState = engine.getState<BrainfuckState>({ start: cameraStart, range: viewSize });
 
-      if(autoScroll) {
-        setCameraStart(currentState.ptr - (viewSize+1) / 2);
-        setState(engine.getState({ start: currentState.ptr - viewSize / 2, range: viewSize }));
-      } else {
-        setState(currentState);
-      }
-
-      if (engine.getOutput) {
-        setOutput(engine.getOutput());
-      } else {
-        setOutput(currentState.output);
-      }
+      setState(newState);
+      if (autoScroll) setCameraStart(newState.ptr - (viewSize+1) / 2);
+      setOutput(engine.getOutput());
 
     } catch (e) {
       console.error("StepBack Error:", e);
@@ -247,10 +247,13 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
       engine.setAlgorithm("brainfuck");
       engine.setBrainfuckModint(mod256);
       engine.load(code, input);
-      setCameraStart(-(viewSize+1)/2);
-      const newState = engine.getState({ start: cameraStart, range: viewSize });
-      setState(newState);
+      // setCameraStart は次のレンダーまで反映されないので、
+      // getState には計算した値をそのまま渡す
+      const newStart = -(viewSize+1)/2;
+      setCameraStart(newStart);
+      setState(engine.getState<BrainfuckState>({ start: newStart, range: viewSize }));
       setOutput("");
+
       setIsPlaying(false);
       setEditorMode(false);
     } catch (e) {
@@ -286,7 +289,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
   // 3. 画面描画用のデータを取得
   let tapeData: TapeCell[] = [];
   if (engine) {
-    const displayState = engine.getState({ start: baseIndex, range: viewSize + 2 });
+    const displayState = engine.getState<BrainfuckState>({ start: baseIndex, range: viewSize + 2 });
     tapeData = displayState.tape;
   }
 
@@ -300,18 +303,8 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
     onFocus: () => !isHelpPopupOpen ? setAutoScroll(!autoScroll) : null,
     onStepNext: !isHelpPopupOpen ? stepButton : undefined,
     onStepBack: !isHelpPopupOpen ? stepBack : undefined,
-    onSpeedUp: () => {
-      if(isHelpPopupOpen) return;
-      if(delay>=10) {
-        setDelay(Math.max(0, ((-Math.sqrt(1000*delay)+100)**2)/1000));
-      } else {
-        setDelay(0);
-      };
-    },
-    onSpeedDown: () => {
-      if(isHelpPopupOpen) return;
-      setDelay(Math.max(0, ((-Math.sqrt(1000*delay)-100)**2)/1000));
-    },
+    onSpeedUp: () => { if (!isHelpPopupOpen) setDelay(speedUp(delay)); },
+    onSpeedDown: () => { if (!isHelpPopupOpen) setDelay(speedDown(delay)); },
   });
 
   return (
@@ -386,6 +379,23 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
           setCameraStart(nextCameraStart);
         }}
       >
+        {notice && (
+          <div style={{
+            position: 'absolute',
+            top: '12px', left: '12px', right: '130px',
+            zIndex: 20,
+            display: 'flex', alignItems: 'center', gap: '10px',
+            padding: '8px 12px',
+            backgroundColor: '#fff8e1',
+            border: '1px solid #ffb300',
+            borderRadius: '4px',
+            color: '#5d4037',
+            fontSize: '13px',
+          }}>
+            <span style={{ flex: 1 }}>{notice}</span>
+          </div>
+        )}
+
         <div
           style={{
             position: 'absolute',
@@ -403,7 +413,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
                 const checked = e.target.checked;
                 setModint(checked);
                 if (engine && engine.setBrainfuckModint) engine.setBrainfuckModint(checked);
-                try {handleLoad();} catch (err) {/* 良くないけど、致命的な影響はないので握りつぶす */}
+                try {handleLoad();} catch { /* ロード失敗は次の実行時に再試行されるので握りつぶす */ }
               }}
               style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }}
             />
@@ -493,26 +503,22 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
           backgroundColor: '#f5f5f5',
           color: '#000000',
         }}>
-           <button onClick={handleLoad} style={{ padding: '8px 8px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap', backgroundColor: '#f5f5f5', color: '#000000' }}>ロード</button>
-           <button onClick={executeButton} disabled={!state} style={{ padding: '8px 12px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap', backgroundColor: '#f5f5f5', color: '#000000' }}>
-             {isPlaying ? "停止" : "実行"}
-           </button>
-           <button onClick={stepBack} disabled={!state || isPlaying} style={{ padding: '8px 8px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap', backgroundColor: '#f5f5f5', color: '#000000' }}>戻る</button>
-           <button onClick={stepButton} disabled={!state || isPlaying} style={{ padding: '8px 8px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap', backgroundColor: '#f5f5f5', color: '#000000' }}>進む</button>
-           <div style={{ 
-             display: 'flex',       // グループの中身も横並びにする
-             alignItems: 'center',  // 縦の真ん中で揃える
-             gap: '10px',           // グループ内の要素の隙間
-             flexShrink: 0          // グループ全体として縮まないようにする
-           }}>
-              <span style={{padding: '0px 0px 0px 0px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap' }}>実行速度
-                <input type="range" min="0" max="1000" value={1000-Math.sqrt(1000*delay)} onChange={(e) => {const x=Number(e.target.value);setDelay((x-1000)*(x-1000)/1000)}} style={{ marginLeft: '0.5em' }}/>
-              </span>
-              <label style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', userSelect: 'none', flexShrink: 0, whiteSpace: 'nowrap'}}>
-                <input type='checkbox' checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} style={{ padding: '8px 8px' }}/>
-                自動追従
-              </label>
-            </div>
+           <PlaybackControls
+             isPlaying={isPlaying}
+             ready={!!state}
+             delay={delay}
+             onLoad={handleLoad}
+             onPlayPause={executeButton}
+             onStepBack={stepBack}
+             onStepNext={stepButton}
+             onRunToEnd={runToEnd}
+             onDelayChange={setDelay}
+           >
+             <label style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', userSelect: 'none', flexShrink: 0, whiteSpace: 'nowrap'}}>
+               <input type='checkbox' checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} style={{ padding: '8px 8px' }}/>
+               自動追従
+             </label>
+           </PlaybackControls>
         </div>
   
         {/* エディタ & I/O */}

@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import type { VisualizerEngine, CreateVisualizerModule } from './types/engine';
 
 import { MenuPage } from './pages/Menu';
 import { BrainfuckPage } from './pages/BrainfuckPage';
-// import { GraphPage } from './pages/GraphPage';
+import { GraphPage } from './pages/GraphPage';
 
 function MainMenu() {
   return (
@@ -11,7 +12,7 @@ function MainMenu() {
   );
 }
 
-function BrainfuckWrapper({ engine }: { engine: any }) {
+function BrainfuckWrapper({ engine }: { engine: VisualizerEngine }) {
   const navigate = useNavigate();
   return (
     <BrainfuckPage 
@@ -21,21 +22,21 @@ function BrainfuckWrapper({ engine }: { engine: any }) {
   );
 }
 
-// function GraphWrapper({engine}: {engine: any}){
-//   const navigate = useNavigate();
-//   return (
-//     <GraphPage
-//       engine={engine}
-//       onBack={() => navigate("/")}
-//     />
-//   );
-// }
+function GraphWrapper({engine}: {engine: VisualizerEngine}){
+  const navigate = useNavigate();
+  return (
+    <GraphPage
+      engine={engine}
+      onBack={() => navigate("/")}
+    />
+  );
+}
 
 function App() {
   const [isReady, setIsReady] = useState(false);
   const [loadError, setLoadError] = useState("");
-  const engineRef = useRef<any>(null);
-  const createModuleRef = useRef<any>(null);
+  const engineRef = useRef<VisualizerEngine | null>(null);
+  const createModuleRef = useRef<CreateVisualizerModule | null>(null);
 
     // ===  Wasmモジュールの読み込み ===
     useEffect(() => {
@@ -44,7 +45,7 @@ function App() {
   
       const checkAndLoad = async () => {
         // index.html で読み込まれた core.js が createVisualizerModule を定義するのを待つ
-        if (typeof (window as any).createVisualizerModule !== 'function') {
+        if (typeof globalThis.createVisualizerModule !== 'function') {
           if (retryCount < maxRetries) {
             retryCount++;
             setTimeout(checkAndLoad, 100);
@@ -56,7 +57,11 @@ function App() {
   
         try {
           if (!createModuleRef.current) {
-            createModuleRef.current = (window as any).createVisualizerModule;
+            createModuleRef.current = globalThis.createVisualizerModule ?? null;
+          }
+          if (!createModuleRef.current) {
+            setLoadError("createVisualizerModule が読み込めませんでした。");
+            return;
           }
           const module = await createModuleRef.current();
           
@@ -67,9 +72,9 @@ function App() {
           
           engineRef.current = new module.VisualizerEngine();
           setIsReady(true);
-        } catch (e: any) {
+        } catch (e) {
           console.error("Wasm Init Error:", e);
-          setLoadError(`Wasm Error: ${e.message}`);
+          setLoadError(`Wasm Error: ${e instanceof Error ? e.message : String(e)}`);
         }
       };
       
@@ -98,9 +103,11 @@ function App() {
       <Route path="/" element={<MainMenu/>}/>
 
       {/* URLが '/brainfuck' のときはビジュアライザを表示 */}
-      <Route path="/brainfuck" element={<BrainfuckWrapper engine={engineRef.current} />} />
+      <Route path="/brainfuck" element={<BrainfuckWrapper engine={engineRef.current!} />} />
 
-      {/* <Route path="/graph" element={<GraphWrapper engine={engineRef.current} />} /> */}
+      {/* グラフ描画システム自体は公開しない (メニューには載せない) が、
+          レイアウトとパッキングの回帰を目視確認する手段としてルートは残す */}
+      <Route path="/graph" element={<GraphWrapper engine={engineRef.current!} />} />
     </Routes>
 
     </BrowserRouter>
