@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useInterval } from 'react-use';
-import { Popup } from '../components/ui/popup';
+import { VisualizerShell } from '../components/ui/VisualizerShell';
 import { PlaybackControls } from '../components/ui/PlaybackControls';
-import { speedUp, speedDown } from '../components/ui/playbackSpeed';
 import { useKeyboardShortcuts } from '../hooks/keyboardShortcut';
+import { usePlayback } from '../hooks/usePlayback';
+import { useViewportWidth } from '../hooks/useViewportWidth';
 import { TapeViewer } from '../components/visualizers/TapeViewer';
 import type { VisualizerEngine, BrainfuckState, TapeCell } from '../types/engine';
 
@@ -23,8 +23,6 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
   // ビジュアライザの状態
   const [state, setState] = useState<BrainfuckState | null>(null);
   const [mod256, setModint] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [delay, setDelay] = useState(300);
   const [viewSize, setViewSize] = useState(20);
   const [cameraStart, setCameraStart] = useState(-10.0);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -33,20 +31,18 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
 
   // ユーザー操作
   const [isDragging, setIsDragging] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 475);
+  // テープのセルが並ぶ幅で切る。レイアウトの3段階 (useLayoutTier) とは
+  // 意味が違うので、しきい値は揃えない。
+  const isMobile = useViewportWidth() <= 475;
   const [lastTouchX, setLastTouchX] = useState<number | null>(null);
   const [isHelpPopupOpen, setIsHelpPopupOpen] = useState(false);
+
+  const { isPlaying, setIsPlaying, delay, setDelay, onSpeedUp, onSpeedDown } =
+    usePlayback(() => stepExecution());
 
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const highlightDivRef = useRef<HTMLDivElement>(null);
   const highlightSpanRef = useRef<HTMLSpanElement>(null);
-
-  // スマホサイズの画面かどうかを検知
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth <= 475);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
   // エラー監視用
   useEffect(() => {
@@ -61,7 +57,8 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
       
       return () => clearTimeout(timer);
     }
-  }, [state]); // stateが変わるたびにチェックする
+    // setIsPlaying は useState の setter なので、依存に入れても再実行はされない
+  }, [state, setIsPlaying]); // stateが変わるたびにチェックする
 
   // ステップ上限による中断の通知。state から導出するので、
   // 1ステップでも進める / 戻る / ロードすれば自動的に消える。
@@ -135,37 +132,38 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.pc, autoScroll]);
 
-  // === 実行ループ ===
-  useInterval(() => {
-    if (isPlaying && engine) {
-      stepExecution();
+  // 実行系が毎回やること。C++ から状態を読み直し、追従と出力を揃える。
+  const syncState = () => {
+    const newState = engine.getState<BrainfuckState>({ start: cameraStart, range: viewSize });
+    setState(newState);
+    if (autoScroll) setCameraStart(newState.ptr - (viewSize + 1) / 2);
+    setOutput(engine.getOutput());
+    return newState;
+  };
+
+  // コードが書き換わっていたら、あるいはまだ1手も進んでいなければ読み込み直す。
+  // 読み込み直したかどうかを返す。ステップバックだけは、読み込み直した時点で
+  // 「先頭に戻った」ことになるので、そのまま何もせず抜ける。
+  const ensureLoaded = () => {
+    if (state && (code !== state.code || state.stepCount === 0n)) {
+      handleLoad();
+      return true;
     }
-  }, isPlaying ? delay : null);
+    return false;
+  };
 
   const runToEnd = () => {
     if (!engine) return;
     if (isPlaying) setIsPlaying(false);
-    if (state && (code !== state.code || state.stepCount === 0n)) {
-      handleLoad();
-    }
+    ensureLoaded();
 
     try {
         // C++側でステップ上限まで一気に回す。上限に達した場合は
-        // newState.interrupted が立ち、通知バナーで知らせる。
+        // interrupted が立ち、通知バナーで知らせる。
         engine.runToEnd();
-
-        const newState = engine.getState<BrainfuckState>({ start: cameraStart, range: viewSize });
-        setState(newState);
-        if (autoScroll) setCameraStart(newState.ptr - (viewSize + 1) / 2);
-        setOutput(engine.getOutput());
+        syncState();
     } catch (e) {
         console.error("RunToEnd Error:", e);
-    }
-  };
-
-  const backToMenu = () => {
-    if (window.confirm("ビジュアライザ一覧へ戻りますか？（未保存の内容は失われます）")){
-      onBack();
     }
   };
 
@@ -187,12 +185,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
 
     try {
       const alive = engine.step();
-      const newState = engine.getState<BrainfuckState>({ start: cameraStart, range: viewSize });
-
-      setState(newState);
-      if (autoScroll) setCameraStart(newState.ptr - (viewSize+1) / 2);
-      setOutput(engine.getOutput());
-
+      syncState();
       if (!alive) setIsPlaying(false);
     } catch (e) {
       console.error("Execution Error:", e);
@@ -202,38 +195,27 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
 
   // 実行ボタンを押したときの動作
   const executeButton = () => {
-    if(!engine) return;
-    if(state && (code != state.code || state.stepCount===0n)){
-      handleLoad();
-    }
+    if (!engine) return;
+    ensureLoaded();
     setIsPlaying(!isPlaying);
   };
 
   // ステップ実行時の動作
   const stepButton = () => {
-    if(!engine) return;
-    if(state && (code !== state.code || state.stepCount===0n)){
-      handleLoad();
-    }
+    if (!engine) return;
+    ensureLoaded();
     stepExecution();
-  }
+  };
 
   // ステップバック時の動作
   const stepBack = () => {
-    if(!engine) return;
-    if(state && (code !== state.code || state.stepCount===0n)){
-      handleLoad();
-      return;
-    }
+    if (!engine) return;
+    // 読み込み直したなら、それが「先頭に戻る」ことそのものなので何もしない
+    if (ensureLoaded()) return;
 
     try {
       engine.stepBack();
-      const newState = engine.getState<BrainfuckState>({ start: cameraStart, range: viewSize });
-
-      setState(newState);
-      if (autoScroll) setCameraStart(newState.ptr - (viewSize+1) / 2);
-      setOutput(engine.getOutput());
-
+      syncState();
     } catch (e) {
       console.error("StepBack Error:", e);
       setIsPlaying(false);
@@ -295,7 +277,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
 
   // === キーボードショートカット === 
   useKeyboardShortcuts({
-    onEsc: !isHelpPopupOpen ? backToMenu : undefined,
+    onEsc: !isHelpPopupOpen ? onBack : undefined,
     onHelp: () => setIsHelpPopupOpen(!isHelpPopupOpen),
     onSave: !isHelpPopupOpen ? handleLoad: undefined,
     onSaveFile: !isHelpPopupOpen ? saveCode: undefined,
@@ -303,34 +285,91 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
     onFocus: () => !isHelpPopupOpen ? setAutoScroll(!autoScroll) : null,
     onStepNext: !isHelpPopupOpen ? stepButton : undefined,
     onStepBack: !isHelpPopupOpen ? stepBack : undefined,
-    onSpeedUp: () => { if (!isHelpPopupOpen) setDelay(speedUp(delay)); },
-    onSpeedDown: () => { if (!isHelpPopupOpen) setDelay(speedDown(delay)); },
+    onSpeedUp: () => { if (!isHelpPopupOpen) onSpeedUp(); },
+    onSpeedDown: () => { if (!isHelpPopupOpen) onSpeedDown(); },
   });
 
+  const help = (
+    <>
+        <h3>1. ビジュアライザの仕様</h3>
+        <h4>メモリテープ</h4>
+        <ul>
+          <li><b>セル</b>：データの箱。書いてある情報は上から順に以下の通り
+          <ul>
+            <li><b>値</b>：セルの値。0～255の符号なし整数で表され、初期値は0</li>
+            <li><b>文字</b>：セルの値を文字コードと見たときに対応する文字。C++のchar型に準拠しているが、ASCIIの制御文字にあたる文字はそれを表す文字列が表示される</li>
+            <li><b>番地</b>：セルの番地。0～29999まであり、テープ下の「ポインタ位置」は実行中のプログラムが指すこれを表す。テープは循環していないので、範囲外参照はエラーとなる。</li>
+          </ul>
+          </li>
+          <li><b>ポインタ位置</b>：実行中のプログラムが指しているセルの番地。初期値は0</li>
+          <li><b>実行ステップ数</b>：実行された命令の数</li>
+        </ul>
+        <h4>各種ボタン・操作</h4>
+        <ul>
+          <li><b>ロード</b>：ビジュアライザの状態をプログラム実行前の状態にする</li>
+          <li><b>実行/停止</b>：プログラムを実行/停止できる</li>
+          <li><b>戻る</b>：プログラムの１つ前の命令を実行する前の状態に戻す。ステップバック</li>
+          <li><b>進む</b>：プログラムの次の命令を読んで状態を更新する。ステップ実行</li>
+          <li><b>実行速度</b>：実行速度を変更できる。バーを一番左にすると1秒ごとに1ステップ実行され、一番右にすると限りなく高速に実行される</li>
+          <li><b>自動追従</b>：チェックボックスにチェックが入っている間、ポインタが指すセルを自動でフォーカスして追う。チェックを外すか画面上部をクリックして左右に動かすと手動制御に切り替わる</li>
+          <li><b>mod128/256</b>：セルの値が取りうる範囲を設定できる。mod128のときは0～127、mod256のときは0～255を取る。</li>
+        </ul>
+        <h4>画面下部</h4>
+        <ul>
+          <li><b>コードエディタ</b>：コードの編集ができる。プログラム実行時は次の命令の位置がハイライトされる</li>
+          <li><b>標準入力</b>：標準入力を与えることができる。2byte以上で表現される文字は1byteずつ読み取られるが、値はUTF-8の内部表現に依存する。(例：ö(246) → 195 182)</li>
+          <li><b>標準出力</b>：標準出力の結果が表示される。表示される文字は、出力されたバイト列をUTF-8として解釈したときの値となる。(例：195 182 → ö)</li>
+        </ul>
+        <h4>その他細かい仕様</h4>
+        <ul>
+          <li>EOF は -1 です。7bit モードでは127、8bit モードでは255にあたります。</li>
+          <li>コードが編集されると次回実行時に自動でロードされる。現在の状態を確認しながら編集でき、実行時は自動でリロードされてスムーズな体験を提供する</li>
+          <li>過去1000ステップ分の実行履歴を保持するため、ステップバックは1000回まで可能。</li>
+        </ul>
+
+        <h3>2. Brainfuckの文法</h3>
+        <p>使える命令は以下の8つ。全て半角記号。これらの記号以外は無視される</p>
+        <ul>
+          <li><b>＋</b>： セルの値のインクリメント</li>
+          <li><b>ー</b>： セルの値のデクリメント</li>
+          <li><b>＞</b>： ポインタのインクリメント(右移動)</li>
+          <li><b>＜</b>： ポインタのデクリメント(左移動)</li>
+          <li><b>［</b>： ループ開始。ポインタが指すセルの値が0なら対応する閉じカッコ( ］)までジャンプする。while(tape[ptr]＞0)と等価</li>
+          <li><b>］</b>： ループ閉じ。ポインタが指すセルの値が0でないなら対応する開きカッコ(［ )までジャンプする。</li>
+          <li><b>，</b>： 標準入力を1byteだけ受け取る。2byte以上で表現される文字は1byteずつ読み取られるが、値はUTF-8の内部表現に依存する。(例：ö(246=0xF6) → 195 182)</li>
+          <li><b>．</b>： 1byteの標準出力。ポインタが指すセルの値を表すビット列を出力する。()</li>
+        </ul>
+        <h4>このビジュアライザでのみ使える特別な命令</h4>
+        <ul>
+          <li><b>!</b>：仮の変数宣言。英文字と数字(先頭は不可)、アンダーバーからなる文字列を「!」で挟むと、宣言した位置のセルに名前を付けられる(値は上書きされない)。既に名前が付いたセルの番地でもう一度変数宣言をすると名前が上書きされる。 例：!Variable_1!<br/>*有効な文字列の正規表現： ^([A-Za-z_][0-9A-Za-z_]*)?$ </li>
+        </ul>
+        
+        <h3>3. ショートカットキー</h3>
+        <ul>
+          <li><b>Esc</b>：ビジュアライザ選択画面へ戻る</li>
+          <li><b>Ctrl + Enter</b>：実行/一時停止</li>
+          <li><b>Ctrl + H</b>：ヘルプを開く</li>
+          <li><b>Ctrl + S</b>：コードを保存してロード</li>
+          <li><b>Ctrl + Alt + S</b>：コードをファイルとして保存</li>
+          <li><b>Ctrl + F</b>：自動追従/手動追従の切り替え</li>
+          <li><b>Ctrl + ←</b>：戻る/ステップバック</li>
+          <li><b>Ctrl + →</b>：進む/ステップ実行</li>
+          <li><b>Ctrl + ↑</b>：実行速度アップ</li>
+          <li><b>Ctrl + ↓</b>：実行速度ダウン</li>
+        </ul>
+    </>
+  );
+
   return (
-    <div style={{ 
-      display: 'flex', flexDirection: 'column', 
-      height: '100vh', width: '100vw', 
-      margin: 0, overflow: 'hidden', fontFamily: 'sans-serif' 
-    }}>
-  
-      {/* === ヘッダー === */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        padding: isMobile ? '8px 10px' : '10px 20px', 
-        backgroundColor: '#263238', 
-        color: 'white' 
-      }}>
-        <button onClick={backToMenu} style={{ cursor: 'pointer', fontSize: isMobile ? '10px' : '16px' }}>
-          ◀ 戻る
-        </button>
-        <h2 style={{ margin: 0, fontSize: isMobile ? '12px' : '18px' }}>Brainfuck Visualizer</h2>
-        <button onClick={() => setIsHelpPopupOpen(true)} style={{ cursor:'pointer', fontWeight: "bold", fontSize: isMobile ? '10px' : '16px'  }}>
-          ヘルプ ❓
-        </button>
-      </div>
+    <VisualizerShell
+      title="Brainfuck Visualizer"
+      compact={isMobile}
+      onBack={onBack}
+      backConfirm="ビジュアライザ一覧へ戻りますか？（未保存の内容は失われます）"
+      isHelpOpen={isHelpPopupOpen}
+      setIsHelpOpen={setIsHelpPopupOpen}
+      help={help}
+    >
       {/* === [1] 上部: テープ表示エリア === */}
       <div 
         ref={tapeContainerRef}
@@ -564,78 +603,6 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
   
         </div>
       </div>
-      <Popup 
-        title={"ヘルプ"}
-        isOpen={isHelpPopupOpen}
-        onClose={() => setIsHelpPopupOpen(false)}
-      >
-        <h3>1. ビジュアライザの仕様</h3>
-        <h4>メモリテープ</h4>
-        <ul>
-          <li><b>セル</b>：データの箱。書いてある情報は上から順に以下の通り
-          <ul>
-            <li><b>値</b>：セルの値。0～255の符号なし整数で表され、初期値は0</li>
-            <li><b>文字</b>：セルの値を文字コードと見たときに対応する文字。C++のchar型に準拠しているが、ASCIIの制御文字にあたる文字はそれを表す文字列が表示される</li>
-            <li><b>番地</b>：セルの番地。0～29999まであり、テープ下の「ポインタ位置」は実行中のプログラムが指すこれを表す。テープは循環していないので、範囲外参照はエラーとなる。</li>
-          </ul>
-          </li>
-          <li><b>ポインタ位置</b>：実行中のプログラムが指しているセルの番地。初期値は0</li>
-          <li><b>実行ステップ数</b>：実行された命令の数</li>
-        </ul>
-        <h4>各種ボタン・操作</h4>
-        <ul>
-          <li><b>ロード</b>：ビジュアライザの状態をプログラム実行前の状態にする</li>
-          <li><b>実行/停止</b>：プログラムを実行/停止できる</li>
-          <li><b>戻る</b>：プログラムの１つ前の命令を実行する前の状態に戻す。ステップバック</li>
-          <li><b>進む</b>：プログラムの次の命令を読んで状態を更新する。ステップ実行</li>
-          <li><b>実行速度</b>：実行速度を変更できる。バーを一番左にすると1秒ごとに1ステップ実行され、一番右にすると限りなく高速に実行される</li>
-          <li><b>自動追従</b>：チェックボックスにチェックが入っている間、ポインタが指すセルを自動でフォーカスして追う。チェックを外すか画面上部をクリックして左右に動かすと手動制御に切り替わる</li>
-          <li><b>mod128/256</b>：セルの値が取りうる範囲を設定できる。mod128のときは0～127、mod256のときは0～255を取る。</li>
-        </ul>
-        <h4>画面下部</h4>
-        <ul>
-          <li><b>コードエディタ</b>：コードの編集ができる。プログラム実行時は次の命令の位置がハイライトされる</li>
-          <li><b>標準入力</b>：標準入力を与えることができる。2byte以上で表現される文字は1byteずつ読み取られるが、値はUTF-8の内部表現に依存する。(例：ö(246) → 195 182)</li>
-          <li><b>標準出力</b>：標準出力の結果が表示される。表示される文字は、出力されたバイト列をUTF-8として解釈したときの値となる。(例：195 182 → ö)</li>
-        </ul>
-        <h4>その他細かい仕様</h4>
-        <ul>
-          <li>EOF は -1 です。7bit モードでは127、8bit モードでは255にあたります。</li>
-          <li>コードが編集されると次回実行時に自動でロードされる。現在の状態を確認しながら編集でき、実行時は自動でリロードされてスムーズな体験を提供する</li>
-          <li>過去1000ステップ分の実行履歴を保持するため、ステップバックは1000回まで可能。</li>
-        </ul>
-
-        <h3>2. Brainfuckの文法</h3>
-        <p>使える命令は以下の8つ。全て半角記号。これらの記号以外は無視される</p>
-        <ul>
-          <li><b>＋</b>： セルの値のインクリメント</li>
-          <li><b>ー</b>： セルの値のデクリメント</li>
-          <li><b>＞</b>： ポインタのインクリメント(右移動)</li>
-          <li><b>＜</b>： ポインタのデクリメント(左移動)</li>
-          <li><b>［</b>： ループ開始。ポインタが指すセルの値が0なら対応する閉じカッコ( ］)までジャンプする。while(tape[ptr]＞0)と等価</li>
-          <li><b>］</b>： ループ閉じ。ポインタが指すセルの値が0でないなら対応する開きカッコ(［ )までジャンプする。</li>
-          <li><b>，</b>： 標準入力を1byteだけ受け取る。2byte以上で表現される文字は1byteずつ読み取られるが、値はUTF-8の内部表現に依存する。(例：ö(246=0xF6) → 195 182)</li>
-          <li><b>．</b>： 1byteの標準出力。ポインタが指すセルの値を表すビット列を出力する。()</li>
-        </ul>
-        <h4>このビジュアライザでのみ使える特別な命令</h4>
-        <ul>
-          <li><b>!</b>：仮の変数宣言。英文字と数字(先頭は不可)、アンダーバーからなる文字列を「!」で挟むと、宣言した位置のセルに名前を付けられる(値は上書きされない)。既に名前が付いたセルの番地でもう一度変数宣言をすると名前が上書きされる。 例：!Variable_1!<br/>*有効な文字列の正規表現： ^([A-Za-z_][0-9A-Za-z_]*)?$ </li>
-        </ul>
-        
-        <h3>3. ショートカットキー</h3>
-        <ul>
-          <li><b>Esc</b>：ビジュアライザ選択画面へ戻る</li>
-          <li><b>Ctrl + Enter</b>：実行/一時停止</li>
-          <li><b>Ctrl + H</b>：ヘルプを開く</li>
-          <li><b>Ctrl + S</b>：コードを保存してロード</li>
-          <li><b>Ctrl + Alt + S</b>：コードをファイルとして保存</li>
-          <li><b>Ctrl + F</b>：自動追従/手動追従の切り替え</li>
-          <li><b>Ctrl + ←</b>：戻る/ステップバック</li>
-          <li><b>Ctrl + →</b>：進む/ステップ実行</li>
-          <li><b>Ctrl + ↑</b>：実行速度アップ</li>
-          <li><b>Ctrl + ↓</b>：実行速度ダウン</li>
-        </ul>
-      </Popup>
-    </div>
+    </VisualizerShell>
   );
 };

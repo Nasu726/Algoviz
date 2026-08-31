@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useViewportWidth } from './useViewportWidth';
 
 // 画面幅で3段階に分ける。
 //   wide   … 設定サイドバー + キャンバス + 実行サイドバー (2サイドバー)
@@ -15,27 +15,4 @@ const tierFor = (width: number): LayoutTier => {
     return 'narrow';
 };
 
-export const useLayoutTier = (): LayoutTier => {
-    const [tier, setTier] = useState<LayoutTier>(() => tierFor(window.innerWidth));
-
-    useEffect(() => {
-        // window の resize イベントではなく、実際の箱の幅の変化を見る。
-        // ページが小さいコンテナに埋め込まれた場合にも正しく追従する。
-        const observer = new ResizeObserver((entries) => {
-            setTier(tierFor(entries[0].contentRect.width));
-        });
-        observer.observe(document.documentElement);
-
-        // レイアウトが固まったまま戻らないのは困るので、
-        // window の resize も保険として拾っておく。
-        const onResize = () => setTier(tierFor(window.innerWidth));
-        window.addEventListener('resize', onResize);
-
-        return () => {
-            observer.disconnect();
-            window.removeEventListener('resize', onResize);
-        };
-    }, []);
-
-    return tier;
-};
+export const useLayoutTier = (): LayoutTier => tierFor(useViewportWidth());

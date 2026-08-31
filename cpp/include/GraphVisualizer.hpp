@@ -1,6 +1,7 @@
 #pragma once
 #include "IVisualizer.hpp"
 #include "GraphData.hpp"
+#include "ILayout.hpp"
 #include "GeneralGraphLayout.hpp"
 #include "GraphColors.hpp"
 #include <emscripten/val.h>
@@ -37,7 +38,12 @@ public:
 
 protected:
     std::unique_ptr<GraphData> graph;
-    GeneralGraphLayout layout;
+
+    // 配置の決め方は差し替えられる (ILayout)。木を足すときは派生クラスの
+    // コンストラクタで別の実装に入れ替える。
+    // 仮想ファクトリにしないのは、rebuildLayout() をコンストラクタから呼ぶため。
+    // コンストラクタ中の仮想呼び出しは派生クラスへ届かない。
+    std::unique_ptr<ILayout> layout = std::make_unique<GeneralGraphLayout>();
     bool skipExtension = true;
     bool generatedDirected = false;
     // 重み付きグラフか。重み無しなら重みを振らず、テキストにも重み列を出さない。
@@ -90,8 +96,8 @@ protected:
     // 仮想関数を含まない。(コンストラクタ中の仮想呼び出しは派生へ届かない)
     void rebuildLayout() {
         buildAdjacency();
-        layout.init(graph.get(), adjUndirected);
-        layout.is_stable = false;
+        layout->init(graph.get(), adjUndirected);
+        layout->invalidate();
         generation++;
     }
 
@@ -288,12 +294,12 @@ public:
     // source: レイアウトの指向性、または派生クラス向けのコマンド名
     // input : グラフ生成コマンド ("random" / "complete" / "custom")
     void load(const std::string& source, const std::string& input) override {
-        if (source == "horizontal")     layout.preferHorizontal = true;
-        else if (source == "vertical")  layout.preferHorizontal = false;
+        if (source == "horizontal")     layout->setPreferHorizontal(true);
+        else if (source == "vertical")  layout->setPreferHorizontal(false);
         else if (handleCommand(source, input)) return;
 
         if (input.empty()) {
-            layout.is_stable = false;
+            layout->invalidate();
             return;
         }
 
@@ -329,23 +335,23 @@ public:
             skipExtension = (skip != 0);
             if (generateCustom(iss, dir != 0, nodeW != 0, wt != 0)) rebuild();
         } else {
-            layout.is_stable = false;
+            layout->invalidate();
         }
     }
 
     // レイアウトの収束計算を進める。描画ループから毎フレーム呼ばれる。
     bool prepare() override {
-        if (layout.is_stable) return true;
+        if (layout->isStable()) return true;
 
         if (skipExtension) {
             int frame = 0;
-            while (frame < LAYOUT_FRAME_LIMIT && !layout.update(graph.get())) frame++;
-            // 時間切れで抜けたときだけ強制パッキングする。
-            // 収束して抜けた場合は layout.update の中で既にパッキング済み。
-            if (frame >= LAYOUT_FRAME_LIMIT) layout.forcePack(graph.get());
+            while (frame < LAYOUT_FRAME_LIMIT && !layout->update(graph.get())) frame++;
+            // 時間切れで抜けたときだけ打ち切る。
+            // 収束して抜けた場合は update の中で最終処理まで済んでいる。
+            if (frame >= LAYOUT_FRAME_LIMIT) layout->finish(graph.get());
             return true;
         }
-        return layout.update(graph.get());
+        return layout->update(graph.get());
     }
 
     // 基底クラスは進めるアルゴリズムを持たない
@@ -361,7 +367,7 @@ public:
         state.set("edgeCount", graph->edgeCount());
         state.set("maxNodes", MAX_NODES);
         state.set("maxEdges", MAX_EDGES);
-        state.set("layoutStable", layout.is_stable);
+        state.set("layoutStable", layout->isStable());
         state.set("generation", generation);
         state.set("startNodeIndex", graph->startNodeIndex);
         state.set("isDirected", generatedDirected);

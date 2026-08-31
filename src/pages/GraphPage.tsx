@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useInterval } from 'react-use';
 import { GraphRenderer } from '../components/visualizers/GraphRenderer';
-import { Popup } from '../components/ui/popup';
+import { VisualizerShell } from '../components/ui/VisualizerShell';
+import { SidebarLayout } from '../components/ui/SidebarLayout';
 import { GraphSetupPanel } from '../components/graph/GraphSetupPanel';
 import { TraversalPanel } from '../components/graph/TraversalPanel';
 import { GraphHelp } from '../components/graph/GraphHelp';
@@ -9,7 +9,7 @@ import { defaultSettings, engineAlgorithm, isTraversal, VARIANT_TITLE } from '..
 import type { GraphSettings, GraphVariant } from '../components/graph/types';
 import { useKeyboardShortcuts } from '../hooks/keyboardShortcut';
 import { useLayoutTier } from '../hooks/useLayoutTier';
-import { speedUp, speedDown } from '../components/ui/playbackSpeed';
+import { usePlayback } from '../hooks/usePlayback';
 import type { VisualizerEngine, GraphState } from '../types/engine';
 
 interface Props {
@@ -32,11 +32,17 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     const [automatonStart, setAutomatonStart] = useState('0');
     const [acceptingNodes, setAcceptingNodes] = useState('1, 2');
 
-    const [isPlaying, setIsPlaying] = useState(false);
-    const [delay, setDelay] = useState(300);
     const [state, setState] = useState<GraphState | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const [isHelpOpen, setIsHelpOpen] = useState(false);
+
+    // 1手進めて状態を読み直す。readState はこの下で定義しているが、
+    // 呼ばれるのはタイマーが回ってからなので届く。
+    const { isPlaying, setIsPlaying, delay, setDelay, toggle, onSpeedUp, onSpeedDown } =
+        usePlayback(() => {
+            if (!engine.step()) setIsPlaying(false);
+            readState();
+        });
 
     // 生成コマンドを組み立てるときに常に最新の設定を読めるようにしておく。
     // useEffect の依存配列に全部並べると、設定を変えるたびにグラフが作り直されてしまう。
@@ -116,13 +122,6 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [startNode, goalNode, automatonStart, acceptingNodes]);
 
-    // === 再生ループ ===
-    useInterval(() => {
-        if (!isPlaying || !engine) return;
-        if (!engine.step()) setIsPlaying(false);
-        readState();
-    }, isPlaying ? delay : null);
-
     const handleReset = () => { setIsPlaying(false); engine.load('resetTraversal', ''); readState(); };
     const handleStep = () => { setIsPlaying(false); engine.step(); readState(); };
     const handleStepBack = () => { setIsPlaying(false); engine.stepBack(); readState(); };
@@ -142,19 +141,15 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         generate(`custom ${f.skip} ${f.dir} ${f.nodeW} ${f.wt}\n${latest.current.settings.inputBuffer}`);
     };
 
-    const backToMenu = () => {
-        if (window.confirm('ビジュアライザ一覧へ戻りますか？')) onBack();
-    };
-
     useKeyboardShortcuts({
-        onEsc: !isHelpOpen ? backToMenu : undefined,
+        onEsc: !isHelpOpen ? onBack : undefined,
         onHelp: () => setIsHelpOpen(!isHelpOpen),
         onSave: !isHelpOpen ? handleGenerateFromText : undefined,
-        onPlayPause: !isHelpOpen && traversal ? () => setIsPlaying(!isPlaying) : undefined,
+        onPlayPause: !isHelpOpen && traversal ? toggle : undefined,
         onStepNext: !isHelpOpen && traversal ? handleStep : undefined,
         onStepBack: !isHelpOpen && traversal ? handleStepBack : undefined,
-        onSpeedUp: () => { if (!isHelpOpen) setDelay(speedUp(delay)); },
-        onSpeedDown: () => { if (!isHelpOpen) setDelay(speedDown(delay)); },
+        onSpeedUp: () => { if (!isHelpOpen) onSpeedUp(); },
+        onSpeedDown: () => { if (!isHelpOpen) onSpeedDown(); },
     });
 
     const maxNodes = state?.maxNodes ?? 50;
@@ -186,7 +181,7 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
             goalNode={goalNode} setGoalNode={setGoalNode}
             isPlaying={isPlaying} delay={delay} setDelay={setDelay}
             onReset={handleReset}
-            onPlayPause={() => setIsPlaying(!isPlaying)}
+            onPlayPause={toggle}
             onStepBack={handleStepBack}
             onStepNext={handleStep}
             onRunToEnd={handleRunToEnd}
@@ -199,94 +194,22 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         <GraphRenderer engine={engine} showWeights={settings.showWeights} />
     ) : null;
 
-    const sidebarStyle: React.CSSProperties = {
-        flexShrink: 0, overflowY: 'auto', padding: '15px', background: '#f8f9fa',
-    };
-
-    const header = (
-        <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: compact ? '8px 10px' : '10px 20px',
-            backgroundColor: '#263238', color: 'white', flexShrink: 0,
-        }}>
-            <button onClick={backToMenu} style={{ cursor: 'pointer', fontSize: compact ? '12px' : '16px' }}>
-                ◀ 戻る
-            </button>
-            <h2 style={{ margin: 0, fontSize: compact ? '14px' : '18px' }}>{VARIANT_TITLE[variant]}</h2>
-            <button
-                onClick={() => setIsHelpOpen(true)}
-                style={{ cursor: 'pointer', fontWeight: 'bold', fontSize: compact ? '12px' : '16px' }}
-            >
-                ヘルプ ❓
-            </button>
-        </div>
-    );
-
-    const help = (
-        <Popup title={`${VARIANT_TITLE[variant]} のヘルプ`} isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)}>
-            <GraphHelp variant={variant} maxNodes={maxNodes} />
-        </Popup>
-    );
-
-    const page: React.CSSProperties = {
-        display: 'flex', flexDirection: 'column',
-        height: '100vh', width: '100vw',
-        margin: 0, overflow: 'hidden', fontFamily: 'sans-serif',
-        backgroundColor: '#fff', color: '#000',
-    };
-
-    // 3つの配置で DOM の構造を変えないのが肝心。
-    // キャンバスの位置が変わると GraphRenderer が再マウントされ、
-    // PixiJS のアプリが作り直されてカメラ位置も失われる。
-    // 並びは flexDirection と order だけで切り替える。
-    const narrow = tier === 'narrow';
-    const wide = tier === 'wide';
-
     return (
-        <div style={page}>
-            {header}
-
-            <div style={{
-                display: 'flex',
-                flexDirection: narrow ? 'column' : 'row',
-                flex: 1, minHeight: 0,
-                overflowY: narrow ? 'auto' : 'hidden',
-            }}>
-                {/* 設定。狭いときは一番下へ回す */}
-                <div style={{
-                    ...sidebarStyle,
-                    order: narrow ? 2 : 0,
-                    width: narrow ? 'auto' : (wide ? '280px' : '260px'),
-                    borderRight: narrow ? 'none' : '1px solid #ddd',
-                    overflowY: narrow ? 'visible' : 'auto',
-                }}>
-                    {setupPanel}
-                </div>
-
-                {/* キャンバスと、広くないときの実行帯 */}
-                <div style={{
-                    order: 1, flex: narrow ? 'none' : 1,
-                    display: 'flex', flexDirection: 'column', minWidth: 0,
-                }}>
-                    <div style={{
-                        flex: narrow ? 'none' : 1,
-                        height: narrow ? '45vh' : 'auto',
-                        display: 'flex', minHeight: 0, padding: narrow ? '10px' : '15px',
-                    }}>
-                        {canvas}
-                    </div>
-                    {!wide && traversalPanel}
-                </div>
-
-                {/* 広いときだけ右サイドバー */}
-                {wide && traversalPanel && (
-                    <div style={{ ...sidebarStyle, order: 2, width: '280px', borderLeft: '1px solid #ddd' }}>
-                        {traversalPanel}
-                    </div>
-                )}
-            </div>
-
-            {help}
-        </div>
+        <VisualizerShell
+            title={VARIANT_TITLE[variant]}
+            compact={compact}
+            onBack={onBack}
+            backConfirm="ビジュアライザ一覧へ戻りますか？"
+            isHelpOpen={isHelpOpen}
+            setIsHelpOpen={setIsHelpOpen}
+            help={<GraphHelp variant={variant} maxNodes={maxNodes} />}
+        >
+            <SidebarLayout
+                tier={tier}
+                setupPanel={setupPanel}
+                canvas={canvas}
+                controlPanel={traversalPanel}
+            />
+        </VisualizerShell>
     );
 };
