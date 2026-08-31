@@ -35,6 +35,10 @@ protected:
     GeneralGraphLayout layout;
     bool skipExtension = true;
     bool generatedDirected = false;
+    // テキスト入力で頂点の重みを受け取るか。
+    // 「V E」の次の行を辺とみなすか重みの並びとみなすかは、
+    // 行の形からは決められないので UI からの指定に従う。
+    bool hasNodeWeights = false;
 
     // グラフを作り直すたびに増える。JS 側が「別のグラフになった」ことを
     // 検出してカメラを合わせ直すのに使う。
@@ -97,6 +101,7 @@ protected:
         v = std::clamp(v, 0, MAX_NODES);
         e = std::clamp(e, 0, MAX_EDGES);
         generatedDirected = isDirected;
+        hasNodeWeights = false;
         graph = std::make_unique<GraphData>(v, e);
         for (int i = 0; i < v; i++) scatterNode(i);
 
@@ -112,14 +117,14 @@ protected:
         if (allowSameEdge) {
             for (int i = 0; i < e; i++) {
                 const auto& p = possible[randInt((int)possible.size())];
-                graph->addEdge((float)p.first, (float)p.second, (float)randInt(100), 0);
+                graph->addEdge((float)p.first, (float)p.second, (float)randInt(99) + 1, 0);
             }
         } else {
             std::shuffle(possible.begin(), possible.end(), rng);
             int actual = std::min((int)possible.size(), e);
             for (int i = 0; i < actual; i++) {
                 graph->addEdge((float)possible[i].first, (float)possible[i].second,
-                               (float)randInt(100), 0);
+                               (float)randInt(99) + 1, 0);
             }
         }
     }
@@ -128,37 +133,53 @@ protected:
         isDirected = isDirected || forceDirected();
         v = std::clamp(v, 0, MAX_NODES);
         generatedDirected = isDirected;
+        hasNodeWeights = false;
         int e = isDirected ? v * (v - 1) : v * (v - 1) / 2;
         graph = std::make_unique<GraphData>(v, std::min(e, MAX_EDGES));
         for (int i = 0; i < v; i++) scatterNode(i);
         for (int i = 0; i < v; i++) {
             for (int j = (isDirected ? 0 : i + 1); j < v; j++) {
                 if (i == j) continue;
-                graph->addEdge((float)i, (float)j, (float)randInt(100), 0);
+                graph->addEdge((float)i, (float)j, (float)randInt(99) + 1, 0);
             }
         }
     }
 
-    // "V E" の行に続けて "from to [重み]" が E 行。重みは省略できる。
-    bool generateCustom(std::istringstream& iss, bool isDirected) {
+    // "V E" の行に続けて "from to [重み]" が E 行。辺の重みは省略できる。
+    // withNodeWeights が真なら、"V E" の直後に頂点の重みが V 個並ぶ行が入る。
+    bool generateCustom(std::istringstream& iss, bool isDirected, bool withNodeWeights) {
         int v = 0, e = 0;
         if (!(iss >> v >> e)) return false;
         v = std::clamp(v, 0, MAX_NODES);
         e = std::clamp(e, 0, MAX_EDGES);
         generatedDirected = isDirected || forceDirected();
+        hasNodeWeights = withNodeWeights;
         graph = std::make_unique<GraphData>(v, e);
-        for (int i = 0; i < v; i++) graph->setNode(i, (float)i, (float)i, 0, 0);
 
         std::string line;
         std::getline(iss, line); // "V E" の行の残りを読み捨てる
+
+        // 頂点の重み。足りない分は 0 のまま。
+        std::vector<float> nodeWeights(v, 0.0f);
+        if (withNodeWeights && std::getline(iss, line)) {
+            std::istringstream ws(line);
+            for (int i = 0; i < v; i++) {
+                float w;
+                if (!(ws >> w)) break;
+                nodeWeights[i] = w;
+            }
+        }
+        for (int i = 0; i < v; i++) graph->setNode(i, (float)i, (float)i, nodeWeights[i], 0);
 
         int added = 0;
         while (added < e && std::getline(iss, line)) {
             std::istringstream ls(line);
             int from, to;
-            float weight = 0;
+            // 重みを書かない = 重み無しグラフ。1 として扱うと、
+            // ダイクストラの結果が幅優先探索と一致して読みやすい。
+            float weight = 1.0f;
             if (!(ls >> from >> to)) continue; // 空行や不正な行は飛ばす
-            ls >> weight;                      // 省略時は 0 のまま
+            ls >> weight;
             if (from < 0 || from >= v || to < 0 || to >= v) continue;
             graph->addEdge((float)from, (float)to, weight, 0);
             added++;
@@ -173,10 +194,25 @@ protected:
         return false;
     }
 
+    // nodeValues は頂点の重み欄の元の値。探索中はここが暫定距離の表示に
+    // 使われることがあるので、テキスト化するときは派生クラスから元の値をもらう。
+    virtual const std::vector<float>* originalNodeWeights() const { return nullptr; }
+
     std::string buildGraphText() const {
         std::ostringstream oss;
         int v = graph->nodeCount(), e = graph->edgeCount();
         oss << v << " " << e << "\n";
+
+        if (hasNodeWeights) {
+            const std::vector<float>* w = originalNodeWeights();
+            for (int i = 0; i < v; i++) {
+                if (i) oss << " ";
+                oss << (w && i < (int)w->size() ? (*w)[i]
+                                                : graph->nodeData[i * GraphData::NODE_STRIDE + 2]);
+            }
+            oss << "\n";
+        }
+
         for (int i = 0; i < e; i++) {
             oss << graph->edgeFrom(i) << " " << graph->edgeTo(i) << " "
                 << graph->edgeData[i * GraphData::EDGE_STRIDE + 2] << "\n";
@@ -223,10 +259,10 @@ public:
         } else if (cmd == "custom") {
             // skip と向きはグラフ本文より前に置く。本文が複数行なので、
             // 後ろに付けると行の区切りと衝突する。
-            int skip = 1, dir = 0;
-            iss >> skip >> dir;
+            int skip = 1, dir = 0, nodeW = 0;
+            iss >> skip >> dir >> nodeW;
             skipExtension = (skip != 0);
-            if (generateCustom(iss, dir != 0)) rebuild();
+            if (generateCustom(iss, dir != 0, nodeW != 0)) rebuild();
         } else {
             layout.is_stable = false;
         }
@@ -265,6 +301,7 @@ public:
         state.set("startNodeIndex", graph->startNodeIndex);
         state.set("isDirected", generatedDirected);
         state.set("isAutomaton", false);
+        state.set("hasNodeWeights", hasNodeWeights);
 
         // テキスト表現は要求されたときだけ組み立てる。
         // 描画ループが毎フレーム getState を呼ぶので、常に作ると無駄が大きい。

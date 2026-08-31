@@ -15,11 +15,11 @@ interface GraphProps {
 
 // C++ 側のビジュアライザクラスに対応する。切り替えるとクラスごと差し替わる。
 type Mode = 'graph' | 'traversal' | 'automaton';
-type Algorithm = 'bfs' | 'dfs';
+type Algorithm = 'bfs' | 'dfs' | 'dijkstra';
 
 const MODE_LABEL: Record<Mode, string> = {
     graph: 'グラフを描くだけ',
-    traversal: '探索 (BFS / DFS)',
+    traversal: '探索 (BFS / DFS / ダイクストラ)',
     automaton: 'オートマトン',
 };
 
@@ -58,6 +58,7 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     const [allowSelfLoop, setAllowSelfLoop] = useState(false);
     const [allowSameEdge, setAllowSameEdge] = useState(false);
     const [skipExtension, setSkipExtension] = useState(true);
+    const [useNodeWeights, setUseNodeWeights] = useState(false);
     const [isHorizontal, setIsHorizontal] = useState(true);
     const [inputBuffer, setInputBuffer] = useState("");
 
@@ -84,17 +85,18 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     // 生成コマンドを組み立てるときに常に最新の設定を読めるようにしておく。
     // useEffect の依存配列に全部並べると、設定を変えるたびにグラフが作り直されてしまう。
     const opts = useRef({
-        isHorizontal, skipExtension, isDirected, mode, algorithm,
+        isHorizontal, skipExtension, isDirected, useNodeWeights, mode, algorithm,
         startNode, goalNode, automatonStart, acceptingNodes,
     });
     opts.current = {
-        isHorizontal, skipExtension, isDirected, mode, algorithm,
+        isHorizontal, skipExtension, isDirected, useNodeWeights, mode, algorithm,
         startNode, goalNode, automatonStart, acceptingNodes,
     };
 
     const orientation = () => opts.current.isHorizontal ? "horizontal" : "vertical";
     const skipFlag = () => opts.current.skipExtension ? 1 : 0;
     const dirFlag = () => opts.current.isDirected ? 1 : 0;
+    const nodeWFlag = () => opts.current.useNodeWeights ? 1 : 0;
 
     // モード固有の設定を C++ 側へ渡す
     const applyModeSettings = () => {
@@ -133,7 +135,7 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
         engine.setAlgorithm(mode);
         const body = inputBuffer.trim();
         engine.load(orientation(), body
-            ? "custom " + skipFlag() + " " + dirFlag() + "\n" + body
+            ? "custom " + skipFlag() + " " + dirFlag() + " " + nodeWFlag() + "\n" + body
             : "random " + nodeCount + " " + edgeCount + " " + skipFlag() + " 0 0 " + dirFlag());
         applyModeSettings();
         readStateAndText();
@@ -194,7 +196,7 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     const handleGenerateComplete = () =>
         generate("complete " + nodeCount + " " + skipFlag() + " " + dirFlag());
     const handleGenerateFromText = () =>
-        generate("custom " + skipFlag() + " " + dirFlag() + "\n" + inputBuffer);
+        generate("custom " + skipFlag() + " " + dirFlag() + " " + nodeWFlag() + "\n" + inputBuffer);
 
     const backToMenu = () => {
         if (window.confirm("ビジュアライザ一覧へ戻りますか？")) onBack();
@@ -225,7 +227,13 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
         />
     );
 
-    const frontierLabel = algorithm === 'bfs' ? 'キュー' : 'スタック';
+    const frontierLabel = algorithm === 'bfs' ? 'キュー'
+        : algorithm === 'dfs' ? 'スタック'
+        : '優先度付きキュー';
+    const orderLabel = algorithm === 'dijkstra' ? '確定順' : '訪問順';
+    const isDijkstra = algorithm === 'dijkstra';
+    const distances = state?.distances ?? [];
+    const fmt = (v: number) => (Number.isFinite(v) ? String(v) : '\u221e');
     // 進行状況は探索モードのときだけ返ってくる
     const frontier = state?.frontier ?? [];
     const visitOrder = state?.visitOrder ?? [];
@@ -270,12 +278,15 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
 
                     {isTraversal && (
                         <Section title="探索">
-                            <div style={{ display: 'flex', gap: '12px' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                                 <label style={{ fontSize: '13px' }}>
                                     <input type="radio" checked={algorithm === 'bfs'} onChange={() => setAlgorithm('bfs')} /> BFS
                                 </label>
                                 <label style={{ fontSize: '13px' }}>
                                     <input type="radio" checked={algorithm === 'dfs'} onChange={() => setAlgorithm('dfs')} /> DFS
+                                </label>
+                                <label style={{ fontSize: '13px' }}>
+                                    <input type="radio" checked={algorithm === 'dijkstra'} onChange={() => setAlgorithm('dijkstra')} /> ダイクストラ
                                 </label>
                             </div>
                             <div style={{ fontSize: '13px' }}>
@@ -319,6 +330,9 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
                         <label style={{ fontSize: '13px' }}>
                             <input type="checkbox" checked={allowSameEdge} onChange={(e) => setAllowSameEdge(e.target.checked)} /> 多重辺を許す
                         </label>
+                        <label style={{ fontSize: '13px' }}>
+                            <input type="checkbox" checked={useNodeWeights} onChange={(e) => setUseNodeWeights(e.target.checked)} /> 頂点の重みを入力する
+                        </label>
                         <button onClick={handleGenerateRandom} style={{ padding: '8px', cursor: 'pointer' }}>ランダム生成</button>
                         <button onClick={handleGenerateComplete} style={{ padding: '8px', cursor: 'pointer' }}>完全グラフ生成</button>
                     </Section>
@@ -328,7 +342,9 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
                             value={inputBuffer}
                             onChange={(e) => setInputBuffer(e.target.value)}
                             style={{ width: '100%', height: '120px', fontFamily: 'monospace', whiteSpace: 'pre', resize: 'vertical', boxSizing: 'border-box' }}
-                            placeholder="頂点数 辺数&#10;始点 終点 (重み)&#10;始点 終点 (重み)&#10;..."
+                            placeholder={useNodeWeights
+                                ? "頂点数 辺数\n頂点0の重み 頂点1の重み ...\n始点 終点 (重み)\n..."
+                                : "頂点数 辺数\n始点 終点 (重み)\n始点 終点 (重み)\n..."}
                         />
                         <button onClick={handleGenerateFromText} style={{ padding: '8px', cursor: 'pointer' }}>
                             📝 テキストから生成
@@ -382,15 +398,25 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
                                         : <span style={{ color: '#90a4ae' }}>なし</span>}
                                 </div>
                                 <div>
-                                    <b>訪問順</b>: {visitOrder.length
+                                    <b>{orderLabel}</b>: {visitOrder.length
                                         ? visitOrder.join(', ')
                                         : <span style={{ color: '#90a4ae' }}>なし</span>}
                                     <span style={{ color: '#90a4ae' }}> ({visitOrder.length} / {total})</span>
                                 </div>
+                                {isDijkstra && (
+                                    <div>
+                                        <b>距離</b>: {distances.length
+                                            ? distances.map((d, i) => `${i}:${fmt(d)}`).join('  ')
+                                            : <span style={{ color: '#90a4ae' }}>なし</span>}
+                                    </div>
+                                )}
                                 <div>
                                     <b>経路</b>: {path.length
                                         ? path.join(' → ')
                                         : <span style={{ color: '#90a4ae' }}>未発見</span>}
+                                    {isDijkstra && path.length > 0 && state?.goalDistance !== undefined && (
+                                        <span style={{ color: '#90a4ae' }}> (長さ {fmt(state.goalDistance)})</span>
+                                    )}
                                 </div>
                                 <div style={{ marginTop: '6px', fontWeight: 'bold', color: state?.found ? '#27ae60' : '#78909c' }}>
                                     {!state?.finished ? '探索中…'
@@ -400,11 +426,21 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
                                 </div>
                             </div>
 
+                            {isDijkstra && state?.hasNegativeEdge && (
+                                <div style={{
+                                    padding: '6px 8px', borderRadius: '4px', fontSize: '12px',
+                                    backgroundColor: '#fff8e1', border: '1px solid #ffb300', color: '#5d4037',
+                                }}>
+                                    負の重みの辺があります。ダイクストラ法は非負の重みを前提にしているので、
+                                    求まる距離が最短とは限りません。
+                                </div>
+                            )}
+
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px', marginTop: '4px' }}>
                                 <Swatch color={NODE_STROKE[0]} label="未訪問" />
                                 <Swatch color={NODE_STROKE[1]} label={frontierLabel + "の中"} />
                                 <Swatch color={NODE_STROKE[2]} label="処理中" />
-                                <Swatch color={NODE_STROKE[3]} label="訪問済み" />
+                                <Swatch color={NODE_STROKE[3]} label={isDijkstra ? "確定済み" : "訪問済み"} />
                                 <Swatch color={NODE_STROKE[4]} label="経路上" />
                                 <Swatch color={EDGE_COLOR[1]} label="探索木の辺" isEdge />
                                 <Swatch color={EDGE_COLOR[3]} label="調べ済みの辺" isEdge />
@@ -426,7 +462,7 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
                 <h3>1. モード</h3>
                 <ul>
                     <li><b>グラフを描くだけ</b>：生成したグラフを表示する</li>
-                    <li><b>探索 (BFS / DFS)</b>：始点 s から幅優先 / 深さ優先で探索する様子を1手ずつ見る。終点 t を指定すると s から t への経路を探す</li>
+                    <li><b>探索 (BFS / DFS / ダイクストラ)</b>：始点 s から探索する様子を1手ずつ見る。終点 t を指定すると s から t への経路を探す</li>
                     <li><b>オートマトン</b>：常に有向グラフとして扱い、初期状態への矢印と受理状態の二重丸を描く</li>
                 </ul>
 
@@ -435,8 +471,11 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
                 <ul>
                     <li><b>BFS</b>：見つけた頂点をキューの末尾に積み、先頭から取り出す。始点から近い順に広がる</li>
                     <li><b>DFS</b>：見つけた頂点をスタックに積み、すぐそこへ潜る。行き止まりまで進んでから戻る（バックトラック）</li>
-                    <li>BFS が見つける経路は、辺の本数で数えて最短になる</li>
+                    <li><b>ダイクストラ法</b>：まだ確定していない頂点のうち、暫定距離が最小のものを取り出して確定させる。取り出した頂点から伸びる辺を見て、その辺を通った方が近ければ距離と親を更新する（緩和）</li>
+                    <li>BFS が見つける経路は<b>辺の本数</b>で最短、ダイクストラが見つける経路は<b>重みの合計</b>で最短になる。この2つは一致しないことがある</li>
                 </ul>
+                <p>3つの違いは「次にどの頂点を取り出すか」だけです。BFS は先頭（キュー）、DFS は末尾（スタック）、ダイクストラは暫定距離が最小のもの（優先度付きキュー）を取り出します。</p>
+                <p>ダイクストラのときは、各頂点の脇に暫定距離が出ます。まだ届いていない頂点は ∞ です。負の重みがある場合は正しい答えを出せないので、警告を表示します。</p>
                 <p>色の意味はサイドバーの凡例のとおりです。「探索木の辺」はその頂点を最初に見つけたときに通った辺、「調べ済みの辺」は見に行ったが既に発見済みの頂点へ向かっていた辺です。</p>
 
                 <h3>3. グラフの入力</h3>
@@ -444,7 +483,12 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
                 <pre style={{ background: '#eceff1', padding: '8px', borderRadius: '4px' }}>
                     4 4{'\n'}0 1 5{'\n'}1 2 3{'\n'}2 3 7{'\n'}0 3
                 </pre>
+                <p>「頂点の重みを入力する」にチェックを入れると、「頂点数 辺数」の次の行で頂点の重みを V 個並べて指定できます。</p>
+                <pre style={{ background: '#eceff1', padding: '8px', borderRadius: '4px' }}>
+                    3 2{'\n'}10 20 30{'\n'}0 1 5{'\n'}1 2 5
+                </pre>
                 <ul>
+                    <li>辺の重みを書かないと 1 として扱います。重み無しグラフのダイクストラは BFS と同じ結果になります</li>
                     <li>範囲外の頂点番号を含む行は読み飛ばされます</li>
                     <li>頂点数には上限があります（現在 {state?.maxNodes ?? 100}）</li>
                     <li>「有向グラフ」のチェックは生成時に反映されます。探索が辺の向きを守るかどうかもこれで決まります</li>

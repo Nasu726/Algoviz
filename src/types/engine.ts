@@ -40,6 +40,8 @@ export interface GraphState {
     startNodeIndex: number;
     isDirected: boolean;
     isAutomaton: boolean;
+    /** テキスト入力で頂点の重みを受け取ったか */
+    hasNodeWeights: boolean;
 
     /** getState({ withText: true }) のときだけ */
     graphText?: string;
@@ -48,18 +50,25 @@ export interface GraphState {
     acceptingStates?: number[];
 
     /** TraversalVisualizer のときだけ */
-    algorithm?: 'bfs' | 'dfs';
+    algorithm?: 'bfs' | 'dfs' | 'dijkstra';
     startNode?: number;
     goalNode?: number;
     current?: number;
     finished?: boolean;
     found?: boolean;
     canStepBack?: boolean;
+    /** 頂点の脇に出す数値が何を表しているか */
+    nodeValueMode?: 'weight' | 'distance';
+    /** ダイクストラの前提を外れる負の重みが混ざっているか */
+    hasNegativeEdge?: boolean;
 
     /** TraversalVisualizer かつ getState({ withProgress: true }) のときだけ */
     frontier?: number[];
     visitOrder?: number[];
     path?: number[];
+    /** ダイクストラの暫定距離。未到達は Infinity */
+    distances?: number[];
+    goalDistance?: number;
 }
 
 /** getState に渡せるパラメータ。どれも省略可能 */
