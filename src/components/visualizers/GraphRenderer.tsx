@@ -3,17 +3,11 @@ import { PixiGraphApp } from './PixiGraphApp';
 
 interface GraphRendererProps {
   engine: any;
-  isDirected: boolean;
   showWeights: boolean;
-  isAutomaton: boolean;
-  startNode: string;
-  acceptingNodes: string;
   labelType: 'index' | 'name';
 }
 
-export const GraphRenderer: React.FC<GraphRendererProps> = ({ 
-    engine, isDirected, showWeights, isAutomaton, startNode, acceptingNodes, labelType 
-}) => {
+export const GraphRenderer: React.FC<GraphRendererProps> = ({ engine, showWeights, labelType }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const pixiAppRef = useRef<PixiGraphApp | null>(null);
 
@@ -21,35 +15,41 @@ export const GraphRenderer: React.FC<GraphRendererProps> = ({
   useEffect(() => {
     if (!containerRef.current || !engine) return;
 
-    pixiAppRef.current = new PixiGraphApp(containerRef.current, engine);
-    pixiAppRef.current.init();
+    const app = new PixiGraphApp(containerRef.current, engine);
+    pixiAppRef.current = app;
+    app.init();
+
+    // 外側の要素に合わせてキャンバスの大きさを追従させる
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        app.resize(entry.contentRect.width, entry.contentRect.height);
+      }
+    });
+    observer.observe(containerRef.current);
 
     return () => {
-      if (pixiAppRef.current) {
-        pixiAppRef.current.destroy();
-        pixiAppRef.current = null;
-      }
+      observer.disconnect();
+      app.destroy();
+      pixiAppRef.current = null;
     };
   }, [engine]);
 
-  // 設定が変わった時にPixiJS側に通知
+  // 表示の好みが変わった時にPixiJS側に通知
   useEffect(() => {
-    if (pixiAppRef.current) {
-      pixiAppRef.current.updateSettings({
-        isDirected,
-        showWeights,
-        isAutomaton,
-        startNode,
-        acceptingNodes,
-        labelType
-      });
-    }
-  }, [isDirected, showWeights, isAutomaton, startNode, acceptingNodes, labelType]);
+    pixiAppRef.current?.updateSettings({ showWeights, labelType });
+  }, [showWeights, labelType]);
 
   return (
-    <div 
-      ref={containerRef} 
-      style={{ border: '1px solid #ccc', width: '800px', height: '600px', backgroundColor: '#fff' }} 
+    <div
+      ref={containerRef}
+      style={{
+        flex: 1,
+        minWidth: 0,
+        border: '1px solid #ccc',
+        borderRadius: '8px',
+        overflow: 'hidden',
+        backgroundColor: '#fff',
+      }}
     />
   );
 };

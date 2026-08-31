@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useInterval } from 'react-use';
 import { Popup } from '../components/ui/popup';
+import { PlaybackControls, speedUp, speedDown } from '../components/ui/PlaybackControls';
 import { useKeyboardShortcuts } from '../hooks/keyboardShortcut';
 import { TapeViewer } from '../components/visualizers/TapeViewer';
 
@@ -307,18 +308,8 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
     onFocus: () => !isHelpPopupOpen ? setAutoScroll(!autoScroll) : null,
     onStepNext: !isHelpPopupOpen ? stepButton : undefined,
     onStepBack: !isHelpPopupOpen ? stepBack : undefined,
-    onSpeedUp: () => {
-      if(isHelpPopupOpen) return;
-      if(delay>=10) {
-        setDelay(Math.max(0, ((-Math.sqrt(1000*delay)+100)**2)/1000));
-      } else {
-        setDelay(0);
-      };
-    },
-    onSpeedDown: () => {
-      if(isHelpPopupOpen) return;
-      setDelay(Math.max(0, ((-Math.sqrt(1000*delay)-100)**2)/1000));
-    },
+    onSpeedUp: () => { if (!isHelpPopupOpen) setDelay(speedUp(delay)); },
+    onSpeedDown: () => { if (!isHelpPopupOpen) setDelay(speedDown(delay)); },
   });
 
   return (
@@ -517,29 +508,22 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
           backgroundColor: '#f5f5f5',
           color: '#000000',
         }}>
-           <button onClick={handleLoad} style={{ padding: '8px 8px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap', backgroundColor: '#f5f5f5', color: '#000000' }}>ロード</button>
-           <button onClick={executeButton} disabled={!state} style={{ padding: '8px 12px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap', backgroundColor: '#f5f5f5', color: '#000000' }}>
-             {isPlaying ? "停止" : "実行"}
-           </button>
-           <button onClick={stepBack} disabled={!state || isPlaying} style={{ padding: '8px 8px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap', backgroundColor: '#f5f5f5', color: '#000000' }}>戻る</button>
-           <button onClick={stepButton} disabled={!state || isPlaying} style={{ padding: '8px 8px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap', backgroundColor: '#f5f5f5', color: '#000000' }}>進む</button>
-           <div style={{ 
-             display: 'flex',       // グループの中身も横並びにする
-             alignItems: 'center',  // 縦の真ん中で揃える
-             gap: '10px',           // グループ内の要素の隙間
-             flexShrink: 0          // グループ全体として縮まないようにする
-           }}>
-              <span style={{padding: '0px 0px 0px 0px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap' }}>実行速度
-                <input type="range" min="0" max="1000" value={1000-Math.sqrt(1000*delay)} onChange={(e) => {const x=Number(e.target.value);setDelay((x-1000)*(x-1000)/1000)}} style={{ marginLeft: '0.5em' }}/>
-              </span>
-              <button onClick={runToEnd} disabled={!state} style={{ padding: '8px 8px', fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap', backgroundColor: '#fcfcfc', color: '#ff0000' }}>
-                一気に実行
-              </button>
-              <label style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', userSelect: 'none', flexShrink: 0, whiteSpace: 'nowrap'}}>
-                <input type='checkbox' checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} style={{ padding: '8px 8px' }}/>
-                自動追従
-              </label>
-            </div>
+           <PlaybackControls
+             isPlaying={isPlaying}
+             ready={!!state}
+             delay={delay}
+             onLoad={handleLoad}
+             onPlayPause={executeButton}
+             onStepBack={stepBack}
+             onStepNext={stepButton}
+             onRunToEnd={runToEnd}
+             onDelayChange={setDelay}
+           >
+             <label style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', userSelect: 'none', flexShrink: 0, whiteSpace: 'nowrap'}}>
+               <input type='checkbox' checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} style={{ padding: '8px 8px' }}/>
+               自動追従
+             </label>
+           </PlaybackControls>
         </div>
   
         {/* エディタ & I/O */}

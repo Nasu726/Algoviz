@@ -8,11 +8,11 @@ const EDGE_STRIDE = 4; // [from, to, weight, colorId]
 // 見た目はここで決める。並び順は GraphColors.hpp の enum と揃えること。
 //
 //   0 未訪問 / 1 フロンティア / 2 訪問中 / 3 訪問済み / 4 経路上 / 5 始点 / 6 終点
-const NODE_STROKE = [0x263238, 0xf39c12, 0xe74c3c, 0x90a4ae, 0x27ae60, 0x2980b9, 0x8e44ad];
+export const NODE_STROKE = [0x263238, 0xf39c12, 0xe74c3c, 0x90a4ae, 0x27ae60, 0x2980b9, 0x8e44ad];
 const NODE_FILL   = [0xffffff, 0xfff3e0, 0xffebee, 0xeceff1, 0xe8f5e9, 0xe3f2fd, 0xf3e5f5];
 
 //   0 通常 / 1 探索木 / 2 今たどっている / 3 調べ終わった / 4 経路上
-const EDGE_COLOR  = [0x999999, 0x3498db, 0xe74c3c, 0xcfd8dc, 0x27ae60];
+export const EDGE_COLOR  = [0x999999, 0x3498db, 0xe74c3c, 0xcfd8dc, 0x27ae60];
 const EDGE_WIDTH  = [2, 3, 4, 2, 4];
 
 // この縮尺より小さいと文字が数ピクセルにしか描かれず読めない。
@@ -23,12 +23,6 @@ const nodeStroke = (id: number) => NODE_STROKE[id] ?? NODE_STROKE[0];
 const nodeFill   = (id: number) => NODE_FILL[id] ?? NODE_FILL[0];
 const edgeColor  = (id: number) => EDGE_COLOR[id] ?? EDGE_COLOR[0];
 const edgeWidth  = (id: number) => EDGE_WIDTH[id] ?? EDGE_WIDTH[0];
-
-export interface NodeMeta {
-    label?: string;
-    isStart?: boolean;
-    isAccepting?: boolean;
-}
 
 export class PixiGraphApp {
     private app: PIXI.Application;
@@ -41,15 +35,12 @@ export class PixiGraphApp {
     private nodeContainer!: PIXI.Container;
     private nodeSprites: PIXI.Container[] = [];
     private edgeWeightTexts: PIXI.Text[] = [];
-    private nodeMetadata: NodeMeta[] = [];
     private fpsText!: PIXI.Text;
     private nodeRadius: number = 20.0;
     private isDirected: boolean = false;
     private isAutomaton: boolean = false;
     private showWeights: boolean = false;
     private labelType: 'index' | 'name' = 'index';
-    private startNodeIndex: number = -1;
-    private acceptingNodeIndices: Set<number> = new Set();
     
     // 状態管理フラグ
     private isInitialized = false;
@@ -79,36 +70,19 @@ export class PixiGraphApp {
     // Reactから設定を受け取るメソッド
     // ==========================================
     public updateSettings(settings: {
-        isDirected: boolean;
         showWeights: boolean;
-        isAutomaton: boolean;
-        startNode: string;
-        acceptingNodes: string;
         labelType: 'index' | 'name';
     }) {
-        this.isDirected = settings.isDirected;
         this.showWeights = settings.showWeights;
-        this.isAutomaton = settings.isAutomaton;
         this.labelType = settings.labelType;
-        
-        // テキストをパースしてインデックス化
-        this.startNodeIndex = parseInt(settings.startNode, 10);
-        this.acceptingNodeIndices.clear();
-        settings.acceptingNodes.split(',').forEach(s => {
-            const idx = parseInt(s.trim(), 10);
-            if (!isNaN(idx)) this.acceptingNodeIndices.add(idx);
-        });
-        
-        // nodeMetadataを上書き
-        this.nodeMetadata = [];
-        if (this.isAutomaton) {
-            if (!isNaN(this.startNodeIndex)) {
-                this.nodeMetadata[this.startNodeIndex] = { ...this.nodeMetadata[this.startNodeIndex], isStart: true };
-            }
-            this.acceptingNodeIndices.forEach(idx => {
-                this.nodeMetadata[idx] = { ...this.nodeMetadata[idx], isAccepting: true };
-            });
-        }
+    }
+
+    // キャンバスのサイズを外側の要素に合わせる
+    public resize(width: number, height: number) {
+        if (!this.isInitialized || this.isDestroyed) return;
+        if (width <= 0 || height <= 0) return;
+        this.app.renderer.resize(width, height);
+        this.app.stage.hitArea = new PIXI.Rectangle(0, 0, this.app.screen.width, this.app.screen.height);
     }
 
     // 初期化処理（Reactから呼ばれる）
@@ -337,6 +311,12 @@ export class PixiGraphApp {
             this.fitToView(nodeArray);
         }
 
+        // グラフ自身の性質は C++ が唯一の情報源
+        this.isDirected = !!state.isDirected;
+        this.isAutomaton = !!state.isAutomaton;
+        const startIdx: number = state.startNodeIndex ?? -1;
+        const accepting: Set<number> = new Set(state.acceptingStates ?? []);
+
         // 縮尺が小さいときは文字を全部省く
         const readable = this.world.scale.x >= TEXT_MIN_SCALE;
         const showText = this.showWeights && readable;
@@ -555,20 +535,15 @@ export class PixiGraphApp {
                   .fill(nodeFill(colorId))
                   .stroke({ width: 3, color: borderColor });
 
-                const meta = this.nodeMetadata[nodeIndex] || {};
                 
                 // labelText のみを取得してテキストを更新する
                 const labelText = group.getChildByLabel("labelText") as PIXI.Text;
                 if (labelText) {
                     labelText.visible = readable;
-                    if (meta.label !== undefined) {
-                        // 1. 個別に設定されたラベルがあれば最優先
-                        labelText.text = meta.label;
-                    } else if (this.labelType === 'name' || this.isAutomaton) {
-                        // 2. 状態名モード、またはオートマトンモードなら q_0 形式
+                    if (this.labelType === 'name' || this.isAutomaton) {
+                        // 状態名モード、またはオートマトンなら q₀ 形式
                         labelText.text = `q${this.toSubscript(nodeIndex)}`;
                     } else {
-                        // 3. 通常はインデックス番号
                         labelText.text = `${nodeIndex}`;
                     }
                 }
@@ -576,7 +551,7 @@ export class PixiGraphApp {
                 const acceptRing = group.getChildByLabel("acceptRing") as PIXI.Graphics;
                 if (acceptRing) {
                     acceptRing.clear();
-                    if (meta.isAccepting) {
+                    if (accepting.has(nodeIndex)) {
                         acceptRing.circle(0, 0, this.nodeRadius - 4).stroke({ width: 2, color: borderColor });
                         acceptRing.visible = true;
                     } else acceptRing.visible = false;
@@ -584,8 +559,7 @@ export class PixiGraphApp {
 
                 const startArrow = group.getChildByLabel("startArrow") as PIXI.Graphics;
                 const startText = group.getChildByLabel("startText") as PIXI.Text;
-                if (meta.isStart) {
-                    // if (startArrow) startArrow.visible = !!meta.isStart;
+                if (this.isAutomaton && nodeIndex === startIdx) {
                     if (startArrow) startArrow.visible = true;
                     if (startText) startText.visible = true;
 

@@ -59,6 +59,13 @@ static void beginTest(const std::string& name) {
 // 観測用ヘルパー
 // ==========================================
 
+// 進行状況は要求したときだけ組み立てられる
+static val progressParams() {
+    val p = val::object();
+    p.set("withProgress", true);
+    return p;
+}
+
 // 公開APIだけを使って可視状態のスナップショットを取る。
 // private メンバを覗かないので、実装を変えてもテストは壊れない。
 struct Fingerprint {
@@ -819,7 +826,7 @@ static void testGraphTextOnlyWhenRequested() {
     GraphVisualizer g;
     g.load("horizontal", "complete 5 1 0");
 
-    CHECK(!g.getState(val::object()).hasOwnProperty("graphText"));
+    CHECK(!g.getState(progressParams()).hasOwnProperty("graphText"));
 
     val params = val::object();
     params.set("withText", true);
@@ -854,7 +861,7 @@ static void testColorChannelReachesTheView() {
     g.paintEdge(0, EDGE_PATH);
     g.paintEdge(2, EDGE_TREE);
 
-    val state = g.getState(val::object());
+    val state = g.getState(progressParams());
     val nodes = state["nodes"];
     val edges = state["edges"];
 
@@ -901,15 +908,15 @@ static void testGenerationChangesOnRebuild() {
     beginTest("グラフを作り直すと generation が進む");
 
     GraphVisualizer g;
-    int before = g.getState(val::object())["generation"].as<int>();
+    int before = g.getState(progressParams())["generation"].as<int>();
 
     g.load("horizontal", "random 6 8 1 0 0 0");
-    int after = g.getState(val::object())["generation"].as<int>();
+    int after = g.getState(progressParams())["generation"].as<int>();
     CHECK(after > before);
 
     // レイアウトの向きを変えただけでは作り直さない
     g.load("vertical", "");
-    CHECK_EQ(g.getState(val::object())["generation"].as<int>(), after);
+    CHECK_EQ(g.getState(progressParams())["generation"].as<int>(), after);
 }
 
 // ==========================================
@@ -924,8 +931,8 @@ static void testAutomatonIsAlwaysDirected() {
     ParsedGraph pg = readGraph(a);
     // 有向完全グラフなので V(V-1) = 20 本
     CHECK_EQ((int)pg.edges.size(), 20);
-    CHECK(a.getState(val::object())["isDirected"].as<bool>());
-    CHECK(a.getState(val::object())["isAutomaton"].as<bool>());
+    CHECK(a.getState(progressParams())["isDirected"].as<bool>());
+    CHECK(a.getState(progressParams())["isAutomaton"].as<bool>());
 }
 
 static void testAutomatonStartAndAcceptingStates() {
@@ -935,15 +942,15 @@ static void testAutomatonStartAndAcceptingStates() {
     a.load("horizontal", "custom 1 0\n5 2\n0 1\n1 2\n");
 
     a.load("setStartNode", "2");
-    CHECK_EQ(a.getState(val::object())["startNodeIndex"].as<int>(), 2);
+    CHECK_EQ(a.getState(progressParams())["startNodeIndex"].as<int>(), 2);
 
     // 範囲外は -1 に落とす
     a.load("setStartNode", "99");
-    CHECK_EQ(a.getState(val::object())["startNodeIndex"].as<int>(), -1);
+    CHECK_EQ(a.getState(progressParams())["startNodeIndex"].as<int>(), -1);
 
     // カンマ区切りを受け付け、範囲外は捨てる
     a.load("setAccepting", "1, 3, 99");
-    val accepting = a.getState(val::object())["acceptingStates"];
+    val accepting = a.getState(progressParams())["acceptingStates"];
     CHECK_EQ(accepting["length"].as<int>(), 2);
     if (accepting["length"].as<int>() == 2) {
         CHECK_EQ(accepting[0].as<int>(), 1);
@@ -958,12 +965,12 @@ static void testAutomatonDropsStaleStatesOnRegenerate() {
     a.load("horizontal", "custom 1 0\n10 0\n");
     a.load("setStartNode", "8");
     a.load("setAccepting", "7, 9");
-    CHECK_EQ(a.getState(val::object())["startNodeIndex"].as<int>(), 8);
+    CHECK_EQ(a.getState(progressParams())["startNodeIndex"].as<int>(), 8);
 
     // 3頂点に作り直すと 7,8,9 は存在しなくなる
     a.load("horizontal", "custom 1 0\n3 0\n");
-    CHECK_EQ(a.getState(val::object())["startNodeIndex"].as<int>(), -1);
-    CHECK_EQ(a.getState(val::object())["acceptingStates"]["length"].as<int>(), 0);
+    CHECK_EQ(a.getState(progressParams())["startNodeIndex"].as<int>(), -1);
+    CHECK_EQ(a.getState(progressParams())["acceptingStates"]["length"].as<int>(), 0);
 }
 
 // ==========================================
@@ -1045,7 +1052,7 @@ static std::vector<int> valToVector(val arr) {
 }
 
 static TravRec readTrav(TraversalVisualizer& t) {
-    val s = t.getState(val::object());
+    val s = t.getState(progressParams());
     TravRec r;
     r.order    = valToVector(s["visitOrder"]);
     r.frontier = valToVector(s["frontier"]);
@@ -1083,7 +1090,7 @@ static void testTraversalVisitsExactlyTheReachableSet() {
             t.load("setTraversal", traversalCmd(mode, 0, -1));
             runTraversal(t);
 
-            std::vector<int> order = valToVector(t.getState(val::object())["visitOrder"]);
+            std::vector<int> order = valToVector(t.getState(progressParams())["visitOrder"]);
             std::vector<char> got(c.v, 0);
             for (int u : order) got[u] = 1;
 
@@ -1106,7 +1113,7 @@ static void testTraversalVisitsEachVertexOnce() {
         t.load("setTraversal", traversalCmd(mode, 0, -1));
         runTraversal(t);
 
-        std::vector<int> order = valToVector(t.getState(val::object())["visitOrder"]);
+        std::vector<int> order = valToVector(t.getState(progressParams())["visitOrder"]);
         std::set<int> unique(order.begin(), order.end());
         CHECK_EQ(order.size(), unique.size());
         CHECK_EQ((int)order.size(), 8);
@@ -1122,7 +1129,7 @@ static void testBfsFindsShortestPath() {
     t.load("setTraversal", traversalCmd("bfs", 0, 3));
     runTraversal(t);
 
-    val state = t.getState(val::object());
+    val state = t.getState(progressParams());
     CHECK(state["found"].as<bool>());
     std::vector<int> path = valToVector(state["path"]);
     CHECK_EQ((int)path.size(), 2);
@@ -1150,7 +1157,7 @@ static void testPathIsActuallyWalkable() {
             t.load("setTraversal", traversalCmd(mode, c.s, c.g));
             runTraversal(t);
 
-            val state = t.getState(val::object());
+            val state = t.getState(progressParams());
             CHECK(state["found"].as<bool>());
             std::vector<int> path = valToVector(state["path"]);
 
@@ -1177,7 +1184,7 @@ static void testNoPathWhenUnreachable() {
         t.load("setTraversal", traversalCmd(mode, 0, 4));
         runTraversal(t);
 
-        val state = t.getState(val::object());
+        val state = t.getState(progressParams());
         CHECK(!state["found"].as<bool>());
         CHECK(state["finished"].as<bool>());
         CHECK_EQ(state["path"]["length"].as<int>(), 0);
@@ -1196,7 +1203,7 @@ static void testDfsGoesDeepBeforeWide() {
         t.load("horizontal", text);
         t.load("setTraversal", traversalCmd("dfs", 0, -1));
         runTraversal(t);
-        std::vector<int> order = valToVector(t.getState(val::object())["visitOrder"]);
+        std::vector<int> order = valToVector(t.getState(progressParams())["visitOrder"]);
         CHECK_EQ((int)order.size(), 5);
         if (order.size() == 5) {
             CHECK(order[0] == 0 && order[1] == 1 && order[2] == 2 && order[3] == 3 && order[4] == 4);
@@ -1207,7 +1214,7 @@ static void testDfsGoesDeepBeforeWide() {
         t.load("horizontal", text);
         t.load("setTraversal", traversalCmd("bfs", 0, -1));
         runTraversal(t);
-        std::vector<int> order = valToVector(t.getState(val::object())["visitOrder"]);
+        std::vector<int> order = valToVector(t.getState(progressParams())["visitOrder"]);
         CHECK_EQ((int)order.size(), 5);
         // 0 の隣 (1 と 4) が先に並ぶ
         if (order.size() == 5) {
@@ -1243,12 +1250,12 @@ static void testStepBackReturnsToInitialState() {
 
         // UI の「戻る」と同じように、戻せなくなるまで戻す
         int guard = 0;
-        while (t.getState(val::object())["canStepBack"].as<bool>() && guard++ < 100000) {
+        while (t.getState(progressParams())["canStepBack"].as<bool>() && guard++ < 100000) {
             t.stepBack();
         }
 
         CHECK(readTrav(t) == initial);
-        CHECK(!t.getState(val::object())["canStepBack"].as<bool>());
+        CHECK(!t.getState(progressParams())["canStepBack"].as<bool>());
     }
 }
 
@@ -1295,7 +1302,7 @@ static void testRunToEndMatchesRepeatedStep() {
         runTraversal(a);
         b.runToEnd();
 
-        val sa = a.getState(val::object()), sb = b.getState(val::object());
+        val sa = a.getState(progressParams()), sb = b.getState(progressParams());
         CHECK(valToVector(sa["visitOrder"]) == valToVector(sb["visitOrder"]));
         CHECK(valToVector(sa["path"]) == valToVector(sb["path"]));
         CHECK_EQ(sa["found"].as<bool>(), sb["found"].as<bool>());
@@ -1310,12 +1317,12 @@ static void testTraversalColorsNodesAndEdges() {
     t.load("setTraversal", traversalCmd("bfs", 0, 3));
 
     // 開始直後: 始点だけが処理中、他は未訪問
-    val nodes = t.getState(val::object())["nodes"];
+    val nodes = t.getState(progressParams())["nodes"];
     CHECK_EQ((int)nodes[3].as<float>(), (int)NODE_VISITING);
     CHECK_EQ((int)nodes[7].as<float>(), (int)NODE_DEFAULT);
 
     t.runToEnd();
-    val done = t.getState(val::object());
+    val done = t.getState(progressParams());
     CHECK(done["found"].as<bool>());
 
     // 経路上の頂点は NODE_PATH、経路の辺は EDGE_PATH
@@ -1336,10 +1343,10 @@ static void testTraversalResetsWhenGraphChanges() {
     t.load("horizontal", "custom 1 0\n5 4\n0 1\n1 2\n2 3\n3 4\n");
     t.load("setTraversal", traversalCmd("bfs", 0, 4));
     t.runToEnd();
-    CHECK(t.getState(val::object())["finished"].as<bool>());
+    CHECK(t.getState(progressParams())["finished"].as<bool>());
 
     t.load("horizontal", "custom 1 0\n3 2\n0 1\n1 2\n");
-    val s = t.getState(val::object());
+    val s = t.getState(progressParams());
     CHECK(!s["finished"].as<bool>());
     CHECK_EQ(s["visitOrder"]["length"].as<int>(), 1); // 始点だけ
     CHECK_EQ(s["goalNode"].as<int>(), -1);            // 範囲外になった終点は外れる
@@ -1353,9 +1360,9 @@ static void testTraversalHandlesInvalidStart() {
     t.load("setTraversal", traversalCmd("bfs", 99, -1));
 
     // 範囲外の始点は 0 に丸められる
-    CHECK_EQ(t.getState(val::object())["startNode"].as<int>(), 0);
+    CHECK_EQ(t.getState(progressParams())["startNode"].as<int>(), 0);
     t.runToEnd();
-    CHECK_EQ(t.getState(val::object())["visitOrder"]["length"].as<int>(), 3);
+    CHECK_EQ(t.getState(progressParams())["visitOrder"]["length"].as<int>(), 3);
 }
 
 static void testStartEqualsGoal() {
@@ -1365,7 +1372,7 @@ static void testStartEqualsGoal() {
     t.load("horizontal", "custom 1 0\n4 3\n0 1\n1 2\n2 3\n");
     t.load("setTraversal", traversalCmd("bfs", 2, 2));
 
-    val s = t.getState(val::object());
+    val s = t.getState(progressParams());
     CHECK(s["found"].as<bool>());
     CHECK(s["finished"].as<bool>());
     CHECK_EQ(s["path"]["length"].as<int>(), 1);

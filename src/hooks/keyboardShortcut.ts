@@ -57,21 +57,25 @@ export const useKeyboardShortcuts = (handlers: ShortcutHandlers) => {
       
       // Ctrl + →: 進む
       if (isCtrl && e.key === 'ArrowRight') {
+        e.preventDefault();
         handlers.onStepNext?.();
       }
 
       // Ctrl + ←: 戻る
       if (isCtrl && e.key === 'ArrowLeft') {
+        e.preventDefault();
         handlers.onStepBack?.();
       }
 
       // Ctrl + ↑: スピードアップ
       if (isCtrl && e.key === 'ArrowUp') {
+        e.preventDefault();
         handlers.onSpeedUp?.();
       }
 
       // Ctrl + ↓: スピードダウン
       if (isCtrl && e.key === 'ArrowDown') {
+        e.preventDefault();
         handlers.onSpeedDown?.();
       }
     

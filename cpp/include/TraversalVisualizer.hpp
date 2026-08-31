@@ -263,14 +263,23 @@ public:
         state.set("found", st.found);
         state.set("canStepBack", !history.empty());
 
-        // フロンティア（キュー / スタック）の中身。
-        // 取り出される順に並べて渡す。
+        // 進行状況の配列は要求されたときだけ組み立てる。
+        // 描画ループは毎フレーム getState を呼ぶので、常に作ると無駄が大きい。
+        if (!(params.hasOwnProperty("withProgress") && params["withProgress"].as<bool>())) {
+            return state;
+        }
+
+        // フロンティア（キュー / スタック）の中身。取り出される順に並べる。
+        // 処理中の頂点は「取り出し済み」なので含めない。
+        const int ai = activeIndex();
         emscripten::val frontier = emscripten::val::array();
         if (mode == BFS) {
-            for (const Frame& f : st.frames) frontier.call<void>("push", f.vertex);
+            for (int i = 0; i < (int)st.frames.size(); i++) {
+                if (i != ai) frontier.call<void>("push", st.frames[i].vertex);
+            }
         } else {
-            for (auto it = st.frames.rbegin(); it != st.frames.rend(); ++it) {
-                frontier.call<void>("push", it->vertex);
+            for (int i = (int)st.frames.size() - 1; i >= 0; i--) {
+                if (i != ai) frontier.call<void>("push", st.frames[i].vertex);
             }
         }
         state.set("frontier", frontier);

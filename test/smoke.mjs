@@ -160,12 +160,14 @@ engine.setAlgorithm('traversal');
 engine.load('horizontal', 'custom 1 0\n4 4\n0 1\n1 2\n2 3\n0 3\n');
 engine.load('setTraversal', 'bfs 0 3');
 
-const t0 = engine.getState({});
-checkEq('開始時のフロンティアは始点だけ', t0.frontier.length, 1);
+const t0 = engine.getState({ withProgress: true });
+checkEq('開始時は始点を処理中でキューは空', t0.frontier.length, 0);
+checkEq('処理中は始点', t0.current, 0);
+check('進行状況は既定では返らない', engine.getState({}).frontier === undefined);
 checkEq('まだ終わっていない', t0.finished, false);
 
 engine.runToEnd();
-const t1 = engine.getState({});
+const t1 = engine.getState({ withProgress: true });
 checkEq('経路が見つかる', t1.found, true);
 checkEq('BFS なので最短の2頂点', t1.path.length, 2);
 checkEq('経路の始点', t1.path[0], 0);
@@ -177,7 +179,7 @@ checkEq('戻ると未完了に戻る', engine.getState({}).finished, false);
 
 engine.load('setTraversal', 'dfs 0 -1');
 engine.runToEnd();
-const t2 = engine.getState({});
+const t2 = engine.getState({ withProgress: true });
 checkEq('DFS で全頂点を訪問', t2.visitOrder.length, 4);
 checkEq('探索名が返る', t2.algorithm, 'dfs');
 
