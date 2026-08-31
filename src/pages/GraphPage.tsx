@@ -2,12 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useInterval } from 'react-use';
 import { GraphRenderer } from '../components/visualizers/GraphRenderer';
 import { NODE_STROKE, EDGE_COLOR } from '../components/visualizers/PixiGraphApp';
-import { PlaybackControls, speedUp, speedDown } from '../components/ui/PlaybackControls';
+import { PlaybackControls } from '../components/ui/PlaybackControls';
+import { speedUp, speedDown } from '../components/ui/playbackSpeed';
 import { Popup } from '../components/ui/popup';
 import { useKeyboardShortcuts } from '../hooks/keyboardShortcut';
+import type { VisualizerEngine, GraphState } from '../types/engine';
 
 interface GraphProps {
-    engine: any;
+    engine: VisualizerEngine;
     onBack: () => void;
 }
 
@@ -75,7 +77,7 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     // --- 再生 ---
     const [isPlaying, setIsPlaying] = useState(false);
     const [delay, setDelay] = useState(300);
-    const [state, setState] = useState<any>(null);
+    const [state, setState] = useState<GraphState | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const [isHelpOpen, setIsHelpOpen] = useState(false);
 
@@ -107,11 +109,11 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     };
 
     // 進行状況（キュー・訪問順・経路）は要求したときだけ組み立てられる
-    const readState = () => setState(engine.getState({ withProgress: true }));
+    const readState = () => setState(engine.getState<GraphState>({ withProgress: true }));
 
     // グラフを作り直したあとは、テキスト欄も C++ が持っている内容に合わせる
     const readStateAndText = () => {
-        const s = engine.getState({ withText: true, withProgress: true });
+        const s = engine.getState<GraphState>({ withText: true, withProgress: true });
         setState(s);
         if (s && s.graphText) setInputBuffer(s.graphText);
     };
@@ -215,7 +217,7 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
             type="text" value={value}
             onChange={(e) => setter(e.target.value.replace(/[^0-9]/g, ''))}
             onBlur={() => {
-                const max = (state && state.maxNodes) || 100;
+                const max = state?.maxNodes ?? 100;
                 if (value.trim() === "") setter("0");
                 else if (Number(value) > max) setter(String(max));
             }}
@@ -224,8 +226,12 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     );
 
     const frontierLabel = algorithm === 'bfs' ? 'キュー' : 'スタック';
-    const visited = (state && state.visitOrder) ? state.visitOrder.length : 0;
-    const total = (state && state.nodeCount) || 0;
+    // 進行状況は探索モードのときだけ返ってくる
+    const frontier = state?.frontier ?? [];
+    const visitOrder = state?.visitOrder ?? [];
+    const path = state?.path ?? [];
+    const current = state?.current ?? -1;
+    const total = state?.nodeCount ?? 0;
 
     return (
         <div style={{
@@ -285,7 +291,7 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
                             <PlaybackControls
                                 isPlaying={isPlaying}
                                 ready={!!state}
-                                canStepBack={!!(state && state.canStepBack)}
+                                canStepBack={!!state?.canStepBack}
                                 delay={delay}
                                 loadLabel="最初から"
                                 onLoad={handleReset}
@@ -366,29 +372,29 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
                         <Section title="実行状態">
                             <div style={{ fontSize: '13px', lineHeight: 1.7 }}>
                                 <div>
-                                    <b>{frontierLabel}</b>: {state && state.frontier && state.frontier.length
-                                        ? Array.from(state.frontier).join(' → ')
+                                    <b>{frontierLabel}</b>: {frontier.length
+                                        ? frontier.join(' → ')
                                         : <span style={{ color: '#90a4ae' }}>空</span>}
                                 </div>
                                 <div>
-                                    <b>処理中</b>: {state && state.current >= 0
-                                        ? state.current
+                                    <b>処理中</b>: {current >= 0
+                                        ? current
                                         : <span style={{ color: '#90a4ae' }}>なし</span>}
                                 </div>
                                 <div>
-                                    <b>訪問順</b>: {visited
-                                        ? Array.from(state.visitOrder).join(', ')
+                                    <b>訪問順</b>: {visitOrder.length
+                                        ? visitOrder.join(', ')
                                         : <span style={{ color: '#90a4ae' }}>なし</span>}
-                                    <span style={{ color: '#90a4ae' }}> ({visited} / {total})</span>
+                                    <span style={{ color: '#90a4ae' }}> ({visitOrder.length} / {total})</span>
                                 </div>
                                 <div>
-                                    <b>経路</b>: {state && state.path && state.path.length
-                                        ? Array.from(state.path).join(' → ')
+                                    <b>経路</b>: {path.length
+                                        ? path.join(' → ')
                                         : <span style={{ color: '#90a4ae' }}>未発見</span>}
                                 </div>
-                                <div style={{ marginTop: '6px', fontWeight: 'bold', color: (state && state.found) ? '#27ae60' : '#78909c' }}>
-                                    {!(state && state.finished) ? '探索中…'
-                                        : (state && state.found) ? '終点に到達しました'
+                                <div style={{ marginTop: '6px', fontWeight: 'bold', color: state?.found ? '#27ae60' : '#78909c' }}>
+                                    {!state?.finished ? '探索中…'
+                                        : state?.found ? '終点に到達しました'
                                         : goalNode.trim() === "" ? '到達できる範囲を調べ終えました'
                                         : '終点には到達できませんでした'}
                                 </div>
@@ -440,7 +446,7 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
                 </pre>
                 <ul>
                     <li>範囲外の頂点番号を含む行は読み飛ばされます</li>
-                    <li>頂点数には上限があります（現在 {(state && state.maxNodes) || 100}）</li>
+                    <li>頂点数には上限があります（現在 {state?.maxNodes ?? 100}）</li>
                     <li>「有向グラフ」のチェックは生成時に反映されます。探索が辺の向きを守るかどうかもこれで決まります</li>
                 </ul>
 

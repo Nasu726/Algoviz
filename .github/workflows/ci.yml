@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  web:
+    name: 型チェック / lint / ビルド / 疎通テスト
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx tsc -b
+      - run: npx eslint .
+      - run: npm run build
+      # 出荷する public/wasm/core.js への疎通。C++ を変えたのに
+      # WASM を再ビルドし忘れているとここで落ちる。
+      - run: npm run test:smoke
+
+  core:
+    name: コアエンジンのテスト
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # 本番と同じ emcc でテストを WASM にビルドして Node で走らせる。
+      # ローカルの npm run build:test と同じコマンド (パス指定だけ POSIX 向け)。
+      - run: node test/prepare.mjs
+      - name: build tests
+        run: |
+          docker run --rm -v "$PWD:/src" -u "$(id -u):$(id -g)" emscripten/emsdk \
+            emcc test/test_core.cpp cpp/src/Brainfuck.cpp -std=c++23 -O1 \
+            -s ALLOW_MEMORY_GROWTH=1 -s ASSERTIONS=1 -s EXIT_RUNTIME=1 \
+            --bind -o test/out/test_core.js
+      - run: node test/out/test_core.js

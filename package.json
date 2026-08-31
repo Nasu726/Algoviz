@@ -12,7 +12,8 @@
     "test:core": "npm run build:test && node test/out/test_core.js",
     "build:test": "docker run --rm -v \"%cd%\":/src emscripten/emsdk emcc test/test_core.cpp cpp/src/Brainfuck.cpp -std=c++23 -O1 -s ALLOW_MEMORY_GROWTH=1 -s ASSERTIONS=1 -s EXIT_RUNTIME=1 --bind -o test/out/test_core.js",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "pretest:core": "node test/prepare.mjs"
   },
   "dependencies": {
     "pixi.js": "^8.16.0",

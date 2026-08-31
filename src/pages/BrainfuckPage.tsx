@@ -1,28 +1,15 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useInterval } from 'react-use';
 import { Popup } from '../components/ui/popup';
-import { PlaybackControls, speedUp, speedDown } from '../components/ui/PlaybackControls';
+import { PlaybackControls } from '../components/ui/PlaybackControls';
+import { speedUp, speedDown } from '../components/ui/playbackSpeed';
 import { useKeyboardShortcuts } from '../hooks/keyboardShortcut';
 import { TapeViewer } from '../components/visualizers/TapeViewer';
-
-// App.tsxの「型定義」をそのままコピーしてここに貼る
-interface TapeCell { index: number; value: number; exists: boolean; name: string; }
-interface VisualizerState {
-  pc: number;
-  ptr: number;
-  tape: TapeCell[];     // 配列であることを期待
-  output: string;
-  stepCount: bigint;   // 任意項目にしておく
-  code: string;
-  isError: boolean;
-  errorMessage: string;
-  interrupted: boolean; // runToEnd がステップ上限で打ち切られた
-  stepLimit: bigint;    // そのステップ上限
-}
+import type { VisualizerEngine, BrainfuckState, TapeCell } from '../types/engine';
 
 // ★大事：Props（親から受け取るもの）を定義
 interface BrainfuckPageProps {
-  engine: any;       // Wasmのインスタンス
+  engine: VisualizerEngine; // Wasmのインスタンス
   onBack: () => void; // メニューに戻るための命令
 }
 
@@ -34,7 +21,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
   const [editorMode, setEditorMode] = useState(true);
   
   // ビジュアライザの状態
-  const [state, setState] = useState<VisualizerState | null>(null);
+  const [state, setState] = useState<BrainfuckState | null>(null);
   const [mod256, setModint] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [delay, setDelay] = useState(300);
@@ -87,6 +74,8 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
     if (engine && !state) {
       handleLoad();
     }
+    // Wasm エンジンが用意できた1回だけ走らせたい
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine]);
 
   // === ResizeObserver による画面サイズ監視を追加 ===
@@ -107,11 +96,15 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
   useEffect(() => {
     if (isPlaying) setIsPlaying(false);
     setEditorMode(true);
+    // コードが編集されたときだけ反応する
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
   // === 自動スクロール ===
   useEffect(() => {
     if (state && autoScroll) setCameraStart(state.ptr - (viewSize+1) / 2);
+    // 追従の切り替えと表示幅の変化にだけ反応する (実行中は各ステップ側で追従している)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoScroll, viewSize]);
 
   // どんな描画更新があっても、強制的に背面divのスクロールを手前と一致させる
@@ -138,7 +131,9 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
       textAreaRef.current.scrollTop = highlightDivRef.current.scrollTop;
       textAreaRef.current.scrollLeft = highlightDivRef.current.scrollLeft;
     }
-  }, [state?.pc, autoScroll]); // pc が変わるたびに実行
+    // pc が動いたときだけスクロールし直す
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.pc, autoScroll]);
 
   // === 実行ループ ===
   useInterval(() => {
@@ -159,7 +154,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
         // newState.interrupted が立ち、通知バナーで知らせる。
         engine.runToEnd();
 
-        const newState = engine.getState({ start: cameraStart, range: viewSize });
+        const newState = engine.getState<BrainfuckState>({ start: cameraStart, range: viewSize });
         setState(newState);
         if (autoScroll) setCameraStart(newState.ptr - (viewSize + 1) / 2);
         setOutput(engine.getOutput());
@@ -192,7 +187,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
 
     try {
       const alive = engine.step();
-      const newState = engine.getState({ start: cameraStart, range: viewSize });
+      const newState = engine.getState<BrainfuckState>({ start: cameraStart, range: viewSize });
 
       setState(newState);
       if (autoScroll) setCameraStart(newState.ptr - (viewSize+1) / 2);
@@ -233,7 +228,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
 
     try {
       engine.stepBack();
-      const newState = engine.getState({ start: cameraStart, range: viewSize });
+      const newState = engine.getState<BrainfuckState>({ start: cameraStart, range: viewSize });
 
       setState(newState);
       if (autoScroll) setCameraStart(newState.ptr - (viewSize+1) / 2);
@@ -256,7 +251,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
       // getState には計算した値をそのまま渡す
       const newStart = -(viewSize+1)/2;
       setCameraStart(newStart);
-      setState(engine.getState({ start: newStart, range: viewSize }));
+      setState(engine.getState<BrainfuckState>({ start: newStart, range: viewSize }));
       setOutput("");
 
       setIsPlaying(false);
@@ -294,7 +289,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
   // 3. 画面描画用のデータを取得
   let tapeData: TapeCell[] = [];
   if (engine) {
-    const displayState = engine.getState({ start: baseIndex, range: viewSize + 2 });
+    const displayState = engine.getState<BrainfuckState>({ start: baseIndex, range: viewSize + 2 });
     tapeData = displayState.tape;
   }
 

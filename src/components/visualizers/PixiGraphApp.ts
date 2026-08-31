@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js';
+import type { VisualizerEngine, GraphState } from '../../types/engine';
 
 // C++ 側 GraphData の配列レイアウト。ここを変えるときは GraphData.hpp も揃える。
 const NODE_STRIDE = 4; // [x, y, weight, colorId]
@@ -27,7 +28,7 @@ const edgeWidth  = (id: number) => EDGE_WIDTH[id] ?? EDGE_WIDTH[0];
 export class PixiGraphApp {
     private app: PIXI.Application;
     private container: HTMLDivElement;
-    private engine: any;
+    private engine: VisualizerEngine;
     
     // PixiJSのオブジェクト群
     private world!: PIXI.Container;
@@ -60,7 +61,7 @@ export class PixiGraphApp {
         return num.toString().split('').map(digit => subscripts[parseInt(digit, 10)]).join('');
     }
 
-    constructor(container: HTMLDivElement, engine: any) {
+    constructor(container: HTMLDivElement, engine: VisualizerEngine) {
         this.container = container;
         this.engine = engine;
         this.app = new PIXI.Application();
@@ -289,7 +290,7 @@ export class PixiGraphApp {
         // レイアウトの収束計算だけを進める。アルゴリズムの1手 (step) は
         // 再生コントロール側が叩くので、描画ループからは呼ばない。
         this.engine.prepare();
-        const state = this.engine.getState({});
+        const state = this.engine.getState<GraphState>({});
         const nodeArray = new Float32Array(state.nodes);
         const edgeArray = new Float32Array(state.edges);
 

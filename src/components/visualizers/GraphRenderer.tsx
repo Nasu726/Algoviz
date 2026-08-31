@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { PixiGraphApp } from './PixiGraphApp';
+import type { VisualizerEngine } from '../../types/engine';
 
 interface GraphRendererProps {
-  engine: any;
+  engine: VisualizerEngine;
   showWeights: boolean;
   labelType: 'index' | 'name';
 }
