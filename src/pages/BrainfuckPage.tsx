@@ -132,22 +132,36 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.pc, autoScroll]);
 
+  // 実行系が毎回やること。C++ から状態を読み直し、追従と出力を揃える。
+  const syncState = () => {
+    const newState = engine.getState<BrainfuckState>({ start: cameraStart, range: viewSize });
+    setState(newState);
+    if (autoScroll) setCameraStart(newState.ptr - (viewSize + 1) / 2);
+    setOutput(engine.getOutput());
+    return newState;
+  };
+
+  // コードが書き換わっていたら、あるいはまだ1手も進んでいなければ読み込み直す。
+  // 読み込み直したかどうかを返す。ステップバックだけは、読み込み直した時点で
+  // 「先頭に戻った」ことになるので、そのまま何もせず抜ける。
+  const ensureLoaded = () => {
+    if (state && (code !== state.code || state.stepCount === 0n)) {
+      handleLoad();
+      return true;
+    }
+    return false;
+  };
+
   const runToEnd = () => {
     if (!engine) return;
     if (isPlaying) setIsPlaying(false);
-    if (state && (code !== state.code || state.stepCount === 0n)) {
-      handleLoad();
-    }
+    ensureLoaded();
 
     try {
         // C++側でステップ上限まで一気に回す。上限に達した場合は
-        // newState.interrupted が立ち、通知バナーで知らせる。
+        // interrupted が立ち、通知バナーで知らせる。
         engine.runToEnd();
-
-        const newState = engine.getState<BrainfuckState>({ start: cameraStart, range: viewSize });
-        setState(newState);
-        if (autoScroll) setCameraStart(newState.ptr - (viewSize + 1) / 2);
-        setOutput(engine.getOutput());
+        syncState();
     } catch (e) {
         console.error("RunToEnd Error:", e);
     }
@@ -171,12 +185,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
 
     try {
       const alive = engine.step();
-      const newState = engine.getState<BrainfuckState>({ start: cameraStart, range: viewSize });
-
-      setState(newState);
-      if (autoScroll) setCameraStart(newState.ptr - (viewSize+1) / 2);
-      setOutput(engine.getOutput());
-
+      syncState();
       if (!alive) setIsPlaying(false);
     } catch (e) {
       console.error("Execution Error:", e);
@@ -186,38 +195,27 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
 
   // 実行ボタンを押したときの動作
   const executeButton = () => {
-    if(!engine) return;
-    if(state && (code != state.code || state.stepCount===0n)){
-      handleLoad();
-    }
+    if (!engine) return;
+    ensureLoaded();
     setIsPlaying(!isPlaying);
   };
 
   // ステップ実行時の動作
   const stepButton = () => {
-    if(!engine) return;
-    if(state && (code !== state.code || state.stepCount===0n)){
-      handleLoad();
-    }
+    if (!engine) return;
+    ensureLoaded();
     stepExecution();
-  }
+  };
 
   // ステップバック時の動作
   const stepBack = () => {
-    if(!engine) return;
-    if(state && (code !== state.code || state.stepCount===0n)){
-      handleLoad();
-      return;
-    }
+    if (!engine) return;
+    // 読み込み直したなら、それが「先頭に戻る」ことそのものなので何もしない
+    if (ensureLoaded()) return;
 
     try {
       engine.stepBack();
-      const newState = engine.getState<BrainfuckState>({ start: cameraStart, range: viewSize });
-
-      setState(newState);
-      if (autoScroll) setCameraStart(newState.ptr - (viewSize+1) / 2);
-      setOutput(engine.getOutput());
-
+      syncState();
     } catch (e) {
       console.error("StepBack Error:", e);
       setIsPlaying(false);
