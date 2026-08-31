@@ -318,8 +318,14 @@ public:
         } else if (cmd == "custom") {
             // skip と向きはグラフ本文より前に置く。本文が複数行なので、
             // 後ろに付けると行の区切りと衝突する。
+            // ヘッダは1行目だけから読む。行をまたいで読むと、引数を省略したときに
+            // 本文の数値を引数として食ってしまい、グラフが丸ごと壊れる。
+            std::string header;
+            std::getline(iss, header);
+            std::istringstream hs(header);
+
             int skip = 1, dir = 0, nodeW = 0, wt = 0;
-            iss >> skip >> dir >> nodeW >> wt;
+            hs >> skip >> dir >> nodeW >> wt;
             skipExtension = (skip != 0);
             if (generateCustom(iss, dir != 0, nodeW != 0, wt != 0)) rebuild();
         } else {

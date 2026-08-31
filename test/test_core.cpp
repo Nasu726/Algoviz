@@ -2105,6 +2105,19 @@ static void testUnweightedGraphHasNoWeightColumn() {
     for (int c : edgeLineColumns(graphTextOf(w))) CHECK_EQ(c, 3);
 }
 
+static void testCustomHeaderDoesNotEatTheBody() {
+    beginTest("custom の引数を省略しても本文を食わない");
+
+    // ヘッダを行またぎで読むと、省略した引数の代わりに本文の数値を吸い込んで
+    // グラフが丸ごと別物になる。1行目だけから読むこと。
+    GraphVisualizer g;
+    g.load("horizontal", "custom 1\n4 3\n0 1\n1 2\n2 3\n"); // dir 以降を省略
+
+    ParsedGraph pg = readGraph(g);
+    CHECK_EQ(pg.v, 4);
+    CHECK_EQ((int)pg.edges.size(), 3);
+}
+
 static void testNodeWeightLineDoesNotEatAnEdge() {
     beginTest("頂点の重み行が無いテキストでも辺が消えない");
 
@@ -2243,6 +2256,7 @@ int main(int argc, char** argv) {
 
     beginSection("重み付き / 重み無し");
     testUnweightedGraphHasNoWeightColumn();
+    testCustomHeaderDoesNotEatTheBody();
     testNodeWeightLineDoesNotEatAnEdge();
     testDijkstraOnUnweightedCountsEdges();
 
