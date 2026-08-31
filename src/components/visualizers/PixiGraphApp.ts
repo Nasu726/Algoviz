@@ -46,7 +46,6 @@ export class PixiGraphApp {
     private isDirected: boolean = false;
     private isAutomaton: boolean = false;
     private showWeights: boolean = false;
-    private labelType: 'index' | 'name' = 'index';
     
     // 状態管理フラグ
     private isInitialized = false;
@@ -75,12 +74,8 @@ export class PixiGraphApp {
     // ==========================================
     // Reactから設定を受け取るメソッド
     // ==========================================
-    public updateSettings(settings: {
-        showWeights: boolean;
-        labelType: 'index' | 'name';
-    }) {
+    public updateSettings(settings: { showWeights: boolean }) {
         this.showWeights = settings.showWeights;
-        this.labelType = settings.labelType;
     }
 
     // キャンバスのサイズを外側の要素に合わせる
@@ -335,7 +330,12 @@ export class PixiGraphApp {
 
         // 縮尺が小さいときは文字を全部省く
         const readable = this.world.scale.x >= TEXT_MIN_SCALE;
-        const showText = this.showWeights && readable;
+        // 何が「重み」として意味を持つかはグラフ側の性質で決まる。
+        // 重み無しグラフに辺の重みは無いし、頂点の脇の数字はダイクストラの
+        // 暫定距離か、入力された頂点の重みのどちらかがあるときだけ意味を持つ。
+        const showEdgeWeight = this.showWeights && readable && !!state.weighted;
+        const hasNodeValue = state.nodeValueMode === 'distance' || !!state.hasNodeWeights;
+        const showNodeValue = this.showWeights && readable && hasNodeValue;
 
         const edgeCount = edgeArray.length / EDGE_STRIDE;
         while (this.edgeWeightTexts.length < edgeCount) {
@@ -395,7 +395,7 @@ export class PixiGraphApp {
             // 画面外の辺のテキストも必ず隠す。ここで落とさないと
             // 前のグラフの重みが画面に取り残される。
             const onScreen = this.isVisible(fx, fy) || this.isVisible(tx, ty);
-            textObj.visible = onScreen && showText;
+            textObj.visible = onScreen && showEdgeWeight;
 
             if (onScreen) {
                 const minIdx = Math.min(fromIdx, toIdx), maxIdx = Math.max(fromIdx, toIdx);
@@ -556,12 +556,11 @@ export class PixiGraphApp {
                 const labelText = group.getChildByLabel("labelText") as PIXI.Text;
                 if (labelText) {
                     labelText.visible = readable;
-                    if (this.labelType === 'name' || this.isAutomaton) {
-                        // 状態名モード、またはオートマトンなら q₀ 形式
-                        labelText.text = `q${this.toSubscript(nodeIndex)}`;
-                    } else {
-                        labelText.text = `${nodeIndex}`;
-                    }
+                    // グラフの頂点は 0, 1, 2、オートマトンの状態は q₀, q₁, q₂。
+                    // どちらで書くかは分類で決まるので、利用者には選ばせない。
+                    labelText.text = this.isAutomaton
+                        ? `q${this.toSubscript(nodeIndex)}`
+                        : `${nodeIndex}`;
                 }
 
                 const acceptRing = group.getChildByLabel("acceptRing") as PIXI.Graphics;
@@ -614,7 +613,7 @@ export class PixiGraphApp {
 
                 const wText = group.getChildByLabel("weightText") as PIXI.Text;
                 if (wText) {
-                    wText.visible = showText;
+                    wText.visible = showNodeValue;
                     wText.text = formatNodeValue(weight);
                     
                     // ★ 自己ループも含めた上で、最も広く空いている角度を再計算！

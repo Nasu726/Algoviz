@@ -513,6 +513,7 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
              onStepNext={stepButton}
              onRunToEnd={runToEnd}
              onDelayChange={setDelay}
+             compact={isMobile}
            >
              <label style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', userSelect: 'none', flexShrink: 0, whiteSpace: 'nowrap'}}>
                <input type='checkbox' checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} style={{ padding: '8px 8px' }}/>

@@ -40,6 +40,10 @@ protected:
     GeneralGraphLayout layout;
     bool skipExtension = true;
     bool generatedDirected = false;
+    // 重み付きグラフか。重み無しなら重みを振らず、テキストにも重み列を出さない。
+    // ダイクストラが辺長として 1 を使うのは内部の話で、利用者の目には出さない。
+    bool weighted = false;
+
     // テキスト入力で頂点の重みを受け取るか。
     // 「V E」の次の行を辺とみなすか重みの並びとみなすかは、
     // 行の形からは決められないので UI からの指定に従う。
@@ -101,8 +105,12 @@ protected:
     // グラフ生成
     // ==========================================
 
+    // 重み無しグラフの辺長は 1。表示にも直列化にも出さないので、
+    // 利用者から見れば「重みが無い」ままになる。
+    float newEdgeWeight() { return weighted ? (float)(randInt(99) + 1) : 1.0f; }
+
     void addRandomEdge(int from, int to) {
-        graph->addEdge((float)from, (float)to, (float)randInt(99) + 1, 0);
+        graph->addEdge((float)from, (float)to, newEdgeWeight(), 0);
     }
 
     // 多重辺を許さないときに「同じ辺」とみなす組。
@@ -113,8 +121,9 @@ protected:
     }
 
     void generateRandom(int v, int e, bool allowSelfLoop, bool allowSameEdge,
-                        bool isDirected, bool connected) {
+                        bool isDirected, bool connected, bool isWeighted) {
         isDirected = isDirected || forceDirected();
+        weighted = isWeighted;
         v = std::clamp(v, 0, MAX_NODES);
         e = std::clamp(e, 0, MAX_EDGES);
 
@@ -168,8 +177,9 @@ protected:
         }
     }
 
-    void generateComplete(int v, bool isDirected) {
+    void generateComplete(int v, bool isDirected, bool isWeighted) {
         isDirected = isDirected || forceDirected();
+        weighted = isWeighted;
         v = std::clamp(v, 0, MAX_NODES);
         generatedDirected = isDirected;
         hasNodeWeights = false;
@@ -179,14 +189,16 @@ protected:
         for (int i = 0; i < v; i++) {
             for (int j = (isDirected ? 0 : i + 1); j < v; j++) {
                 if (i == j) continue;
-                graph->addEdge((float)i, (float)j, (float)randInt(99) + 1, 0);
+                addRandomEdge(i, j);
             }
         }
     }
 
     // "V E" の行に続けて "from to [重み]" が E 行。辺の重みは省略できる。
     // withNodeWeights が真なら、"V E" の直後に頂点の重みが V 個並ぶ行が入る。
-    bool generateCustom(std::istringstream& iss, bool isDirected, bool withNodeWeights) {
+    bool generateCustom(std::istringstream& iss, bool isDirected,
+                        bool withNodeWeights, bool isWeighted) {
+        weighted = isWeighted;
         int v = 0, e = 0;
         if (!(iss >> v >> e)) return false;
         v = std::clamp(v, 0, MAX_NODES);
@@ -198,29 +210,36 @@ protected:
         std::string line;
         std::getline(iss, line); // "V E" の行の残りを読み捨てる
 
-        // 頂点の重み。足りない分は 0 のまま。
+        // 頂点の重み。V 個の数値として読み切れたときだけ重み行として扱う。
+        // 無条件に1行消費すると、重み行を書いていないテキストで
+        // 最初の辺の行が食われて辺が静かに消える。
         std::vector<float> nodeWeights(v, 0.0f);
-        if (withNodeWeights && std::getline(iss, line)) {
+        std::string pending; // 重み行ではなかった行。辺として読み直す
+        if (withNodeWeights && v > 0 && std::getline(iss, line)) {
             std::istringstream ws(line);
-            for (int i = 0; i < v; i++) {
-                float w;
-                if (!(ws >> w)) break;
-                nodeWeights[i] = w;
-            }
+            std::vector<float> parsed;
+            float w;
+            while (ws >> w) parsed.push_back(w);
+            if ((int)parsed.size() == v) nodeWeights = parsed;
+            else pending = line;
         }
         for (int i = 0; i < v; i++) graph->setNode(i, (float)i, (float)i, nodeWeights[i], 0);
 
         int added = 0;
-        while (added < e && std::getline(iss, line)) {
+        bool more = true;
+        while (added < e && more) {
+            if (!pending.empty()) { line = pending; pending.clear(); }
+            else more = (bool)std::getline(iss, line);
+            if (!more) break;
+
             std::istringstream ls(line);
             int from, to;
-            // 重みを書かない = 重み無しグラフ。1 として扱うと、
-            // ダイクストラの結果が幅優先探索と一致して読みやすい。
-            float weight = 1.0f;
+            // 重み列が無いときは辺長 1。重み無しグラフでは表示にも出さない。
+            float w = 1.0f;
             if (!(ls >> from >> to)) continue; // 空行や不正な行は飛ばす
-            ls >> weight;
+            if (weighted) ls >> w;
             if (from < 0 || from >= v || to < 0 || to >= v) continue;
-            graph->addEdge((float)from, (float)to, weight, 0);
+            graph->addEdge((float)from, (float)to, w, 0);
             added++;
         }
         return true;
@@ -253,15 +272,16 @@ protected:
         }
 
         for (int i = 0; i < e; i++) {
-            oss << graph->edgeFrom(i) << " " << graph->edgeTo(i) << " "
-                << graph->edgeData[i * GraphData::EDGE_STRIDE + 2] << "\n";
+            oss << graph->edgeFrom(i) << " " << graph->edgeTo(i);
+            if (weighted) oss << " " << graph->edgeData[i * GraphData::EDGE_STRIDE + 2];
+            oss << "\n";
         }
         return oss.str();
     }
 
 public:
     GraphVisualizer() {
-        generateRandom(8, 10, false, false, false, true);
+        generateRandom(8, 10, false, false, false, true, false);
         rebuildLayout(); // コンストラクタなので仮想フックは呼ばない
     }
 
@@ -282,26 +302,26 @@ public:
         iss >> cmd;
 
         if (cmd == "random") {
-            int v = 0, e = 0, skip = 1, selfLoop = 0, sameEdge = 0, dir = 0, conn = 0;
+            int v = 0, e = 0, skip = 1, selfLoop = 0, sameEdge = 0, dir = 0, conn = 0, wt = 0;
             if (!(iss >> v >> e)) return;
-            iss >> skip >> selfLoop >> sameEdge >> dir >> conn;
+            iss >> skip >> selfLoop >> sameEdge >> dir >> conn >> wt;
             skipExtension = (skip != 0);
-            generateRandom(v, e, selfLoop != 0, sameEdge != 0, dir != 0, conn != 0);
+            generateRandom(v, e, selfLoop != 0, sameEdge != 0, dir != 0, conn != 0, wt != 0);
             rebuild();
         } else if (cmd == "complete") {
-            int v = 0, skip = 1, dir = 0;
+            int v = 0, skip = 1, dir = 0, wt = 0;
             if (!(iss >> v)) return;
-            iss >> skip >> dir;
+            iss >> skip >> dir >> wt;
             skipExtension = (skip != 0);
-            generateComplete(v, dir != 0);
+            generateComplete(v, dir != 0, wt != 0);
             rebuild();
         } else if (cmd == "custom") {
             // skip と向きはグラフ本文より前に置く。本文が複数行なので、
             // 後ろに付けると行の区切りと衝突する。
-            int skip = 1, dir = 0, nodeW = 0;
-            iss >> skip >> dir >> nodeW;
+            int skip = 1, dir = 0, nodeW = 0, wt = 0;
+            iss >> skip >> dir >> nodeW >> wt;
             skipExtension = (skip != 0);
-            if (generateCustom(iss, dir != 0, nodeW != 0)) rebuild();
+            if (generateCustom(iss, dir != 0, nodeW != 0, wt != 0)) rebuild();
         } else {
             layout.is_stable = false;
         }
@@ -341,6 +361,7 @@ public:
         state.set("isDirected", generatedDirected);
         state.set("isAutomaton", false);
         state.set("hasNodeWeights", hasNodeWeights);
+        state.set("weighted", weighted);
 
         // テキスト表現は要求されたときだけ組み立てる。
         // 描画ループが毎フレーム getState を呼ぶので、常に作ると無駄が大きい。
