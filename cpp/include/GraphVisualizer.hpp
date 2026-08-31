@@ -74,6 +74,11 @@ protected:
     // オートマトンのように、常に有向として扱いたい派生クラスが true を返す
     virtual bool forceDirected() const { return false; }
 
+    // 辺の3列目の意味。既定は重み、オートマトンは遷移記号 (1文字)。
+    // GraphData の辺は [from, to, weight, colorId] で、オートマトンに重みは
+    // 無いので3列目が空いている。記号の文字コードをそこに入れる。
+    virtual bool usesSymbols() const { return false; }
+
     // グラフが差し替わったときに派生クラスが状態をリセットするためのフック
     virtual void onGraphChanged() {}
 
@@ -240,10 +245,16 @@ protected:
 
             std::istringstream ls(line);
             int from, to;
-            // 重み列が無いときは辺長 1。重み無しグラフでは表示にも出さない。
+            // 3列目が無いときは辺長 1。重み無しグラフでは表示にも出さない。
             float w = 1.0f;
             if (!(ls >> from >> to)) continue; // 空行や不正な行は飛ばす
-            if (weighted) ls >> w;
+            if (usesSymbols()) {
+                char sym;
+                if (!(ls >> sym)) continue; // 記号の無い遷移は遷移になっていない
+                w = (float)(unsigned char)sym;
+            } else if (weighted) {
+                ls >> w;
+            }
             if (from < 0 || from >= v || to < 0 || to >= v) continue;
             graph->addEdge((float)from, (float)to, w, 0);
             added++;
@@ -278,8 +289,10 @@ protected:
         }
 
         for (int i = 0; i < e; i++) {
+            float extra = graph->edgeData[i * GraphData::EDGE_STRIDE + 2];
             oss << graph->edgeFrom(i) << " " << graph->edgeTo(i);
-            if (weighted) oss << " " << graph->edgeData[i * GraphData::EDGE_STRIDE + 2];
+            if (usesSymbols())    oss << " " << (char)(int)extra;
+            else if (weighted)    oss << " " << extra;
             oss << "\n";
         }
         return oss.str();

@@ -14,7 +14,7 @@ export const VARIANT_TITLE: Record<GraphVariant, string> = {
     bfs: '幅優先探索 (BFS)',
     dfs: '深さ優先探索 (DFS)',
     dijkstra: 'ダイクストラ法',
-    automaton: 'オートマトン',
+    automaton: '決定性有限オートマトン (DFA)',
     plain: 'グラフ描画',
 };
 
@@ -35,11 +35,14 @@ export interface GraphSettings {
     useNodeWeights: boolean;
     skipExtension: boolean;
     showWeights: boolean;
+    /** オートマトンの遷移記号として使う文字 */
+    alphabet: string;
     inputBuffer: string;
 }
 
 export const defaultSettings = (variant: GraphVariant): GraphSettings => ({
-    nodeCount: '8',
+    // オートマトンは1状態あたりアルファベットの数だけ遷移が出るので、少なめに始める
+    nodeCount: variant === 'automaton' ? '4' : '8',
     edgeCount: '10',
     // オートマトンは常に有向なので、既定でチェックを入れておく
     isDirected: variant === 'automaton',
@@ -53,5 +56,6 @@ export const defaultSettings = (variant: GraphVariant): GraphSettings => ({
     useNodeWeights: false,
     skipExtension: true,
     showWeights: true,
+    alphabet: 'ab',
     inputBuffer: '',
 });

@@ -2159,6 +2159,220 @@ static void testDijkstraOnUnweightedCountsEdges() {
     for (int i = 0; i < (int)d.size(); i++) CHECK_EQ(d[i], (float)i);
 }
 
+
+// ==========================================
+// DFA (決定性有限オートマトン)
+// ==========================================
+
+struct DfaEdge { int from, to; char sym; };
+
+static std::vector<DfaEdge> readDfaEdges(AutomatonVisualizer& a, int* vOut = nullptr) {
+    val params = val::object();
+    params.set("withText", true);
+    std::string text = a.getState(params)["graphText"].as<std::string>();
+
+    std::istringstream iss(text);
+    int v = 0, e = 0;
+    iss >> v >> e;
+    if (vOut) *vOut = v;
+
+    std::vector<DfaEdge> out;
+    int from, to; char sym;
+    while ((int)out.size() < e && (iss >> from >> to >> sym)) out.push_back({from, to, sym});
+    return out;
+}
+
+// 「a が偶数個なら受理」の DFA。状態 0 が偶数、状態 1 が奇数。
+static const char* EVEN_A_BODY =
+    "2 4\n0 1 a\n0 0 b\n1 0 a\n1 1 b\n";
+
+static void loadDfa(AutomatonVisualizer& a, const std::string& body,
+                    const std::string& start, const std::string& accepting) {
+    a.load("horizontal", "custom 1 1 0 0\n" + body);
+    a.load("setStartNode", start);
+    a.load("setAccepting", accepting);
+}
+
+static bool acceptsDfa(AutomatonVisualizer& a, const std::string& input) {
+    a.load("setInput", input);
+    a.runToEnd();
+    return a.getState(val::object())["accepted"].as<bool>();
+}
+
+static void testDfaAcceptsAndRejects() {
+    beginTest("既知の DFA が受理すべき文字列だけを受理する");
+
+    AutomatonVisualizer a;
+    loadDfa(a, EVEN_A_BODY, "0", "0");
+
+    // a が偶数個 (0 個も偶数)
+    CHECK(acceptsDfa(a, ""));
+    CHECK(acceptsDfa(a, "b"));
+    CHECK(acceptsDfa(a, "aa"));
+    CHECK(acceptsDfa(a, "aba"));
+    CHECK(acceptsDfa(a, "bbaabb"));
+
+    // a が奇数個
+    CHECK(!acceptsDfa(a, "a"));
+    CHECK(!acceptsDfa(a, "ab"));
+    CHECK(!acceptsDfa(a, "aaa"));
+    CHECK(!acceptsDfa(a, "bab"));
+}
+
+static void testDfaStepMatchesRunToEnd() {
+    beginTest("step を繰り返した結果と runToEnd の結果が一致する");
+
+    const char* inputs[] = {"", "a", "abab", "bbaabb", "aaaaa"};
+    for (const char* in : inputs) {
+        AutomatonVisualizer stepwise;
+        loadDfa(stepwise, EVEN_A_BODY, "0", "0");
+        stepwise.load("setInput", in);
+        while (stepwise.step()) {}
+
+        AutomatonVisualizer atOnce;
+        loadDfa(atOnce, EVEN_A_BODY, "0", "0");
+        atOnce.load("setInput", in);
+        atOnce.runToEnd();
+
+        val s = stepwise.getState(val::object());
+        val o = atOnce.getState(val::object());
+        CHECK_EQ(s["accepted"].as<bool>(), o["accepted"].as<bool>());
+        CHECK_EQ(s["currentState"].as<int>(), o["currentState"].as<int>());
+        CHECK_EQ(s["inputPos"].as<int>(), o["inputPos"].as<int>());
+        CHECK_EQ(s["finished"].as<bool>(), o["finished"].as<bool>());
+    }
+}
+
+static void testDfaStepBackReturnsToPreviousState() {
+    beginTest("stepBack で1手前の状態に戻る");
+
+    AutomatonVisualizer a;
+    loadDfa(a, EVEN_A_BODY, "0", "0");
+    a.load("setInput", "aba");
+
+    // 1手進めるたびに (現在状態, 消費位置) を控えておく
+    std::vector<std::pair<int, int>> seen;
+    val s = a.getState(val::object());
+    seen.push_back({s["currentState"].as<int>(), s["inputPos"].as<int>()});
+    CHECK(!s["canStepBack"].as<bool>());
+
+    while (a.step()) {
+        val cur = a.getState(val::object());
+        seen.push_back({cur["currentState"].as<int>(), cur["inputPos"].as<int>()});
+    }
+
+    // 「読み切って判定する」のも1手なので、最初の stepBack は判定の取り消しになる。
+    // 受理 / 拒否の表示から1手戻れる方が、見ていて自然。
+    a.stepBack();
+    val undone = a.getState(val::object());
+    CHECK(!undone["finished"].as<bool>());
+    CHECK_EQ(undone["currentState"].as<int>(), seen.back().first);
+    CHECK_EQ(undone["inputPos"].as<int>(), seen.back().second);
+
+    // そこからは、控えた並びをそのまま逆順に辿り直す
+    for (int i = (int)seen.size() - 1; i >= 1; i--) {
+        a.stepBack();
+        val cur = a.getState(val::object());
+        CHECK_EQ(cur["currentState"].as<int>(), seen[i - 1].first);
+        CHECK_EQ(cur["inputPos"].as<int>(), seen[i - 1].second);
+    }
+    CHECK(!a.getState(val::object())["canStepBack"].as<bool>());
+}
+
+static void testDfaStopsWhenTransitionIsMissing() {
+    beginTest("遷移が無いところで stuck になって止まる");
+
+    // 状態 1 から a の遷移が無い
+    AutomatonVisualizer a;
+    loadDfa(a, "2 3\n0 1 a\n0 0 b\n1 1 b\n", "0", "1");
+
+    a.load("setInput", "aa");
+    a.runToEnd();
+    val s = a.getState(val::object());
+    CHECK(s["stuck"].as<bool>());
+    CHECK(s["finished"].as<bool>());
+    CHECK(!s["accepted"].as<bool>());
+    CHECK_EQ(s["inputPos"].as<int>(), 1); // a を1文字消費したところで止まる
+
+    // アルファベットに無い記号でも同じ
+    a.load("setInput", "c");
+    a.runToEnd();
+    CHECK(a.getState(val::object())["stuck"].as<bool>());
+
+    // 遷移がある範囲なら止まらない
+    a.load("setInput", "abb");
+    a.runToEnd();
+    val ok = a.getState(val::object());
+    CHECK(!ok["stuck"].as<bool>());
+    CHECK(ok["accepted"].as<bool>());
+}
+
+static void testDfaDetectsNondeterminism() {
+    beginTest("同じ状態・同じ記号の遷移が2本あると非決定性を知らせる");
+
+    AutomatonVisualizer nd;
+    loadDfa(nd, "2 3\n0 1 a\n0 0 a\n1 1 b\n", "0", "1");
+    CHECK(nd.getState(val::object())["hasNondeterminism"].as<bool>());
+
+    AutomatonVisualizer d;
+    loadDfa(d, EVEN_A_BODY, "0", "0");
+    CHECK(!d.getState(val::object())["hasNondeterminism"].as<bool>());
+}
+
+static void testDfaTextRoundTrip() {
+    beginTest("遷移規則のテキストが記号ごと書き戻せる");
+
+    AutomatonVisualizer a;
+    loadDfa(a, EVEN_A_BODY, "0", "0");
+
+    int v = 0;
+    std::vector<DfaEdge> edges = readDfaEdges(a, &v);
+    CHECK_EQ(v, 2);
+    CHECK_EQ((int)edges.size(), 4);
+    if (edges.size() == 4) {
+        CHECK_EQ(edges[0].sym, 'a');
+        CHECK_EQ(edges[1].sym, 'b');
+        CHECK_EQ(edges[0].to, 1);
+        CHECK_EQ(edges[1].to, 0);
+    }
+
+    // 書き戻したテキストをもう一度読ませても同じ言語を受理する
+    val params = val::object();
+    params.set("withText", true);
+    std::string text = a.getState(params)["graphText"].as<std::string>();
+
+    AutomatonVisualizer again;
+    loadDfa(again, text, "0", "0");
+    CHECK(acceptsDfa(again, "abab"));  // a が2個
+    CHECK(!acceptsDfa(again, "ab"));   // a が1個
+}
+
+static void testGeneratedDfaIsDeterministicAndTotal() {
+    beginTest("ランダム生成した DFA は決定性かつ全域");
+
+    AutomatonVisualizer a;
+    a.load("genRandom", "6 abc");
+
+    int v = 0;
+    std::vector<DfaEdge> edges = readDfaEdges(a, &v);
+    CHECK_EQ(v, 6);
+    CHECK_EQ((int)edges.size(), 18); // 6 状態 x 3 記号
+
+    // (状態, 記号) の組がちょうど1回ずつ現れる
+    std::set<std::pair<int, char>> seen;
+    for (const DfaEdge& e : edges) {
+        CHECK(seen.insert({e.from, e.sym}).second);
+        CHECK(e.to >= 0 && e.to < v);
+    }
+    CHECK_EQ((int)seen.size(), 18);
+    CHECK(!a.getState(val::object())["hasNondeterminism"].as<bool>());
+
+    // 記号が重複していても、アルファベットとしては1つにまとまる
+    AutomatonVisualizer dup;
+    dup.load("genRandom", "3 aab");
+    CHECK_EQ(dup.getState(val::object())["alphabet"].as<std::string>(), std::string("ab"));
+}
+
 // ==========================================
 
 int main(int argc, char** argv) {
@@ -2259,6 +2473,15 @@ int main(int argc, char** argv) {
     testCustomHeaderDoesNotEatTheBody();
     testNodeWeightLineDoesNotEatAnEdge();
     testDijkstraOnUnweightedCountsEdges();
+
+    beginSection("DFA");
+    testDfaAcceptsAndRejects();
+    testDfaStepMatchesRunToEnd();
+    testDfaStepBackReturnsToPreviousState();
+    testDfaStopsWhenTransitionIsMissing();
+    testDfaDetectsNondeterminism();
+    testDfaTextRoundTrip();
+    testGeneratedDfaIsDeterministicAndTotal();
 
     if (g_failures == 0) {
         std::cout << "core: OK (" << g_checks << " checks)" << std::endl;
