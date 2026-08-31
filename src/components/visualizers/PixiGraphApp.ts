@@ -20,6 +20,11 @@ const EDGE_WIDTH  = [2, 3, 4, 2, 4];
 // 描いても情報にならないうえに、辺の多いグラフでは描画コストの主因になる。
 const TEXT_MIN_SCALE = 0.4;
 
+// 倍率の上下限。ホイールとピンチで共有する。
+const MIN_SCALE = 0.05;
+const MAX_SCALE = 10;
+const WHEEL_ZOOM_STEP = 1.1;
+
 // 頂点の脇に出す数値。ダイクストラの未到達は Infinity で渡ってくる。
 const formatNodeValue = (v: number) => (Number.isFinite(v) ? v.toString() : '\u221e');
 
@@ -58,6 +63,12 @@ export class PixiGraphApp {
     // マウス操作用
     private isDragging = false;
     private lastPos = { x: 0, y: 0 };
+
+    // タッチ操作用。1本指なら指の位置、2本指なら2点の中点を入れる。
+    // TouchEvent.touches は常に「今触れている指」そのものなので、
+    // pointerId を自前で数える方式と違って取りこぼしで状態が壊れない。
+    private lastTouchPos: { x: number; y: number } | null = null;
+    private lastPinchDist = 0;
 
     // 数字を下付き文字（Unicode）に変換する関数
     private toSubscript(num: number): string {
@@ -214,12 +225,15 @@ export class PixiGraphApp {
         // 当たり判定やカリングは論理サイズ (app.screen) で見る。
         this.app.stage.hitArea = new PIXI.Rectangle(0, 0, this.app.screen.width, this.app.screen.height);
 
+        // マウスのパン。タッチは下の onTouch* が見るので、ここでは弾く。
+        // 弾かないと、2本指のときにパンとピンチが同時に走って画面が跳ねる。
         this.app.stage.on('pointerdown', (e) => {
+            if (e.pointerType === 'touch') return;
             this.isDragging = true;
             this.lastPos = { x: e.global.x, y: e.global.y };
         });
         this.app.stage.on('pointermove', (e) => {
-            if (!this.isDragging) return;
+            if (!this.isDragging || e.pointerType === 'touch') return;
             const dx = e.global.x - this.lastPos.x;
             const dy = e.global.y - this.lastPos.y;
             this.world.position.x += dx;
@@ -229,27 +243,90 @@ export class PixiGraphApp {
         this.app.stage.on('pointerup', () => (this.isDragging = false));
         this.app.stage.on('pointerupoutside', () => (this.isDragging = false));
 
-        this.app.canvas.addEventListener('wheel', this.onWheel);
+        // passive を明示する。既定に任せると preventDefault() が効くかがブラウザ任せになる。
+        const opts = { passive: false } as const;
+        this.app.canvas.addEventListener('wheel', this.onWheel, opts);
+        this.app.canvas.addEventListener('touchstart', this.onTouchStart, opts);
+        this.app.canvas.addEventListener('touchmove', this.onTouchMove, opts);
+        this.app.canvas.addEventListener('touchend', this.onTouchEnd, opts);
+        this.app.canvas.addEventListener('touchcancel', this.onTouchEnd, opts);
+    }
+
+    // クライアント座標をキャンバス内の座標へ。autoDensity なので CSS ピクセル = 論理ピクセル。
+    private toCanvas(clientX: number, clientY: number) {
+        const rect = this.app.canvas.getBoundingClientRect();
+        return { x: clientX - rect.left, y: clientY - rect.top };
+    }
+
+    // 画面上の (px, py) を固定したまま倍率を変える。ホイールもピンチもここを通る。
+    private zoomAround(px: number, py: number, scaleChange: number) {
+        const oldScale = this.world.scale.x;
+        const newScale = Math.max(MIN_SCALE, Math.min(oldScale * scaleChange, MAX_SCALE));
+        const actual = newScale / oldScale;
+
+        this.world.position.x = px - (px - this.world.position.x) * actual;
+        this.world.position.y = py - (py - this.world.position.y) * actual;
+        this.world.scale.set(newScale);
+    }
+
+    private panBy(x: number, y: number) {
+        if (!this.lastTouchPos) return;
+        this.world.position.x += x - this.lastTouchPos.x;
+        this.world.position.y += y - this.lastTouchPos.y;
+    }
+
+    // 指の数が変わったら基準を取り直す。取り直さないと、
+    // 残った指の位置へ world が一気に飛ぶ。
+    private syncTouch(e: TouchEvent) {
+        if (e.touches.length >= 2) {
+            const a = this.toCanvas(e.touches[0].clientX, e.touches[0].clientY);
+            const b = this.toCanvas(e.touches[1].clientX, e.touches[1].clientY);
+            this.lastTouchPos = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+            this.lastPinchDist = Math.hypot(b.x - a.x, b.y - a.y);
+        } else if (e.touches.length === 1) {
+            this.lastTouchPos = this.toCanvas(e.touches[0].clientX, e.touches[0].clientY);
+            this.lastPinchDist = 0;
+        } else {
+            this.lastTouchPos = null;
+            this.lastPinchDist = 0;
+        }
     }
 
     // ★ アロー関数にしておくことで、thisのスコープが外れない＆イベント解除が簡単に！
     private onWheel = (e: WheelEvent) => {
         e.preventDefault();
-        const zoomFactor = 1.1;
-        const scaleChange = e.deltaY < 0 ? zoomFactor : 1 / zoomFactor;
+        const p = this.toCanvas(e.clientX, e.clientY);
+        this.zoomAround(p.x, p.y, e.deltaY < 0 ? WHEEL_ZOOM_STEP : 1 / WHEEL_ZOOM_STEP);
+    };
 
-        const rect = this.app.canvas.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
+    private onTouchStart = (e: TouchEvent) => this.syncTouch(e);
+    private onTouchEnd = (e: TouchEvent) => this.syncTouch(e);
 
-        const oldScale = this.world.scale.x;
-        let newScale = oldScale * scaleChange;
-        newScale = Math.max(0.05, Math.min(newScale, 10));
-        const actualScaleChange = newScale / oldScale;
+    private onTouchMove = (e: TouchEvent) => {
+        // ブラウザ既定のピンチやページスクロールに持っていかれないようにする
+        e.preventDefault();
 
-        this.world.position.x = mouseX - (mouseX - this.world.position.x) * actualScaleChange;
-        this.world.position.y = mouseY - (mouseY - this.world.position.y) * actualScaleChange;
-        this.world.scale.set(newScale);
+        if (e.touches.length >= 2) {
+            const a = this.toCanvas(e.touches[0].clientX, e.touches[0].clientY);
+            const b = this.toCanvas(e.touches[1].clientX, e.touches[1].clientY);
+            const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+            const dist = Math.hypot(b.x - a.x, b.y - a.y);
+
+            if (this.lastPinchDist > 0) {
+                // 先に中点の移動ぶんを平行移動し、そのあと中点を固定して拡大する。
+                // この順にすると、指の下にあった点が指の下に残る。
+                this.panBy(mid.x, mid.y);
+                this.zoomAround(mid.x, mid.y, dist / this.lastPinchDist);
+            }
+            this.lastTouchPos = mid;
+            this.lastPinchDist = dist;
+            return;
+        }
+
+        const p = this.toCanvas(e.touches[0].clientX, e.touches[0].clientY);
+        this.panBy(p.x, p.y);
+        this.lastTouchPos = p;
+        this.lastPinchDist = 0;
     };
 
     private isVisible(x: number, y: number): boolean {
@@ -641,6 +718,10 @@ export class PixiGraphApp {
         this.isDestroyed = true;
         if (this.isInitialized) {
             this.app.canvas.removeEventListener('wheel', this.onWheel);
+            this.app.canvas.removeEventListener('touchstart', this.onTouchStart);
+            this.app.canvas.removeEventListener('touchmove', this.onTouchMove);
+            this.app.canvas.removeEventListener('touchend', this.onTouchEnd);
+            this.app.canvas.removeEventListener('touchcancel', this.onTouchEnd);
             this.app.ticker.remove(this.renderLoop);
             this.app.stage.destroy({ children: true });
             this.app.destroy({ removeView: true });
