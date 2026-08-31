@@ -1,11 +1,15 @@
 #pragma once
 #include "GraphData.hpp"
+#include "ILayout.hpp"
 #include <vector>
 #include <algorithm>
 #include <cmath>
 #include <queue>
 
-class GeneralGraphLayout {
+// 一般グラフ向けの力学モデル。
+// 全点対の距離 → 古典 MDS で初期配置 → ストレス最小化 + 斥力で収束 →
+// 連結成分ごとに凸包を取って螺旋状に詰める、という順で座標を決める。
+class GeneralGraphLayout : public ILayout {
 private:
     float inf = 999999.0f;
     float baseDistance = 80.0f;
@@ -691,10 +695,14 @@ public:
     int stable_count = 0;
     int required_stable_frames = 20;
 
+    bool isStable() const override { return is_stable; }
+    void invalidate() override { is_stable = false; }
+    void setPreferHorizontal(bool v) override { preferHorizontal = v; }
+
     // adj は「向きを無視し、自己ループを除いた」隣接リスト。
     // レイアウトは辺の向きに意味を持たないので、呼び出し側 (GraphVisualizer) が
     // 一度だけ構築したものを共有する。
-    void init(GraphData* graph, const std::vector<std::vector<int>>& adj) {
+    void init(GraphData* graph, const std::vector<std::vector<int>>& adj) override {
         nodeStride = graph->NODE_STRIDE;
         edgeStride = graph->EDGE_STRIDE;
         nodeSize = graph->nodeData.size()/nodeStride;
@@ -738,7 +746,7 @@ public:
     }
 
     // update は各関数を呼ぶだけ
-    bool update(GraphData* graph) {
+    bool update(GraphData* graph) override {
         if (is_stable) return true;
 
         // 1. 各コンポーネント内の形を整える
@@ -784,7 +792,8 @@ public:
         return is_stable;
     }
 
-    void forcePack(GraphData* graph) {
+    // 収束を待たずに打ち切る。今の座標のままパッキングだけ済ませる。
+    void finish(GraphData* graph) override {
         is_stable = true;
         preparePacking(graph);
         packComponentsStrict(graph);
