@@ -5,10 +5,9 @@ import type { VisualizerEngine } from '../../types/engine';
 interface GraphRendererProps {
   engine: VisualizerEngine;
   showWeights: boolean;
-  labelType: 'index' | 'name';
 }
 
-export const GraphRenderer: React.FC<GraphRendererProps> = ({ engine, showWeights, labelType }) => {
+export const GraphRenderer: React.FC<GraphRendererProps> = ({ engine, showWeights }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const pixiAppRef = useRef<PixiGraphApp | null>(null);
 
@@ -37,8 +36,8 @@ export const GraphRenderer: React.FC<GraphRendererProps> = ({ engine, showWeight
 
   // 表示の好みが変わった時にPixiJS側に通知
   useEffect(() => {
-    pixiAppRef.current?.updateSettings({ showWeights, labelType });
-  }, [showWeights, labelType]);
+    pixiAppRef.current?.updateSettings({ showWeights });
+  }, [showWeights]);
 
   return (
     <div

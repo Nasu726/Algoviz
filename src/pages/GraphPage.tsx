@@ -43,7 +43,9 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     const latest = useRef({ settings, startNode, goalNode, automatonStart, acceptingNodes });
     latest.current = { settings, startNode, goalNode, automatonStart, acceptingNodes };
 
-    const orientation = () => latest.current.settings.isHorizontal ? 'horizontal' : 'vertical';
+    // 常に横長。木 / DAG のビジュアライザを作るときは、木は縦長に描くのが普通なので
+    // そこで明示的に分ける (AGENTS.md の「先送りにしている判断」を参照)
+    const orientation = () => 'horizontal';
     const flags = () => {
         const s = latest.current.settings;
         return {
@@ -53,6 +55,7 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
             selfLoop: s.allowSelfLoop ? 1 : 0,
             sameEdge: s.allowSameEdge ? 1 : 0,
             conn: s.connected ? 1 : 0,
+            wt: s.weighted ? 1 : 0,
         };
     };
 
@@ -97,7 +100,7 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         const f = flags();
         const s = latest.current.settings;
         engine.load(orientation(),
-            `random ${s.nodeCount} ${s.edgeCount} ${f.skip} ${f.selfLoop} ${f.sameEdge} ${f.dir} ${f.conn}`);
+            `random ${s.nodeCount} ${s.edgeCount} ${f.skip} ${f.selfLoop} ${f.sameEdge} ${f.dir} ${f.conn} ${f.wt}`);
         applyVariantSettings();
         readStateAndSync();
         setIsLoaded(true);
@@ -112,12 +115,6 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         readState();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [startNode, goalNode, automatonStart, acceptingNodes]);
-
-    useEffect(() => {
-        if (!engine || !isLoaded) return;
-        engine.load(orientation(), '');
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [settings.isHorizontal]);
 
     // === 再生ループ ===
     useInterval(() => {
@@ -134,15 +131,15 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     const handleGenerateRandom = () => {
         const f = flags();
         const s = latest.current.settings;
-        generate(`random ${s.nodeCount} ${s.edgeCount} ${f.skip} ${f.selfLoop} ${f.sameEdge} ${f.dir} ${f.conn}`);
+        generate(`random ${s.nodeCount} ${s.edgeCount} ${f.skip} ${f.selfLoop} ${f.sameEdge} ${f.dir} ${f.conn} ${f.wt}`);
     };
     const handleGenerateComplete = () => {
         const f = flags();
-        generate(`complete ${latest.current.settings.nodeCount} ${f.skip} ${f.dir}`);
+        generate(`complete ${latest.current.settings.nodeCount} ${f.skip} ${f.dir} ${f.wt}`);
     };
     const handleGenerateFromText = () => {
         const f = flags();
-        generate(`custom ${f.skip} ${f.dir} ${f.nodeW}\n${latest.current.settings.inputBuffer}`);
+        generate(`custom ${f.skip} ${f.dir} ${f.nodeW} ${f.wt}\n${latest.current.settings.inputBuffer}`);
     };
 
     const backToMenu = () => {
@@ -199,7 +196,7 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     ) : null;
 
     const canvas = isLoaded ? (
-        <GraphRenderer engine={engine} showWeights={settings.showWeights} labelType={settings.labelType} />
+        <GraphRenderer engine={engine} showWeights={settings.showWeights} />
     ) : null;
 
     const sidebarStyle: React.CSSProperties = {

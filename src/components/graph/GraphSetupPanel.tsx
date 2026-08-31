@@ -29,6 +29,10 @@ export const GraphSetupPanel: React.FC<Props> = ({
     const s = settings;
     const fontSize = compact ? '12px' : '13px';
     const button: React.CSSProperties = { padding: '8px', cursor: 'pointer' };
+    // 横に並べて、サイドバーをスクロールせずに使える高さに収める
+    const genButton: React.CSSProperties = {
+        ...button, flex: 1, minWidth: 0, fontSize: '12px', padding: '8px 4px',
+    };
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', fontSize }}>
@@ -50,6 +54,9 @@ export const GraphSetupPanel: React.FC<Props> = ({
                 <Check checked={s.connected} onChange={(v) => update({ connected: v })}>
                     連結なグラフにする
                 </Check>
+                <Check checked={s.weighted} onChange={(v) => update({ weighted: v })}>
+                    重み付きグラフ
+                </Check>
                 <Check checked={s.allowSelfLoop} onChange={(v) => update({ allowSelfLoop: v })}>
                     自己ループを許す
                 </Check>
@@ -60,8 +67,10 @@ export const GraphSetupPanel: React.FC<Props> = ({
                     頂点の重みを入力する
                 </Check>
 
-                <button onClick={onGenerateRandom} style={button}>ランダム生成</button>
-                <button onClick={onGenerateComplete} style={button}>完全グラフ生成</button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={onGenerateRandom} style={genButton}>ランダム生成</button>
+                    <button onClick={onGenerateComplete} style={genButton}>完全グラフ生成</button>
+                </div>
             </Section>
 
             <Section title="グラフ入力">
@@ -96,28 +105,21 @@ export const GraphSetupPanel: React.FC<Props> = ({
                 </Section>
             )}
 
-            <Section title="表示">
-                <Check checked={s.isHorizontal} onChange={(v) => update({ isHorizontal: v })}>
-                    横長レイアウト
-                </Check>
-                <Check checked={s.showWeights} onChange={(v) => update({ showWeights: v })}>
-                    {variant === 'dijkstra' ? '重みと距離を表示' : '重みを表示'}
-                </Check>
-                <Check checked={s.skipExtension} onChange={(v) => update({ skipExtension: v })}>
-                    展開アニメーションを飛ばす
-                </Check>
-                <div>
-                    頂点の表示名:
-                    <select
-                        value={s.labelType}
-                        onChange={(e) => update({ labelType: e.target.value as 'index' | 'name' })}
-                        style={{ width: '100%', marginTop: '4px' }}
-                    >
-                        <option value="index">インデックス (0, 1...)</option>
-                        <option value="name">状態名 (q₀, q₁...)</option>
-                    </select>
-                </div>
-            </Section>
+            {(s.weighted || variant === 'plain') && (
+                <Section title="表示">
+                    {s.weighted && (
+                        <Check checked={s.showWeights} onChange={(v) => update({ showWeights: v })}>
+                            {variant === 'dijkstra' ? '重みと距離を表示' : '重みを表示'}
+                        </Check>
+                    )}
+                    {/* レイアウトが収束する過程はアルゴリズムと無関係なので、遊び場だけに置く */}
+                    {variant === 'plain' && (
+                        <Check checked={s.skipExtension} onChange={(v) => update({ skipExtension: v })}>
+                            展開アニメーションを飛ばす
+                        </Check>
+                    )}
+                </Section>
+            )}
 
             {isTraversal(variant) && (
                 <p style={{ margin: 0, fontSize: '12px', color: '#78909c', lineHeight: 1.6 }}>

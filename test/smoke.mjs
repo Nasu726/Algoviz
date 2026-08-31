@@ -178,7 +178,7 @@ checkEq('受理状態は範囲内だけ', a2.acceptingStates.length, 2);
 section('Traversal');
 engine.setAlgorithm('traversal');
 // 0-1-2-3 の道と 0-3 の近道
-engine.load('horizontal', 'custom 1 0 0\n4 4\n0 1\n1 2\n2 3\n0 3\n');
+engine.load('horizontal', 'custom 1 0 0 1\n4 4\n0 1\n1 2\n2 3\n0 3\n');
 engine.load('setTraversal', 'bfs 0 3');
 
 const t0 = engine.getState({ withProgress: true });
@@ -205,7 +205,7 @@ checkEq('DFS で全頂点を訪問', t2.visitOrder.length, 4);
 checkEq('探索名が返る', t2.algorithm, 'dfs');
 
 // ダイクストラ: 遠回りの方が軽い経路を選ぶ
-engine.load('horizontal', 'custom 1 0 0\n4 4\n0 1 10\n1 2 10\n2 3 10\n0 3 100\n');
+engine.load('horizontal', 'custom 1 0 0 1\n4 4\n0 1 10\n1 2 10\n2 3 10\n0 3 100\n');
 engine.load('setTraversal', 'dijkstra 0 3');
 engine.runToEnd();
 const t3 = engine.getState({ withProgress: true });
@@ -217,7 +217,7 @@ check('距離が返る', Array.isArray(t3.distances));
 checkEq('負の重みは無い', t3.hasNegativeEdge, false);
 
 // 頂点の重み
-engine.load('horizontal', 'custom 1 0 1\n3 1\n7 8 9\n0 1 2\n');
+engine.load('horizontal', 'custom 1 0 1 1\n3 1\n7 8 9\n0 1 2\n');
 const nw = engine.getState({ withText: true });
 checkEq('頂点の重みを受け取った', nw.hasNodeWeights, true);
 checkEq('テキストに頂点の重みが載る', nw.graphText.split('\n')[1], '7 8 9');

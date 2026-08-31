@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import type { VisualizerEngine, CreateVisualizerModule } from './types/engine';
 
 import { MenuPage } from './pages/Menu';
@@ -118,6 +118,9 @@ function App() {
       {/* 描くだけのページ。メニューには載せないが、レイアウトとパッキングの
           回帰を目視確認する手段としてルートは残す */}
       <Route path="/graph" element={<GraphWrapper engine={engineRef.current!} variant="plain" />} />
+
+      {/* 定義の無いパスは真っ白になるので、トップへ送る */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
 
     </BrowserRouter>

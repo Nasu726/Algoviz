@@ -42,6 +42,8 @@ export interface GraphState {
     isAutomaton: boolean;
     /** テキスト入力で頂点の重みを受け取ったか */
     hasNodeWeights: boolean;
+    /** 重み付きグラフか。重み無しならテキストにも表示にも重みは出ない */
+    weighted: boolean;
 
     /** getState({ withText: true }) のときだけ */
     graphText?: string;

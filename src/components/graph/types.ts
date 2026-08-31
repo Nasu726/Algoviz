@@ -30,11 +30,11 @@ export interface GraphSettings {
     allowSelfLoop: boolean;
     allowSameEdge: boolean;
     connected: boolean;
+    /** 重み付きグラフか。重み無しなら重みを振らず、表示にもテキストにも出さない */
+    weighted: boolean;
     useNodeWeights: boolean;
     skipExtension: boolean;
-    isHorizontal: boolean;
     showWeights: boolean;
-    labelType: 'index' | 'name';
     inputBuffer: string;
 }
 
@@ -47,10 +47,11 @@ export const defaultSettings = (variant: GraphVariant): GraphSettings => ({
     allowSameEdge: false,
     // 探索を見せるページでは、途中で行き止まりにならない方が既定として自然
     connected: isTraversal(variant),
+    // 重みを使うのはダイクストラだけ。遊び場も既定で重み付きにしておく。
+    // BFS / DFS は重みを一切見ないので、出すと使っていると誤解させる
+    weighted: variant === 'dijkstra' || variant === 'plain',
     useNodeWeights: false,
     skipExtension: true,
-    isHorizontal: true,
     showWeights: true,
-    labelType: variant === 'automaton' ? 'name' : 'index',
     inputBuffer: '',
 });
