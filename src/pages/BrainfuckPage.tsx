@@ -3,6 +3,7 @@ import { VisualizerShell } from '../components/ui/VisualizerShell';
 import { PlaybackControls } from '../components/ui/PlaybackControls';
 import { useKeyboardShortcuts } from '../hooks/keyboardShortcut';
 import { usePlayback } from '../hooks/usePlayback';
+import { useViewportWidth } from '../hooks/useViewportWidth';
 import { TapeViewer } from '../components/visualizers/TapeViewer';
 import type { VisualizerEngine, BrainfuckState, TapeCell } from '../types/engine';
 
@@ -30,7 +31,9 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
 
   // ユーザー操作
   const [isDragging, setIsDragging] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 475);
+  // テープのセルが並ぶ幅で切る。レイアウトの3段階 (useLayoutTier) とは
+  // 意味が違うので、しきい値は揃えない。
+  const isMobile = useViewportWidth() <= 475;
   const [lastTouchX, setLastTouchX] = useState<number | null>(null);
   const [isHelpPopupOpen, setIsHelpPopupOpen] = useState(false);
 
@@ -40,13 +43,6 @@ export const BrainfuckPage: React.FC<BrainfuckPageProps> = ({ engine, onBack }) 
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const highlightDivRef = useRef<HTMLDivElement>(null);
   const highlightSpanRef = useRef<HTMLSpanElement>(null);
-
-  // スマホサイズの画面かどうかを検知
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth <= 475);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
   // エラー監視用
   useEffect(() => {
