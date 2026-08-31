@@ -32,13 +32,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      # 本番と同じ emcc でテストを WASM にビルドして Node で走らせる。
+      # 本番と同じ em++ でテストを WASM にビルドして Node で走らせる。
       # ローカルの npm run build:test と同じコマンド (パス指定だけ POSIX 向け)。
       - run: node test/prepare.mjs
       - name: build tests
         run: |
-          docker run --rm -v "$PWD:/src" -u "$(id -u):$(id -g)" emscripten/emsdk \
-            emcc test/test_core.cpp cpp/src/Brainfuck.cpp -std=c++23 -O1 \
+          docker run --rm -v "$PWD:/src" -u "$(id -u):$(id -g)" emscripten/emsdk:5.0.1 \
+            em++ test/test_core.cpp cpp/src/Brainfuck.cpp -std=c++23 -O1 \
             -s ALLOW_MEMORY_GROWTH=1 -s ASSERTIONS=1 -s EXIT_RUNTIME=1 \
             --bind -o test/out/test_core.js
       # 途中でクラッシュしたときに位置が分かるよう、CI では進行も出す

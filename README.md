@@ -42,6 +42,10 @@ src/
 
 必要なもの: Node.js 20+ と Docker (WASM のビルドに emscripten イメージを使う)。
 
+emscripten のバージョンは `emscripten/emsdk:5.0.1` に固定しています。`latest` のままだと
+ローカルと CI で別のコンパイラが動き、出荷する WASM が再現しなくなるためです。
+C++ をリンクするので `emcc` ではなく `em++` を使います。
+
 ```bash
 npm install
 npm run dev
