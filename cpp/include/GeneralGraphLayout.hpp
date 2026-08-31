@@ -350,6 +350,64 @@ private:
     }
 
     // ==========================================
+    // 円周上の並び順 (逆 Cuthill-McKee)
+    // ==========================================
+
+    // 円形配置で頂点番号順に並べると、番号は構造と無関係なので実質ランダム順になり、
+    // 弦の交差が最大化される。
+    //
+    // 逆 Cuthill-McKee は帯幅を小さくするための順序付けで、目的がそのまま
+    // 「隣接する頂点の順序を近づける」こと。円周上では順序の近さが弦の短さ、
+    // ひいては交差のしにくさになる。線形時間で、固有値分解も要らない。
+    //
+    // (スペクトル順序でも同じことができるが、下の jacobiMethod は古典ヤコビ法で
+    //  実質 O(n^4) 級。円形配置はその重い経路を回避する役目も持っているので、
+    //  そこへ固有値分解を持ち込むのは逆行する)
+    std::vector<int> reverseCuthillMcKee(const std::vector<int>& component,
+                                         const std::vector<std::vector<int>>& adj) {
+        int n = (int)component.size();
+        if (n <= 2) return component;
+
+        std::vector<int> degree(nodeSize, 0);
+        for (int u : component) degree[u] = (int)adj[u].size();
+
+        // 次数の小さい頂点から始めると、端から順に並びやすい
+        int start = component[0];
+        for (int u : component) if (degree[u] < degree[start]) start = u;
+
+        std::vector<char> visited(nodeSize, 0);
+        std::vector<int> order;
+        order.reserve(n);
+
+        std::queue<int> q;
+        q.push(start);
+        visited[start] = 1;
+
+        std::vector<int> next;
+        while (!q.empty()) {
+            int u = q.front(); q.pop();
+            order.push_back(u);
+
+            // 未訪問の隣接を次数の小さい順に積む
+            next.clear();
+            for (int v : adj[u]) {
+                if (visited[v]) continue;
+                visited[v] = 1; // 多重辺で二重に積まないよう、ここで印を付ける
+                next.push_back(v);
+            }
+            std::sort(next.begin(), next.end(),
+                      [&](int a, int b) { return degree[a] < degree[b]; });
+            for (int v : next) q.push(v);
+        }
+
+        // 取り残しがあれば後ろに足す (連結成分なので通常は起きない)
+        for (int u : component) if (!visited[u]) order.push_back(u);
+
+        std::reverse(order.begin(), order.end());
+        return order;
+    }
+
+    // ==========================================
     // 密度に基づくハイブリッド初期配置
     // ==========================================
     // 密度がこれを超えたら円形配置にする。
@@ -430,8 +488,11 @@ private:
                 float defaultRadius = (n * baseDistance) / (2.0f * (float)M_PI);
                 float radius = std::max({baseDistance, defaultRadius, minRadius});
 
+                // 頂点番号順ではなく、構造に沿った順で円周に並べる
+                std::vector<int> ring = reverseCuthillMcKee(components[c], adj);
+
                 for (int i = 0; i < n; i++) {
-                    int u = components[c][i];
+                    int u = ring[i];
                     float angle = 2.0f * M_PI * i / n;
                     float x = center_x + radius * std::cos(angle);
                     float y = center_y + radius * std::sin(angle);

@@ -1854,6 +1854,198 @@ static void testConnectedGraphIsFullyTraversed() {
     }
 }
 
+
+// ==========================================
+// 円形配置の並び順
+// ==========================================
+
+// 実際の座標から、円周上の並び順を復元する
+static std::vector<int> ringOrderFromPositions(const ParsedGraph& pg) {
+    float cx = 0, cy = 0;
+    for (int i = 0; i < pg.v; i++) { cx += pg.xs[i]; cy += pg.ys[i]; }
+    cx /= pg.v; cy /= pg.v;
+
+    std::vector<std::pair<float, int>> byAngle;
+    for (int i = 0; i < pg.v; i++) {
+        byAngle.push_back({std::atan2(pg.ys[i] - cy, pg.xs[i] - cx), i});
+    }
+    std::sort(byAngle.begin(), byAngle.end());
+
+    std::vector<int> order;
+    for (auto& a : byAngle) order.push_back(a.second);
+    return order;
+}
+
+// 中心からの距離がほぼ一定なら円形配置になっている
+static bool looksCircular(const ParsedGraph& pg) {
+    if (pg.v < 3) return false;
+    float cx = 0, cy = 0;
+    for (int i = 0; i < pg.v; i++) { cx += pg.xs[i]; cy += pg.ys[i]; }
+    cx /= pg.v; cy /= pg.v;
+
+    float minR = 1e30f, maxR = 0;
+    for (int i = 0; i < pg.v; i++) {
+        float dx = pg.xs[i] - cx, dy = pg.ys[i] - cy;
+        float r = std::sqrt(dx * dx + dy * dy);
+        minR = std::min(minR, r);
+        maxR = std::max(maxR, r);
+    }
+    return maxR > 0 && (maxR - minR) / maxR < 0.05f;
+}
+
+// その並び順で円周に置いたときの、弦の交差数。
+// 端点を共有する辺どうしは交差に数えない。
+static int countChordCrossings(const std::vector<std::pair<int, int>>& edges,
+                               const std::vector<int>& order) {
+    int n = (int)order.size();
+    std::vector<int> pos(n, 0);
+    for (int i = 0; i < n; i++) pos[order[i]] = i;
+
+    int crossings = 0;
+    for (size_t i = 0; i < edges.size(); i++) {
+        int a = pos[edges[i].first], b = pos[edges[i].second];
+        if (a == b) continue; // 自己ループ
+        if (a > b) std::swap(a, b);
+
+        for (size_t j = i + 1; j < edges.size(); j++) {
+            int c = pos[edges[j].first], d = pos[edges[j].second];
+            if (c == d) continue;
+            if (c > d) std::swap(c, d);
+            if (a == c || a == d || b == c || b == d) continue; // 端点を共有
+
+            bool cInside = (a < c && c < b);
+            bool dInside = (a < d && d < b);
+            if (cInside != dInside) crossings++;
+        }
+    }
+    return crossings;
+}
+
+// かたまりが3つあるグラフ。番号をかたまりまたぎで振ってあるので、
+// 頂点番号順に円へ並べると弦が全体に散らばる。
+struct ClusteredGraph {
+    int v;
+    std::vector<std::pair<int, int>> edges;
+    std::string command;
+};
+
+static ClusteredGraph makeClusteredGraph(int clusters, int per) {
+    ClusteredGraph g;
+    g.v = clusters * per;
+    auto id = [&](int cluster, int k) { return k * clusters + cluster; };
+
+    for (int cl = 0; cl < clusters; cl++) {
+        for (int a = 0; a < per; a++) {
+            for (int b = a + 1; b < per; b++) g.edges.push_back({id(cl, a), id(cl, b)});
+        }
+    }
+    for (int cl = 0; cl + 1 < clusters; cl++) g.edges.push_back({id(cl, 0), id(cl + 1, 0)});
+
+    std::ostringstream oss;
+    oss << "custom 1 0 0\n" << g.v << " " << g.edges.size() << "\n";
+    for (auto& e : g.edges) oss << e.first << " " << e.second << " 1\n";
+    g.command = oss.str();
+    return g;
+}
+
+static void testDenseGraphUsesCircularLayout() {
+    beginTest("密なグラフは円形に配置される");
+
+    ClusteredGraph cg = makeClusteredGraph(3, 6);
+    GraphVisualizer g;
+    g.load("horizontal", cg.command);
+    g.prepare();
+
+    ParsedGraph pg = readGraph(g);
+    CHECK_EQ(pg.v, cg.v);
+    CHECK(looksCircular(pg));
+}
+
+static void testCircularOrderReducesCrossings() {
+    beginTest("円形配置は構造順に並べて弦の交差を減らす");
+
+    struct Case { int clusters, per; };
+    const Case cases[] = { {3, 6}, {4, 5}, {2, 8} };
+
+    for (const auto& c : cases) {
+        ClusteredGraph cg = makeClusteredGraph(c.clusters, c.per);
+
+        GraphVisualizer g;
+        g.load("horizontal", cg.command);
+        g.prepare();
+        ParsedGraph pg = readGraph(g);
+
+        std::vector<int> byIndex(cg.v);
+        for (int i = 0; i < cg.v; i++) byIndex[i] = i;
+
+        int before = countChordCrossings(cg.edges, byIndex);
+        int after = countChordCrossings(cg.edges, ringOrderFromPositions(pg));
+
+        g_checks++;
+        if (after >= before) {
+            reportFailure("交差が減っていない (" + std::to_string(c.clusters) + "x" +
+                          std::to_string(c.per) + "): 番号順 " + std::to_string(before) +
+                          " -> 実際 " + std::to_string(after));
+        } else if (g_verbose) {
+            std::cout << "    " << c.clusters << "x" << c.per << ": "
+                      << before << " -> " << after << " 交差" << std::endl;
+        }
+    }
+}
+
+static void testCircularOrderPlacesEveryVertexOnce() {
+    beginTest("円周の並び順に漏れも重複もない");
+
+    ClusteredGraph cg = makeClusteredGraph(3, 6);
+    GraphVisualizer g;
+    g.load("horizontal", cg.command);
+    g.prepare();
+
+    ParsedGraph pg = readGraph(g);
+    std::vector<int> order = ringOrderFromPositions(pg);
+    std::set<int> unique(order.begin(), order.end());
+    CHECK_EQ((int)order.size(), cg.v);
+    CHECK_EQ((int)unique.size(), cg.v);
+
+    // 同じ場所に2つ置かれていないか。並び順に重複があると、
+    // 2頂点が円周上の同じ枠を取り合って重なる。
+    float worst = 1e30f;
+    for (int i = 0; i < pg.v; i++) {
+        for (int j = i + 1; j < pg.v; j++) {
+            float dx = pg.xs[i] - pg.xs[j], dy = pg.ys[i] - pg.ys[j];
+            worst = std::min(worst, std::sqrt(dx * dx + dy * dy));
+        }
+    }
+    g_checks++;
+    // ノード半径は 20。円形配置は直径 + 隙間を確保して半径を決めている
+    if (worst < 40.0f) reportFailure("頂点が近すぎる: 最接近 " + std::to_string(worst));
+}
+
+static void testCircularOrderHandlesEdgeCases() {
+    beginTest("円形配置になる小さなグラフでも壊れない");
+
+    // 完全グラフ。どう並べても交差は減らせないが、落ちないこと
+    const char* cases[] = {
+        "complete 3 1 0",
+        "complete 5 1 0",
+        "complete 12 1 0",
+        "custom 1 0 0\n3 3\n0 1\n1 2\n2 0\n",   // 三角形
+    };
+    for (const char* cmd : cases) {
+        GraphVisualizer g;
+        g.load("horizontal", cmd);
+        CHECK(g.prepare());
+
+        ParsedGraph pg = readGraph(g);
+        bool finite = true;
+        for (int i = 0; i < pg.v; i++) {
+            if (!std::isfinite(pg.xs[i]) || !std::isfinite(pg.ys[i])) finite = false;
+        }
+        g_checks++;
+        if (!finite) reportFailure(std::string("座標が有限でない: ") + cmd);
+    }
+}
+
 // ==========================================
 
 int main(int argc, char** argv) {
@@ -1942,6 +2134,12 @@ int main(int argc, char** argv) {
     testConnectedWithoutMultiEdgeHasNoDuplicates();
     testConnectedWithTinyGraphs();
     testConnectedGraphIsFullyTraversed();
+
+    beginSection("円形配置の並び順");
+    testDenseGraphUsesCircularLayout();
+    testCircularOrderReducesCrossings();
+    testCircularOrderPlacesEveryVertexOnce();
+    testCircularOrderHandlesEdgeCases();
 
     if (g_failures == 0) {
         std::cout << "core: OK (" << g_checks << " checks)" << std::endl;
