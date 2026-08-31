@@ -27,52 +27,67 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
     const [startNode, setStartNode] = useState("0");
     const [acceptingNodes, setAcceptingNodes] = useState("1, 2");
 
+    const orientation = () => isHorizontal ? "horizontal" : "vertical";
+    const skipFlag = () => skipExtension ? 1 : 0;
+
+    // C++ が持っているグラフの内容をテキスト欄へ吸い出す。
+    // グラフのテキスト化は要求したときだけ行われる (描画ループの毎フレーム生成を避けるため)。
+    const syncText = () => {
+        const state = engine.getState({ withText: true });
+        if (state && state.graphText) setInputBuffer(state.graphText);
+    };
+
+    // 初期状態・受理状態は AutomatonVisualizer だけが解釈する
+    const applyAutomatonSettings = () => {
+        if (!isAutomaton) return;
+        engine.load("setStartNode", startNode);
+        engine.load("setAccepting", acceptingNodes);
+    };
+
+    // オートマトンモードの切り替えは C++ 側のクラスごと差し替わる。
+    // グラフが消えないよう、現在の内容をテキスト経由で作り直す。
     useEffect(() => {
         if (!engine) return;
-        engine.setAlgorithm("graph");
-        engine.load(isHorizontal ? "horizontal" : "vertical", "random 5 7");
+        engine.setAlgorithm(isAutomaton ? "automaton" : "graph");
+        if (inputBuffer.trim()) {
+            engine.load(orientation(), `custom ${skipFlag()}\n${inputBuffer}`);
+        } else {
+            engine.load(orientation(), `random 5 7 ${skipFlag()} 0 0 ${isDirected ? 1 : 0}`);
+        }
+        applyAutomatonSettings();
+        syncText();
         setIsLoaded(true);
-        const state = engine.getState({});
-        if (state && state.graphText) setInputBuffer(state.graphText);
-    }, [engine]);
+    }, [engine, isAutomaton]);
 
     useEffect(() => {
-        if (!engine) return;
-        engine.load("setStartNode", isAutomaton ? startNode : "-1");
-    }, [isAutomaton, startNode, engine]);
+        if (!engine || !isLoaded) return;
+        applyAutomatonSettings();
+    }, [startNode, acceptingNodes]);
 
     const handleGenerateRandom = () => {
-        const skip = skipExtension ? 1 : 0;
         const selfLoop = allowSelfLoop ? 1 : 0;
         const sameEdge = allowSameEdge ? 1 : 0;
         const isDir = isDirected ? 1 : 0;
         engine.load(
-            isHorizontal ? "horizontal" : "vertical",
-            `random ${nodeCount} ${edgeCount} ${skip} ${selfLoop} ${sameEdge} ${isDir}`
+            orientation(),
+            `random ${nodeCount} ${edgeCount} ${skipFlag()} ${selfLoop} ${sameEdge} ${isDir}`
         );
-        const state = engine.getState({});
-        if (state && state.graphText) setInputBuffer(state.graphText);
+        applyAutomatonSettings();
+        syncText();
     };
 
     const handleGenerateComplete = () => {
-        const skip = skipExtension ? 1 : 0;
-        const isDir = isDirected ? 1 : 0;
-        engine.load(
-            isHorizontal ? "horizontal" : "vertical", 
-            `complete ${nodeCount} ${skip} ${isDir}`
-        );
-        const state = engine.getState({});
-        if (state && state.graphText) setInputBuffer(state.graphText);
+        engine.load(orientation(), `complete ${nodeCount} ${skipFlag()} ${isDirected ? 1 : 0}`);
+        applyAutomatonSettings();
+        syncText();
     };
 
     const handleGenerateFromText = () => {
-        const skip = skipExtension ? 1 : 0;
-        engine.load(
-            isHorizontal ? "horizontal" : "vertical",
-            `custom ${inputBuffer} ${skip}`
-        );
-        const state = engine.getState({});
-        if (state && state.graphText) setInputBuffer(state.graphText);
+        // skip はグラフ本文より前に置く。本文が複数行あるので、
+        // 後ろに付けると最終行の辺と区別できない。
+        engine.load(orientation(), `custom ${skipFlag()}\n${inputBuffer}`);
+        applyAutomatonSettings();
+        syncText();
     };
 
     // 空欄でフォーカスが外れたら 0 を補完する 

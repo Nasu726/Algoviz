@@ -66,7 +66,7 @@ if (!Module.VisualizerEngine) {
 const engine = new Module.VisualizerEngine();
 
 // --- バインディングが全部生えているか ---
-for (const name of ['setAlgorithm', 'load', 'step', 'runToEnd', 'stepBack',
+for (const name of ['setAlgorithm', 'load', 'prepare', 'step', 'runToEnd', 'stepBack',
                     'getState', 'getOutput', 'setBrainfuckModint']) {
     check(`${name}() がバインドされている`, typeof engine[name] === 'function');
 }
@@ -114,14 +114,44 @@ const back = engine.getState({ start: 0, range: 4 });
 checkEq('1ステップ戻ると値が 1 になる', back.tape[0].value, 1);
 
 // --- グラフエンジンが生きているか ---
+// C++ 側 GraphData の stride。ここがずれると描画が全部崩れる。
+const NODE_STRIDE = 4;
+const EDGE_STRIDE = 4;
+
 console.log('- Graph');
 engine.setAlgorithm('graph');
-engine.load('horizontal', 'random 6 8');
+engine.load('horizontal', 'random 6 8 1 0 0 0');
 const g = engine.getState({});
 check('nodes が返る', g.nodes !== undefined);
 check('edges が返る', g.edges !== undefined);
-checkEq('頂点数が指定通り', g.nodes.length / 5, 6);
-checkEq('辺数が指定通り', g.edges.length / 4, 8);
+checkEq('頂点数が指定通り', g.nodes.length / NODE_STRIDE, 6);
+checkEq('辺数が指定通り', g.edges.length / EDGE_STRIDE, 8);
+checkEq('頂点数の上限が公開されている', typeof g.maxNodes, 'number');
+checkEq('graphText は既定では作られない', g.graphText, undefined);
+
+const withText = engine.getState({ withText: true });
+check('withText で graphText が返る', typeof withText.graphText === 'string');
+checkEq('graphText の1行目が V E', withText.graphText.split('\n')[0], '6 8');
+
+check('prepare() でレイアウトが収束する', engine.prepare());
+checkEq('収束が state に反映される', engine.getState({}).layoutStable, true);
+const coords = engine.getState({}).nodes;
+check('座標が有限', [...coords].every(Number.isFinite));
+
+// --- オートマトン ---
+console.log('- Automaton');
+engine.setAlgorithm('automaton');
+engine.load('horizontal', 'complete 4 1 0'); // 無向を指定しても有向になる
+const a = engine.getState({});
+checkEq('常に有向', a.isDirected, true);
+checkEq('オートマトンとして報告される', a.isAutomaton, true);
+checkEq('有向完全グラフの辺数', a.edges.length / EDGE_STRIDE, 12);
+
+engine.load('setStartNode', '2');
+engine.load('setAccepting', '1, 3, 99');
+const a2 = engine.getState({});
+checkEq('初期状態', a2.startNodeIndex, 2);
+checkEq('受理状態は範囲内だけ', a2.acceptingStates.length, 2);
 
 console.log('');
 if (failures === 0) {

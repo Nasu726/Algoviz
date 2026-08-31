@@ -1,6 +1,3 @@
-#ifndef GENERAL_GRAPH_LAYOUT_HPP
-#define GENERAL_GRAPH_LAYOUT_HPP
-
 #pragma once
 #include "GraphData.hpp"
 #include <vector>
@@ -619,24 +616,17 @@ public:
     int stable_count = 0;
     int required_stable_frames = 20;
 
-    void init(GraphData* graph) {
+    // adj は「向きを無視し、自己ループを除いた」隣接リスト。
+    // レイアウトは辺の向きに意味を持たないので、呼び出し側 (GraphVisualizer) が
+    // 一度だけ構築したものを共有する。
+    void init(GraphData* graph, const std::vector<std::vector<int>>& adj) {
         nodeStride = graph->NODE_STRIDE;
         edgeStride = graph->EDGE_STRIDE;
         nodeSize = graph->nodeData.size()/nodeStride;
         edgeSize = graph->edgeData.size()/edgeStride;
-        d.assign(nodeSize*nodeSize, inf);
+        d.assign((std::size_t)nodeSize*nodeSize, inf);
         target_nx.assign(nodeSize, 0.0f);
         target_ny.assign(nodeSize, 0.0f);
-        
-        std::vector<std::vector<int>> adj(nodeSize);
-        for (int i=0; i<edgeSize; i++){
-            int from = (int)graph->edgeData[i * edgeStride];
-            int to   = (int)graph->edgeData[i * edgeStride +1];
-            if (from != to) {
-                adj[from].push_back(to);
-                adj[to].push_back(from);
-            }
-        }
 
         for (int i=0; i<nodeSize; i++){
             d[i * nodeSize + i] = 0.0f;
@@ -725,5 +715,3 @@ public:
         packComponentsStrict(graph);
     }
 };
-
-#endif

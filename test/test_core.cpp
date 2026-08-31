@@ -10,7 +10,12 @@
 #include <string>
 #include <vector>
 
+#include <cmath>
+#include <set>
+
 #include "../cpp/include/Brainfuck.hpp"
+#include "../cpp/include/GraphVisualizer.hpp"
+#include "../cpp/include/AutomatonVisualizer.hpp"
 
 using emscripten::val;
 
@@ -495,6 +500,386 @@ static void testGetStateWindow() {
 }
 
 // ==========================================
+// グラフ: 観測用ヘルパー
+// ==========================================
+
+struct ParsedGraph {
+    int v = 0;
+    int declaredE = 0;
+    std::vector<std::pair<int, int>> edges;
+    std::vector<float> weights;
+    std::vector<float> xs, ys;
+};
+
+static ParsedGraph readGraph(GraphVisualizer& g) {
+    val params = val::object();
+    params.set("withText", true);
+    val state = g.getState(params);
+
+    ParsedGraph pg;
+    std::istringstream iss(state["graphText"].as<std::string>());
+    iss >> pg.v >> pg.declaredE;
+    for (int i = 0; i < pg.declaredE; i++) {
+        int from, to;
+        float w;
+        if (!(iss >> from >> to >> w)) break;
+        pg.edges.push_back({from, to});
+        pg.weights.push_back(w);
+    }
+
+    val nodes = state["nodes"];
+    int len = nodes["length"].as<int>();
+    for (int i = 0; i + 3 < len; i += 4) {
+        pg.xs.push_back(nodes[i].as<float>());
+        pg.ys.push_back(nodes[i + 1].as<float>());
+    }
+    return pg;
+}
+
+// ==========================================
+// グラフ生成の不変条件
+//
+// 乱数は random_device 由来なので、1回の生成ではなく多数回まわして
+// 「どの生成結果でも成り立つ性質」を確かめる。
+// ==========================================
+
+static void testNoSelfLoopWhenDisallowed() {
+    beginTest("自己ループを許さない設定なら自己ループが無い");
+    for (int trial = 0; trial < 30; trial++) {
+        GraphVisualizer g;
+        g.load("horizontal", "random 8 20 1 0 1 0"); // selfLoop=0, sameEdge=1
+        for (auto& e : readGraph(g).edges) {
+            if (e.first == e.second) {
+                g_checks++; g_failures++;
+                std::cerr << "  FAIL [" << g_currentTest << "] 自己ループ " << e.first << std::endl;
+                return;
+            }
+        }
+    }
+    CHECK(true);
+}
+
+static void testSelfLoopAppearsWhenAllowed() {
+    beginTest("自己ループを許す設定なら実際に出現しうる");
+    bool seen = false;
+    for (int trial = 0; trial < 60 && !seen; trial++) {
+        GraphVisualizer g;
+        g.load("horizontal", "random 4 30 1 1 1 0"); // selfLoop=1, sameEdge=1
+        for (auto& e : readGraph(g).edges) if (e.first == e.second) seen = true;
+    }
+    CHECK(seen);
+}
+
+static void testNoMultiEdgeWhenDisallowed() {
+    beginTest("多重辺を許さない設定なら辺が重複しない");
+    for (int trial = 0; trial < 30; trial++) {
+        // 無向: (min,max) で正規化して重複を見る
+        {
+            GraphVisualizer g;
+            g.load("horizontal", "random 7 40 1 1 0 0"); // sameEdge=0, 無向
+            std::set<std::pair<int, int>> seen;
+            for (auto& e : readGraph(g).edges) {
+                auto key = std::make_pair(std::min(e.first, e.second), std::max(e.first, e.second));
+                if (!seen.insert(key).second) {
+                    g_checks++; g_failures++;
+                    std::cerr << "  FAIL [" << g_currentTest << "] 無向で重複 "
+                              << key.first << "-" << key.second << std::endl;
+                    return;
+                }
+            }
+        }
+        // 有向: 順序付きの組で重複を見る
+        {
+            GraphVisualizer g;
+            g.load("horizontal", "random 7 60 1 1 0 1"); // sameEdge=0, 有向
+            std::set<std::pair<int, int>> seen;
+            for (auto& e : readGraph(g).edges) {
+                if (!seen.insert(e).second) {
+                    g_checks++; g_failures++;
+                    std::cerr << "  FAIL [" << g_currentTest << "] 有向で重複 "
+                              << e.first << "->" << e.second << std::endl;
+                    return;
+                }
+            }
+        }
+    }
+    CHECK(true);
+}
+
+static void testEdgeCountNeverExceedsRequest() {
+    beginTest("多重辺を許さないとき辺数は要求値と可能な組合せ数以下");
+    GraphVisualizer g;
+    // 無向・自己ループ無しの V=4 なら組合せは 6 通りしかない
+    g.load("horizontal", "random 4 100 1 0 0 0");
+    ParsedGraph pg = readGraph(g);
+    CHECK_EQ(pg.v, 4);
+    CHECK((int)pg.edges.size() <= 6);
+}
+
+static void testCompleteGraphEdgeCount() {
+    beginTest("完全グラフの辺数");
+
+    {   // 無向: V(V-1)/2
+        GraphVisualizer g;
+        g.load("horizontal", "complete 6 1 0");
+        ParsedGraph pg = readGraph(g);
+        CHECK_EQ(pg.v, 6);
+        CHECK_EQ((int)pg.edges.size(), 15);
+    }
+    {   // 有向: V(V-1)
+        GraphVisualizer g;
+        g.load("horizontal", "complete 6 1 1");
+        ParsedGraph pg = readGraph(g);
+        CHECK_EQ(pg.v, 6);
+        CHECK_EQ((int)pg.edges.size(), 30);
+    }
+    {   // V=1 でも壊れない
+        GraphVisualizer g;
+        g.load("horizontal", "complete 1 1 0");
+        ParsedGraph pg = readGraph(g);
+        CHECK_EQ(pg.v, 1);
+        CHECK_EQ((int)pg.edges.size(), 0);
+    }
+}
+
+static void testNodeCountIsClamped() {
+    beginTest("頂点数の上限は C++ 側で守られる");
+
+    {
+        GraphVisualizer g;
+        g.load("horizontal", "random 500 10 1 0 0 0");
+        CHECK_EQ(readGraph(g).v, GraphVisualizer::MAX_NODES);
+    }
+    {   // テキスト入力経由でも同じ
+        GraphVisualizer g;
+        g.load("horizontal", "custom 1\n500 0\n");
+        CHECK_EQ(readGraph(g).v, GraphVisualizer::MAX_NODES);
+    }
+    {
+        GraphVisualizer g;
+        g.load("horizontal", "complete 500 1 0");
+        CHECK_EQ(readGraph(g).v, GraphVisualizer::MAX_NODES);
+    }
+}
+
+// ==========================================
+// テキスト入力のパース
+// ==========================================
+
+static void testCustomGraphParsing() {
+    beginTest("テキストからグラフを生成する");
+
+    GraphVisualizer g;
+    g.load("horizontal", "custom 1\n4 3\n0 1 5\n1 2 7\n2 3 9\n");
+    ParsedGraph pg = readGraph(g);
+
+    CHECK_EQ(pg.v, 4);
+    CHECK_EQ((int)pg.edges.size(), 3);
+    if (pg.edges.size() == 3) {
+        CHECK(pg.edges[0] == std::make_pair(0, 1));
+        CHECK(pg.edges[2] == std::make_pair(2, 3));
+        CHECK_EQ(pg.weights[1], 7.0f);
+    }
+}
+
+static void testCustomGraphOptionalWeight() {
+    beginTest("重みを省略したテキストも読める");
+
+    GraphVisualizer g;
+    g.load("horizontal", "custom 1\n3 2\n0 1\n1 2\n");
+    ParsedGraph pg = readGraph(g);
+
+    CHECK_EQ(pg.v, 3);
+    CHECK_EQ((int)pg.edges.size(), 2);
+    if (pg.weights.size() == 2) {
+        CHECK_EQ(pg.weights[0], 0.0f);
+        CHECK_EQ(pg.weights[1], 0.0f);
+    }
+}
+
+static void testCustomGraphRejectsOutOfRangeVertices() {
+    beginTest("範囲外の頂点番号を含む辺は捨てられる");
+
+    // ここで弾かないと隣接リスト構築で範囲外アクセスになる
+    GraphVisualizer g;
+    g.load("horizontal", "custom 1\n3 4\n0 1\n1 99\n-5 2\n2 0\n");
+    ParsedGraph pg = readGraph(g);
+
+    CHECK_EQ(pg.v, 3);
+    CHECK_EQ((int)pg.edges.size(), 2);
+    for (auto& e : pg.edges) {
+        CHECK(e.first >= 0 && e.first < 3);
+        CHECK(e.second >= 0 && e.second < 3);
+    }
+}
+
+static void testCustomGraphIgnoresJunkLines() {
+    beginTest("空行やゴミ行があっても壊れない");
+
+    GraphVisualizer g;
+    g.load("horizontal", "custom 1\n3 2\n\n0 1 3\n\nhello\n1 2 4\n");
+    ParsedGraph pg = readGraph(g);
+    CHECK_EQ(pg.v, 3);
+    CHECK_EQ((int)pg.edges.size(), 2);
+}
+
+// ==========================================
+// レイアウト
+// ==========================================
+
+static void testLayoutProducesFiniteCoordinates() {
+    beginTest("レイアウトが収束し、座標が NaN にならない");
+
+    const char* cases[] = {
+        "random 12 18 1 0 0 0",
+        "random 30 40 1 1 1 1",
+        "complete 10 1 0",
+        "custom 1\n6 2\n0 1\n2 3\n",   // 非連結（孤立点あり）
+        "custom 1\n1 0\n",             // 頂点1個
+        "custom 1\n2 1\n0 1\n",        // 直線
+        "custom 1\n5 0\n",             // 全部孤立
+    };
+
+    for (const char* c : cases) {
+        GraphVisualizer g;
+        g.load("horizontal", c);
+        CHECK(g.prepare()); // skipExtension=1 なので一気に収束する
+
+        ParsedGraph pg = readGraph(g);
+        bool ok = true;
+        for (size_t i = 0; i < pg.xs.size(); i++) {
+            if (!std::isfinite(pg.xs[i]) || !std::isfinite(pg.ys[i])) ok = false;
+        }
+        g_checks++;
+        if (!ok) {
+            g_failures++;
+            std::cerr << "  FAIL [" << g_currentTest << "] 座標が有限でない: " << c << std::endl;
+        }
+    }
+}
+
+static void testLayoutDoesNotCollapseNodes() {
+    beginTest("レイアウト後にノードが重ならない");
+
+    GraphVisualizer g;
+    g.load("horizontal", "random 20 30 1 0 0 0");
+    g.prepare();
+
+    ParsedGraph pg = readGraph(g);
+    float worst = 1e9f;
+    for (size_t i = 0; i < pg.xs.size(); i++) {
+        for (size_t j = i + 1; j < pg.xs.size(); j++) {
+            float dx = pg.xs[i] - pg.xs[j];
+            float dy = pg.ys[i] - pg.ys[j];
+            worst = std::min(worst, std::sqrt(dx * dx + dy * dy));
+        }
+    }
+    // ノード半径は 20 なので、10px 未満まで寄っていたら描画が潰れている
+    g_checks++;
+    if (worst < 10.0f) {
+        g_failures++;
+        std::cerr << "  FAIL [" << g_currentTest << "] 最接近距離 " << worst << std::endl;
+    }
+}
+
+static void testPrepareIsIdempotentOnceStable() {
+    beginTest("収束後に prepare を繰り返しても座標が動かない");
+
+    GraphVisualizer g;
+    g.load("horizontal", "random 10 14 1 0 0 0");
+    g.prepare();
+    ParsedGraph a = readGraph(g);
+
+    for (int i = 0; i < 5; i++) CHECK(g.prepare());
+    ParsedGraph b = readGraph(g);
+
+    bool same = a.xs.size() == b.xs.size();
+    for (size_t i = 0; same && i < a.xs.size(); i++) {
+        if (a.xs[i] != b.xs[i] || a.ys[i] != b.ys[i]) same = false;
+    }
+    CHECK(same);
+}
+
+// ==========================================
+// 基底クラスとしての振る舞い
+// ==========================================
+
+static void testGraphHasNoAlgorithmStep() {
+    beginTest("基底クラスは進めるアルゴリズムを持たない");
+    GraphVisualizer g;
+    CHECK(!g.step());
+    g.runToEnd();   // 無限ループしないこと
+    CHECK(true);
+}
+
+static void testGraphTextOnlyWhenRequested() {
+    beginTest("graphText は要求したときだけ作られる");
+
+    GraphVisualizer g;
+    g.load("horizontal", "complete 5 1 0");
+
+    CHECK(!g.getState(val::object()).hasOwnProperty("graphText"));
+
+    val params = val::object();
+    params.set("withText", true);
+    CHECK(g.getState(params).hasOwnProperty("graphText"));
+}
+
+// ==========================================
+// オートマトン
+// ==========================================
+
+static void testAutomatonIsAlwaysDirected() {
+    beginTest("オートマトンは無向を指定しても有向になる");
+
+    AutomatonVisualizer a;
+    a.load("horizontal", "complete 5 1 0"); // dir=0 を指定
+    ParsedGraph pg = readGraph(a);
+    // 有向完全グラフなので V(V-1) = 20 本
+    CHECK_EQ((int)pg.edges.size(), 20);
+    CHECK(a.getState(val::object())["isDirected"].as<bool>());
+    CHECK(a.getState(val::object())["isAutomaton"].as<bool>());
+}
+
+static void testAutomatonStartAndAcceptingStates() {
+    beginTest("初期状態と受理状態を C++ が保持する");
+
+    AutomatonVisualizer a;
+    a.load("horizontal", "custom 1\n5 2\n0 1\n1 2\n");
+
+    a.load("setStartNode", "2");
+    CHECK_EQ(a.getState(val::object())["startNodeIndex"].as<int>(), 2);
+
+    // 範囲外は -1 に落とす
+    a.load("setStartNode", "99");
+    CHECK_EQ(a.getState(val::object())["startNodeIndex"].as<int>(), -1);
+
+    // カンマ区切りを受け付け、範囲外は捨てる
+    a.load("setAccepting", "1, 3, 99");
+    val accepting = a.getState(val::object())["acceptingStates"];
+    CHECK_EQ(accepting["length"].as<int>(), 2);
+    if (accepting["length"].as<int>() == 2) {
+        CHECK_EQ(accepting[0].as<int>(), 1);
+        CHECK_EQ(accepting[1].as<int>(), 3);
+    }
+}
+
+static void testAutomatonDropsStaleStatesOnRegenerate() {
+    beginTest("グラフを作り直すと範囲外になった状態指定が消える");
+
+    AutomatonVisualizer a;
+    a.load("horizontal", "custom 1\n10 0\n");
+    a.load("setStartNode", "8");
+    a.load("setAccepting", "7, 9");
+    CHECK_EQ(a.getState(val::object())["startNodeIndex"].as<int>(), 8);
+
+    // 3頂点に作り直すと 7,8,9 は存在しなくなる
+    a.load("horizontal", "custom 1\n3 0\n");
+    CHECK_EQ(a.getState(val::object())["startNodeIndex"].as<int>(), -1);
+    CHECK_EQ(a.getState(val::object())["acceptingStates"]["length"].as<int>(), 0);
+}
+
+// ==========================================
 
 int main() {
     std::cout << "=== AlgoViz core tests ===" << std::endl;
@@ -515,6 +900,26 @@ int main() {
     testLoadResetsState();
     testLoadSkipsToFirstCommand();
     testGetStateWindow();
+
+    std::cout << std::endl << "=== Graph ===" << std::endl;
+    testNoSelfLoopWhenDisallowed();
+    testSelfLoopAppearsWhenAllowed();
+    testNoMultiEdgeWhenDisallowed();
+    testEdgeCountNeverExceedsRequest();
+    testCompleteGraphEdgeCount();
+    testNodeCountIsClamped();
+    testCustomGraphParsing();
+    testCustomGraphOptionalWeight();
+    testCustomGraphRejectsOutOfRangeVertices();
+    testCustomGraphIgnoresJunkLines();
+    testLayoutProducesFiniteCoordinates();
+    testLayoutDoesNotCollapseNodes();
+    testPrepareIsIdempotentOnceStable();
+    testGraphHasNoAlgorithmStep();
+    testGraphTextOnlyWhenRequested();
+    testAutomatonIsAlwaysDirected();
+    testAutomatonStartAndAcceptingStates();
+    testAutomatonDropsStaleStatesOnRegenerate();
 
     std::cout << std::endl;
     if (g_failures == 0) {

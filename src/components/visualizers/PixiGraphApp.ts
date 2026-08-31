@@ -1,5 +1,9 @@
 import * as PIXI from 'pixi.js';
 
+// C++ 側 GraphData の配列レイアウト。ここを変えるときは GraphData.hpp も揃える。
+const NODE_STRIDE = 4; // [x, y, weight, colorId]
+const EDGE_STRIDE = 4; // [from, to, weight, colorId]
+
 export interface NodeMeta {
     label?: string;
     isStart?: boolean;
@@ -253,7 +257,9 @@ export class PixiGraphApp {
     private renderLoop = () => {
         if (this.isDestroyed) return;
 
-        this.engine.step();
+        // レイアウトの収束計算だけを進める。アルゴリズムの1手 (step) は
+        // 再生コントロール側が叩くので、描画ループからは呼ばない。
+        this.engine.prepare();
         const state = this.engine.getState({});
         const nodeArray = new Float32Array(state.nodes);
         const edgeArray = new Float32Array(state.edges);
@@ -261,7 +267,7 @@ export class PixiGraphApp {
         // ==========================================
         // 1. エッジテキストプールの準備
         // ==========================================
-        const edgeCount = edgeArray.length / 4;
+        const edgeCount = edgeArray.length / EDGE_STRIDE;
         while (this.edgeWeightTexts.length < edgeCount) {
             const text = new PIXI.Text({ text: '', style: { fontSize: 13, fill: 0xe74c3c, stroke: { color: 0xffffff, width: 3 }, fontWeight: 'bold' } });
             text.anchor.set(0.5);
@@ -276,7 +282,7 @@ export class PixiGraphApp {
         const nodeAngles: { [nodeIdx: number]: number[] } = {};
         const edgeTotalCounts: { [key: string]: number } = {}; // ★追加: ペア間の辺の総数
 
-        for (let i = 0; i < edgeArray.length; i += 4) {
+        for (let i = 0; i < edgeArray.length; i += EDGE_STRIDE) {
             const fromIdx = edgeArray[i], toIdx = edgeArray[i + 1];
             
             // ペア間の辺の総数をカウント（A->BもB->Aも同じペアとしてまとめる）
@@ -285,8 +291,8 @@ export class PixiGraphApp {
             edgeTotalCounts[edgeKey] = (edgeTotalCounts[edgeKey] || 0) + 1;
 
             if (fromIdx !== toIdx) { // 自己ループ以外
-                const fx = nodeArray[fromIdx * 5], fy = nodeArray[fromIdx * 5 + 1];
-                const tx = nodeArray[toIdx * 5], ty = nodeArray[toIdx * 5 + 1];
+                const fx = nodeArray[fromIdx * NODE_STRIDE], fy = nodeArray[fromIdx * NODE_STRIDE + 1];
+                const tx = nodeArray[toIdx * NODE_STRIDE], ty = nodeArray[toIdx * NODE_STRIDE + 1];
                 
                 const angleFrom = Math.atan2(ty - fy, tx - fx);
                 const angleTo = Math.atan2(fy - ty, fx - tx);
@@ -307,10 +313,10 @@ export class PixiGraphApp {
         const arrowPolygons: number[][] = [];
         const selfLoopBaseAngles: { [nodeIdx: number]: number } = {};
 
-        for (let i = 0; i < edgeArray.length; i += 4) {
+        for (let i = 0; i < edgeArray.length; i += EDGE_STRIDE) {
             const fromIdx = edgeArray[i], toIdx = edgeArray[i + 1], weight = edgeArray[i + 2];
-            const fx = nodeArray[fromIdx * 5], fy = nodeArray[fromIdx * 5 + 1];
-            const tx = nodeArray[toIdx * 5], ty = nodeArray[toIdx * 5 + 1];
+            const fx = nodeArray[fromIdx * NODE_STRIDE], fy = nodeArray[fromIdx * NODE_STRIDE + 1];
+            const tx = nodeArray[toIdx * NODE_STRIDE], ty = nodeArray[toIdx * NODE_STRIDE + 1];
 
             if (this.isVisible(fx, fy) || this.isVisible(tx, ty)) {
                 const minIdx = Math.min(fromIdx, toIdx), maxIdx = Math.max(fromIdx, toIdx);
@@ -320,7 +326,7 @@ export class PixiGraphApp {
                 const totalEdges = edgeTotalCounts[edgeKey]; // ★そのペア間に何本の辺があるか
 
                 const actualRadius = this.nodeRadius + 2;
-                const textObj = this.edgeWeightTexts[i / 4];
+                const textObj = this.edgeWeightTexts[i / EDGE_STRIDE];
                 textObj.visible = this.showWeights;
                 textObj.text = weight.toString();
 
@@ -455,7 +461,7 @@ export class PixiGraphApp {
         let visibleNodeCount = 0;
         let nodeIndex = 0;
 
-        for (let i = 0; i < nodeArray.length; i += 5) {
+        for (let i = 0; i < nodeArray.length; i += NODE_STRIDE) {
             if (nodeIndex >= this.nodeSprites.length) break;
 
             const x = nodeArray[i], y = nodeArray[i + 1], weight = nodeArray[i + 2], colorId = nodeArray[i + 3];

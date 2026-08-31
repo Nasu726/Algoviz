@@ -4,6 +4,7 @@
 #include "include/IVisualizer.hpp"
 #include "include/Brainfuck.hpp"
 #include "include/GraphVisualizer.hpp"
+#include "include/AutomatonVisualizer.hpp"
 
 using namespace emscripten;
 
@@ -24,6 +25,8 @@ public:
             if (bf) bf->setBrainfuckModint(mod256);
         } else if (name == "graph") {
             currentAlgo = std::make_unique<GraphVisualizer>();
+        } else if (name == "automaton") {
+            currentAlgo = std::make_unique<AutomatonVisualizer>();
         } else {
             std::cerr << "Unknown algorithm: " << name << std::endl;
         }
@@ -32,6 +35,12 @@ public:
     // 以下、現在のアルゴリズムへの委譲
     void load(std::string source, std::string input) {
         if (currentAlgo) currentAlgo->load(source, input);
+    }
+
+    // 事前計算(グラフならレイアウト収束)を1単位進める
+    bool prepare() {
+        if (currentAlgo) return currentAlgo->prepare();
+        return true;
     }
 
     bool step() {
@@ -46,6 +55,7 @@ public:
     void stepBack() {
         if (currentAlgo) currentAlgo->stepBack();
     }
+
     val getState(val params) {
         if (currentAlgo) return currentAlgo->getState(params);
         return val::null();
@@ -71,6 +81,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
         .constructor<>()
         .function("setAlgorithm", &VisualizerEngine::setAlgorithm)
         .function("load", &VisualizerEngine::load)
+        .function("prepare", &VisualizerEngine::prepare)
         .function("step", &VisualizerEngine::step)
         .function("runToEnd", &VisualizerEngine::runToEnd)
         .function("stepBack", &VisualizerEngine::stepBack)

@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 
 import { MenuPage } from './pages/Menu';
 import { BrainfuckPage } from './pages/BrainfuckPage';
-// import { GraphPage } from './pages/GraphPage';
+import { GraphPage } from './pages/GraphPage';
 
 function MainMenu() {
   return (
@@ -21,15 +21,15 @@ function BrainfuckWrapper({ engine }: { engine: any }) {
   );
 }
 
-// function GraphWrapper({engine}: {engine: any}){
-//   const navigate = useNavigate();
-//   return (
-//     <GraphPage
-//       engine={engine}
-//       onBack={() => navigate("/")}
-//     />
-//   );
-// }
+function GraphWrapper({engine}: {engine: any}){
+  const navigate = useNavigate();
+  return (
+    <GraphPage
+      engine={engine}
+      onBack={() => navigate("/")}
+    />
+  );
+}
 
 function App() {
   const [isReady, setIsReady] = useState(false);
@@ -100,7 +100,9 @@ function App() {
       {/* URLが '/brainfuck' のときはビジュアライザを表示 */}
       <Route path="/brainfuck" element={<BrainfuckWrapper engine={engineRef.current} />} />
 
-      {/* <Route path="/graph" element={<GraphWrapper engine={engineRef.current} />} /> */}
+      {/* グラフ描画システム自体は公開しない (メニューには載せない) が、
+          レイアウトとパッキングの回帰を目視確認する手段としてルートは残す */}
+      <Route path="/graph" element={<GraphWrapper engine={engineRef.current} />} />
     </Routes>
 
     </BrowserRouter>
