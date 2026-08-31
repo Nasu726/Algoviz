@@ -21,7 +21,8 @@ jobs:
       - run: npm run build
       # 出荷する public/wasm/core.js への疎通。C++ を変えたのに
       # WASM を再ビルドし忘れているとここで落ちる。
-      - run: npm run test:smoke
+      # CI のログは読む人しかいないので、落ちた場所が分かるよう進行も出す
+      - run: npm run test:smoke -- --verbose
 
   core:
     name: コアエンジンのテスト
@@ -40,4 +41,5 @@ jobs:
             emcc test/test_core.cpp cpp/src/Brainfuck.cpp -std=c++23 -O1 \
             -s ALLOW_MEMORY_GROWTH=1 -s ASSERTIONS=1 -s EXIT_RUNTIME=1 \
             --bind -o test/out/test_core.js
-      - run: node test/out/test_core.js
+      # 途中でクラッシュしたときに位置が分かるよう、CI では進行も出す
+      - run: node test/out/test_core.js --verbose

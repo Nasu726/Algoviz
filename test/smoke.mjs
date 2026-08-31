@@ -26,14 +26,35 @@ function loadCore() {
     return mod.exports;
 }
 
+// 成功したときは1行だけ出す。読む必要があるのは失敗したときだけ。
+// どこで落ちたか追いたいときは --verbose を付ける。
+const verbose = process.argv.includes('--verbose') || process.argv.includes('-v');
+
 let failures = 0;
 let checks = 0;
+let currentSection = '';
+let sectionReported = false;
+
+function section(name) {
+    currentSection = name;
+    sectionReported = false;
+    if (verbose) console.log(`- ${name}`);
+}
+
+// 失敗したセクションの名前を1回だけ出す
+function failHeader() {
+    if (sectionReported) return;
+    sectionReported = true;
+    console.error(`
+FAIL: ${currentSection}`);
+}
 
 function check(label, cond) {
     checks++;
     if (!cond) {
         failures++;
-        console.error(`  FAIL: ${label}`);
+        failHeader();
+        console.error(`  ${label}`);
     }
 }
 
@@ -41,15 +62,15 @@ function checkEq(label, actual, expected) {
     checks++;
     if (actual !== expected) {
         failures++;
-        console.error(`  FAIL: ${label}`);
+        failHeader();
+        console.error(`  ${label}`);
         console.error(`    expected: ${JSON.stringify(expected)}`);
         console.error(`    actual  : ${JSON.stringify(actual)}`);
     }
 }
 
-console.log('=== AlgoViz wasm smoke test ===');
-
 const createVisualizerModule = loadCore();
+section('モジュールの読み込み');
 check('core.js が createVisualizerModule をエクスポートする', typeof createVisualizerModule === 'function');
 if (typeof createVisualizerModule !== 'function') {
     console.error('\nFAILED: core.js のエクスポートが読めない。');
@@ -72,7 +93,7 @@ for (const name of ['setAlgorithm', 'load', 'prepare', 'step', 'runToEnd', 'step
 }
 
 // --- Brainfuck: 実際に走らせる ---
-console.log('- Brainfuck');
+section('Brainfuck');
 engine.setAlgorithm('brainfuck');
 engine.setBrainfuckModint(true);
 engine.load(
@@ -93,7 +114,7 @@ check('getState が interrupted を返す', typeof state.interrupted === 'boolea
 checkEq('正常終了は中断扱いにならない', state.interrupted, false);
 
 // --- 停止しないプログラムで固まらない ---
-console.log('- 停止しないプログラムの打ち切り');
+section('停止しないプログラムの打ち切り');
 engine.load('+[]', '');
 const started = Date.now();
 engine.runToEnd();
@@ -103,7 +124,7 @@ checkEq('ステップ上限で中断される', infinite.interrupted, true);
 check(`妥当な時間で返る (実測 ${elapsed}ms)`, elapsed < 30000);
 
 // --- ステップ実行とステップバック ---
-console.log('- ステップ実行 / ステップバック');
+section('ステップ実行 / ステップバック');
 engine.load('+++.', '');
 engine.step();
 engine.step();
@@ -118,7 +139,7 @@ checkEq('1ステップ戻ると値が 1 になる', back.tape[0].value, 1);
 const NODE_STRIDE = 4;
 const EDGE_STRIDE = 4;
 
-console.log('- Graph');
+section('Graph');
 engine.setAlgorithm('graph');
 engine.load('horizontal', 'random 6 8 1 0 0 0');
 const g = engine.getState({});
@@ -139,7 +160,7 @@ const coords = engine.getState({}).nodes;
 check('座標が有限', [...coords].every(Number.isFinite));
 
 // --- オートマトン ---
-console.log('- Automaton');
+section('Automaton');
 engine.setAlgorithm('automaton');
 engine.load('horizontal', 'complete 4 1 0'); // 無向を指定しても有向になる
 const a = engine.getState({});
@@ -154,7 +175,7 @@ checkEq('初期状態', a2.startNodeIndex, 2);
 checkEq('受理状態は範囲内だけ', a2.acceptingStates.length, 2);
 
 // --- BFS / DFS ---
-console.log('- Traversal');
+section('Traversal');
 engine.setAlgorithm('traversal');
 // 0-1-2-3 の道と 0-3 の近道
 engine.load('horizontal', 'custom 1 0\n4 4\n0 1\n1 2\n2 3\n0 3\n');
@@ -183,10 +204,10 @@ const t2 = engine.getState({ withProgress: true });
 checkEq('DFS で全頂点を訪問', t2.visitOrder.length, 4);
 checkEq('探索名が返る', t2.algorithm, 'dfs');
 
-console.log('');
 if (failures === 0) {
-    console.log(`OK: ${checks} checks passed`);
+    console.log(`smoke: OK (${checks} checks)`);
     process.exit(0);
 }
-console.log(`FAILED: ${failures} / ${checks} checks failed`);
+console.error(`
+smoke: FAILED ${failures} / ${checks} checks`);
 process.exit(1);

@@ -193,7 +193,9 @@ val Brainfuck::getState(val params) {
     state.set("ptr", (int)ptr);
     state.set("pc", (int)pc);
     state.set("code", code);
-    state.set("output", outputBuffer);
+    // 出力は getOutput() で取る。ここで毎回 JS 文字列へ変換すると、
+    // 1ステップごとに無駄が乗るうえ、UTF-8 として不正なバイトを
+    // 出力するプログラムでは変換警告が出る。
     state.set("stepCount", stepCount);
     state.set("isError", error);
     state.set("errorMessage", errorMessage);

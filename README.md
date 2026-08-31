@@ -65,11 +65,18 @@ npm run build:wasm
 Node で実行します。本番と同一のコンパイラ・標準ライブラリで検証できます。
 
 ```bash
-npm test
+npm test --silent
 ```
 
 - `npm run test:core` — C++ ロジックを直接叩くテスト (Docker が必要)
 - `npm run test:smoke` — 出荷する `public/wasm/core.js` への疎通テスト (Docker 不要・1秒)
+
+成功時は結果の1行だけを出します。失敗したテストだけが名前と詳細を出すので、
+出力があれば何か壊れています。どこまで進んだか見たいときは `--verbose` を付けます。
+
+```bash
+npm run test:core -- --verbose
+```
 
 `build:wasm` と `build:test` は Windows の `npm run` (cmd.exe) 前提で `%cd%` を
 使っています。POSIX シェルから直接動かす場合は `$PWD` に読み替えてください。

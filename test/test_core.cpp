@@ -24,17 +24,37 @@ using emscripten::val;
 // 最小のテストハーネス
 // ==========================================
 
+// 成功したテストは何も出さない。読む必要があるのは失敗したときだけで、
+// 全部の名前を並べても行数が増えるだけになる。
+// どこで落ちたか追いたいときは --verbose を付けると進行が見える。
+
 static int g_failures = 0;
 static int g_checks = 0;
 static std::string g_currentTest;
+static bool g_currentTestReported = false;
+static bool g_verbose = false;
+
+// 失敗したテストの名前を1回だけ出す
+static void failHeader() {
+    if (g_currentTestReported) return;
+    g_currentTestReported = true;
+    std::cerr << std::endl << "FAIL: " << g_currentTest << std::endl;
+}
+
+// 手書きの比較が失敗したときに呼ぶ
+static void reportFailure(const std::string& detail) {
+    g_failures++;
+    failHeader();
+    std::cerr << "  " << detail << std::endl;
+}
 
 #define CHECK(cond)                                                        \
     do {                                                                   \
         g_checks++;                                                        \
         if (!(cond)) {                                                     \
             g_failures++;                                                  \
-            std::cerr << "  FAIL [" << g_currentTest << ":" << __LINE__    \
-                      << "] " << #cond << std::endl;                       \
+            failHeader();                                                  \
+            std::cerr << "  L" << __LINE__ << ": " << #cond << std::endl;  \
         }                                                                  \
     } while (0)
 
@@ -43,8 +63,8 @@ static std::string g_currentTest;
         g_checks++;                                                        \
         if (!((actual) == (expected))) {                                   \
             g_failures++;                                                  \
-            std::cerr << "  FAIL [" << g_currentTest << ":" << __LINE__    \
-                      << "] " << #actual << std::endl                      \
+            failHeader();                                                  \
+            std::cerr << "  L" << __LINE__ << ": " << #actual << std::endl \
                       << "    expected: " << (expected) << std::endl       \
                       << "    actual  : " << (actual) << std::endl;        \
         }                                                                  \
@@ -52,7 +72,12 @@ static std::string g_currentTest;
 
 static void beginTest(const std::string& name) {
     g_currentTest = name;
-    std::cout << "- " << name << std::endl;
+    g_currentTestReported = false;
+    if (g_verbose) std::cout << "- " << name << std::endl;
+}
+
+static void beginSection(const char* name) {
+    if (g_verbose) std::cout << std::endl << "=== " << name << " ===" << std::endl;
 }
 
 // ==========================================
@@ -164,9 +189,7 @@ static void testStepRunToEndEquivalence() {
             Fingerprint fb = fingerprint(b);
             g_checks++;
             if (!(fa == fb)) {
-                g_failures++;
-                std::cerr << "  FAIL [" << g_currentTest << "] " << c.name
-                          << " (mod" << (mod256 ? 256 : 128) << ")" << std::endl;
+                reportFailure(std::string(c.name) + (mod256 ? " (mod256)" : " (mod128)"));
                 describe("step()   ", fa);
                 describe("runToEnd()", fb);
             }
@@ -339,9 +362,7 @@ static void testStepBackRoundTrip() {
         Fingerprint back = fingerprint(bf);
         g_checks++;
         if (!(back == forward[i])) {
-            g_failures++;
-            std::cerr << "  FAIL [" << g_currentTest << "] step " << i
-                      << " へ戻った状態が一致しない" << std::endl;
+            reportFailure("step " + std::to_string(i) + " へ戻った状態が一致しない");
             describe("expected", forward[i]);
             describe("actual  ", back);
         }
@@ -379,9 +400,7 @@ static void testStepBackAfterRunToEnd() {
     Fingerprint back = fingerprint(bf);
     g_checks++;
     if (!(back == before)) {
-        g_failures++;
-        std::cerr << "  FAIL [" << g_currentTest
-                  << "] 実行前の状態に戻っていない" << std::endl;
+        reportFailure("実行前の状態に戻っていない");
         describe("expected", before);
         describe("actual  ", back);
     }
@@ -558,8 +577,8 @@ static void testNoSelfLoopWhenDisallowed() {
         g.load("horizontal", "random 8 20 1 0 1 0"); // selfLoop=0, sameEdge=1
         for (auto& e : readGraph(g).edges) {
             if (e.first == e.second) {
-                g_checks++; g_failures++;
-                std::cerr << "  FAIL [" << g_currentTest << "] 自己ループ " << e.first << std::endl;
+                g_checks++;
+                reportFailure("自己ループ " + std::to_string(e.first));
                 return;
             }
         }
@@ -589,9 +608,8 @@ static void testNoMultiEdgeWhenDisallowed() {
             for (auto& e : readGraph(g).edges) {
                 auto key = std::make_pair(std::min(e.first, e.second), std::max(e.first, e.second));
                 if (!seen.insert(key).second) {
-                    g_checks++; g_failures++;
-                    std::cerr << "  FAIL [" << g_currentTest << "] 無向で重複 "
-                              << key.first << "-" << key.second << std::endl;
+                    g_checks++;
+                    reportFailure("無向で重複 " + std::to_string(key.first) + "-" + std::to_string(key.second));
                     return;
                 }
             }
@@ -603,9 +621,8 @@ static void testNoMultiEdgeWhenDisallowed() {
             std::set<std::pair<int, int>> seen;
             for (auto& e : readGraph(g).edges) {
                 if (!seen.insert(e).second) {
-                    g_checks++; g_failures++;
-                    std::cerr << "  FAIL [" << g_currentTest << "] 有向で重複 "
-                              << e.first << "->" << e.second << std::endl;
+                    g_checks++;
+                    reportFailure("有向で重複 " + std::to_string(e.first) + "->" + std::to_string(e.second));
                     return;
                 }
             }
@@ -759,10 +776,7 @@ static void testLayoutProducesFiniteCoordinates() {
             if (!std::isfinite(pg.xs[i]) || !std::isfinite(pg.ys[i])) ok = false;
         }
         g_checks++;
-        if (!ok) {
-            g_failures++;
-            std::cerr << "  FAIL [" << g_currentTest << "] 座標が有限でない: " << c << std::endl;
-        }
+        if (!ok) reportFailure(std::string("座標が有限でない: ") + c);
     }
 }
 
@@ -784,10 +798,7 @@ static void testLayoutDoesNotCollapseNodes() {
     }
     // ノード半径は 20 なので、10px 未満まで寄っていたら描画が潰れている
     g_checks++;
-    if (worst < 10.0f) {
-        g_failures++;
-        std::cerr << "  FAIL [" << g_currentTest << "] 最接近距離 " << worst << std::endl;
-    }
+    if (worst < 10.0f) reportFailure("最接近距離 " + std::to_string(worst));
 }
 
 static void testPrepareIsIdempotentOnceStable() {
@@ -1095,11 +1106,7 @@ static void testTraversalVisitsExactlyTheReachableSet() {
             for (int u : order) got[u] = 1;
 
             g_checks++;
-            if (got != expected) {
-                g_failures++;
-                std::cerr << "  FAIL [" << g_currentTest << "] " << mode
-                          << " : " << c.text << std::endl;
-            }
+            if (got != expected) reportFailure(std::string(mode) + " : " + c.text);
         }
     }
 }
@@ -1166,11 +1173,7 @@ static void testPathIsActuallyWalkable() {
             for (size_t i = 0; ok && i + 1 < path.size(); i++) {
                 if (!ref.hasEdge(path[i], path[i + 1], c.directed)) ok = false;
             }
-            if (!ok) {
-                g_failures++;
-                std::cerr << "  FAIL [" << g_currentTest << "] " << mode
-                          << " の経路が辿れない: " << c.text << std::endl;
-            }
+            if (!ok) reportFailure(std::string(mode) + " の経路が辿れない: " + c.text);
         }
     }
 }
@@ -1279,9 +1282,7 @@ static void testStepBackRestoresEveryIntermediateState() {
     for (int i = (int)recs.size() - 1; i >= 0; i--) {
         g_checks++;
         if (!(readTrav(t) == recs[i])) {
-            g_failures++;
-            std::cerr << "  FAIL [" << g_currentTest << "] " << i
-                      << " 手目の状態が復元されていない" << std::endl;
+            reportFailure(std::to_string(i) + " 手目の状態が復元されていない");
             break;
         }
         if (i > 0) t.stepBack();
@@ -1380,8 +1381,11 @@ static void testStartEqualsGoal() {
 
 // ==========================================
 
-int main() {
-    std::cout << "=== AlgoViz core tests ===" << std::endl;
+int main(int argc, char** argv) {
+    for (int i = 1; i < argc; i++) {
+        std::string a = argv[i];
+        if (a == "--verbose" || a == "-v") g_verbose = true;
+    }
 
     testStepRunToEndEquivalence();
     testHelloWorld();
@@ -1400,7 +1404,7 @@ int main() {
     testLoadSkipsToFirstCommand();
     testGetStateWindow();
 
-    std::cout << std::endl << "=== Graph ===" << std::endl;
+    beginSection("Graph");
     testNoSelfLoopWhenDisallowed();
     testSelfLoopAppearsWhenAllowed();
     testNoMultiEdgeWhenDisallowed();
@@ -1424,7 +1428,7 @@ int main() {
     testAutomatonStartAndAcceptingStates();
     testAutomatonDropsStaleStatesOnRegenerate();
 
-    std::cout << std::endl << "=== BFS / DFS ===" << std::endl;
+    beginSection("BFS / DFS");
     testTraversalVisitsExactlyTheReachableSet();
     testTraversalVisitsEachVertexOnce();
     testBfsFindsShortestPath();
@@ -1440,12 +1444,11 @@ int main() {
     testTraversalHandlesInvalidStart();
     testStartEqualsGoal();
 
-    std::cout << std::endl;
     if (g_failures == 0) {
-        std::cout << "OK: " << g_checks << " checks passed" << std::endl;
+        std::cout << "core: OK (" << g_checks << " checks)" << std::endl;
         return 0;
     }
-    std::cout << "FAILED: " << g_failures << " / " << g_checks
-              << " checks failed" << std::endl;
+    std::cerr << std::endl << "core: FAILED " << g_failures << " / "
+              << g_checks << " checks" << std::endl;
     return 1;
 }

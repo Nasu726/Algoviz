@@ -16,7 +16,6 @@ export interface BrainfuckState {
     pc: number;
     ptr: number;
     tape: TapeCell[];
-    output: string;
     stepCount: bigint;
     code: string;
     isError: boolean;
