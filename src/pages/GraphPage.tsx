@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useInterval } from 'react-use';
 import { GraphRenderer } from '../components/visualizers/GraphRenderer';
 import { VisualizerShell } from '../components/ui/VisualizerShell';
+import { SidebarLayout } from '../components/ui/SidebarLayout';
 import { GraphSetupPanel } from '../components/graph/GraphSetupPanel';
 import { TraversalPanel } from '../components/graph/TraversalPanel';
 import { GraphHelp } from '../components/graph/GraphHelp';
@@ -195,17 +196,6 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         <GraphRenderer engine={engine} showWeights={settings.showWeights} />
     ) : null;
 
-    const sidebarStyle: React.CSSProperties = {
-        flexShrink: 0, overflowY: 'auto', padding: '15px', background: '#f8f9fa',
-    };
-
-    // 3つの配置で DOM の構造を変えないのが肝心。
-    // キャンバスの位置が変わると GraphRenderer が再マウントされ、
-    // PixiJS のアプリが作り直されてカメラ位置も失われる。
-    // 並びは flexDirection と order だけで切り替える。
-    const narrow = tier === 'narrow';
-    const wide = tier === 'wide';
-
     return (
         <VisualizerShell
             title={VARIANT_TITLE[variant]}
@@ -216,45 +206,12 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
             setIsHelpOpen={setIsHelpOpen}
             help={<GraphHelp variant={variant} maxNodes={maxNodes} />}
         >
-            <div style={{
-                display: 'flex',
-                flexDirection: narrow ? 'column' : 'row',
-                flex: 1, minHeight: 0,
-                overflowY: narrow ? 'auto' : 'hidden',
-            }}>
-                {/* 設定。狭いときは一番下へ回す */}
-                <div style={{
-                    ...sidebarStyle,
-                    order: narrow ? 2 : 0,
-                    width: narrow ? 'auto' : (wide ? '280px' : '260px'),
-                    borderRight: narrow ? 'none' : '1px solid #ddd',
-                    overflowY: narrow ? 'visible' : 'auto',
-                }}>
-                    {setupPanel}
-                </div>
-
-                {/* キャンバスと、広くないときの実行帯 */}
-                <div style={{
-                    order: 1, flex: narrow ? 'none' : 1,
-                    display: 'flex', flexDirection: 'column', minWidth: 0,
-                }}>
-                    <div style={{
-                        flex: narrow ? 'none' : 1,
-                        height: narrow ? '45vh' : 'auto',
-                        display: 'flex', minHeight: 0, padding: narrow ? '10px' : '15px',
-                    }}>
-                        {canvas}
-                    </div>
-                    {!wide && traversalPanel}
-                </div>
-
-                {/* 広いときだけ右サイドバー */}
-                {wide && traversalPanel && (
-                    <div style={{ ...sidebarStyle, order: 2, width: '280px', borderLeft: '1px solid #ddd' }}>
-                        {traversalPanel}
-                    </div>
-                )}
-            </div>
+            <SidebarLayout
+                tier={tier}
+                setupPanel={setupPanel}
+                canvas={canvas}
+                controlPanel={traversalPanel}
+            />
         </VisualizerShell>
     );
 };
