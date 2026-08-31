@@ -137,6 +137,7 @@ export const TraversalPanel: React.FC<Props> = ({
             onRunToEnd={onRunToEnd}
             onDelayChange={setDelay}
             vertical={!horizontal}
+            compact={compact}
         />
     );
 

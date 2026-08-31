@@ -545,13 +545,20 @@ static ParsedGraph readGraph(GraphVisualizer& g) {
 
     ParsedGraph pg;
     std::istringstream iss(state["graphText"].as<std::string>());
+    std::string line;
     iss >> pg.v >> pg.declaredE;
-    for (int i = 0; i < pg.declaredE; i++) {
-        int from, to;
-        float w;
-        if (!(iss >> from >> to >> w)) break;
-        pg.edges.push_back({from, to});
-        pg.weights.push_back(w);
+    std::getline(iss, line); // "V E" の行の残り
+
+    // 辺の行は重み付きなら3列、重み無しなら2列。
+    // 頂点の重み行 (V 個の数値) が挟まることもあるので、列数で見分ける。
+    while ((int)pg.edges.size() < pg.declaredE && std::getline(iss, line)) {
+        std::istringstream ls(line);
+        std::vector<float> nums;
+        float x;
+        while (ls >> x) nums.push_back(x);
+        if (nums.size() < 2 || nums.size() > 3) continue;
+        pg.edges.push_back({(int)nums[0], (int)nums[1]});
+        pg.weights.push_back(nums.size() == 3 ? nums[2] : 1.0f);
     }
 
     val nodes = state["nodes"];
@@ -677,7 +684,7 @@ static void testNodeCountIsClamped() {
     }
     {   // テキスト入力経由でも同じ
         GraphVisualizer g;
-        g.load("horizontal", "custom 1 0 0\n500 0\n");
+        g.load("horizontal", "custom 1 0 0 1\n500 0\n");
         CHECK_EQ(readGraph(g).v, GraphVisualizer::MAX_NODES);
     }
     {
@@ -695,7 +702,7 @@ static void testCustomGraphParsing() {
     beginTest("テキストからグラフを生成する");
 
     GraphVisualizer g;
-    g.load("horizontal", "custom 1 0 0\n4 3\n0 1 5\n1 2 7\n2 3 9\n");
+    g.load("horizontal", "custom 1 0 0 1\n4 3\n0 1 5\n1 2 7\n2 3 9\n");
     ParsedGraph pg = readGraph(g);
 
     CHECK_EQ(pg.v, 4);
@@ -711,7 +718,7 @@ static void testCustomGraphOptionalWeight() {
     beginTest("重みを省略した辺は 1 として扱う");
 
     GraphVisualizer g;
-    g.load("horizontal", "custom 1 0 0\n3 2\n0 1\n1 2\n");
+    g.load("horizontal", "custom 1 0 0 1\n3 2\n0 1\n1 2\n");
     ParsedGraph pg = readGraph(g);
 
     CHECK_EQ(pg.v, 3);
@@ -729,7 +736,7 @@ static void testCustomGraphRejectsOutOfRangeVertices() {
 
     // ここで弾かないと隣接リスト構築で範囲外アクセスになる
     GraphVisualizer g;
-    g.load("horizontal", "custom 1 0 0\n3 4\n0 1\n1 99\n-5 2\n2 0\n");
+    g.load("horizontal", "custom 1 0 0 1\n3 4\n0 1\n1 99\n-5 2\n2 0\n");
     ParsedGraph pg = readGraph(g);
 
     CHECK_EQ(pg.v, 3);
@@ -744,7 +751,7 @@ static void testCustomGraphIgnoresJunkLines() {
     beginTest("空行やゴミ行があっても壊れない");
 
     GraphVisualizer g;
-    g.load("horizontal", "custom 1 0 0\n3 2\n\n0 1 3\n\nhello\n1 2 4\n");
+    g.load("horizontal", "custom 1 0 0 1\n3 2\n\n0 1 3\n\nhello\n1 2 4\n");
     ParsedGraph pg = readGraph(g);
     CHECK_EQ(pg.v, 3);
     CHECK_EQ((int)pg.edges.size(), 2);
@@ -761,10 +768,10 @@ static void testLayoutProducesFiniteCoordinates() {
         "random 12 18 1 0 0 0",
         "random 30 40 1 1 1 1",
         "complete 10 1 0",
-        "custom 1 0 0\n6 2\n0 1\n2 3\n",   // 非連結（孤立点あり）
-        "custom 1 0 0\n1 0\n",             // 頂点1個
-        "custom 1 0 0\n2 1\n0 1\n",        // 直線
-        "custom 1 0 0\n5 0\n",             // 全部孤立
+        "custom 1 0 0 1\n6 2\n0 1\n2 3\n",   // 非連結（孤立点あり）
+        "custom 1 0 0 1\n1 0\n",             // 頂点1個
+        "custom 1 0 0 1\n2 1\n0 1\n",        // 直線
+        "custom 1 0 0 1\n5 0\n",             // 全部孤立
     };
 
     for (const char* c : cases) {
@@ -867,7 +874,7 @@ static void testColorChannelReachesTheView() {
     beginTest("塗った色が JS へ渡す配列に載る");
 
     ColorProbe g;
-    g.load("horizontal", "custom 1 0 0\n4 3\n0 1\n1 2\n2 3\n");
+    g.load("horizontal", "custom 1 0 0 1\n4 3\n0 1\n1 2\n2 3\n");
 
     g.paintNode(0, NODE_START);
     g.paintNode(1, NODE_FRONTIER);
@@ -893,7 +900,7 @@ static void testResetColors() {
     beginTest("resetColors で全部が既定色に戻る");
 
     ColorProbe g;
-    g.load("horizontal", "custom 1 0 0\n3 2\n0 1\n1 2\n");
+    g.load("horizontal", "custom 1 0 0 1\n3 2\n0 1\n1 2\n");
     g.paintNode(0, NODE_PATH);
     g.paintNode(2, NODE_VISITED);
     g.paintEdge(1, EDGE_ACTIVE);
@@ -907,7 +914,7 @@ static void testColorSettersIgnoreOutOfRange() {
     beginTest("範囲外の添字に色を塗っても壊れない");
 
     ColorProbe g;
-    g.load("horizontal", "custom 1 0 0\n2 1\n0 1\n");
+    g.load("horizontal", "custom 1 0 0 1\n2 1\n0 1\n");
     g.paintNode(-1, NODE_PATH);
     g.paintNode(99, NODE_PATH);
     g.paintEdge(-1, EDGE_PATH);
@@ -952,7 +959,7 @@ static void testAutomatonStartAndAcceptingStates() {
     beginTest("初期状態と受理状態を C++ が保持する");
 
     AutomatonVisualizer a;
-    a.load("horizontal", "custom 1 0 0\n5 2\n0 1\n1 2\n");
+    a.load("horizontal", "custom 1 0 0 1\n5 2\n0 1\n1 2\n");
 
     a.load("setStartNode", "2");
     CHECK_EQ(a.getState(progressParams())["startNodeIndex"].as<int>(), 2);
@@ -975,13 +982,13 @@ static void testAutomatonDropsStaleStatesOnRegenerate() {
     beginTest("グラフを作り直すと範囲外になった状態指定が消える");
 
     AutomatonVisualizer a;
-    a.load("horizontal", "custom 1 0 0\n10 0\n");
+    a.load("horizontal", "custom 1 0 0 1\n10 0\n");
     a.load("setStartNode", "8");
     a.load("setAccepting", "7, 9");
     CHECK_EQ(a.getState(progressParams())["startNodeIndex"].as<int>(), 8);
 
     // 3頂点に作り直すと 7,8,9 は存在しなくなる
-    a.load("horizontal", "custom 1 0 0\n3 0\n");
+    a.load("horizontal", "custom 1 0 0 1\n3 0\n");
     CHECK_EQ(a.getState(progressParams())["startNodeIndex"].as<int>(), -1);
     CHECK_EQ(a.getState(progressParams())["acceptingStates"]["length"].as<int>(), 0);
 }
@@ -1082,15 +1089,15 @@ static void testTraversalVisitsExactlyTheReachableSet() {
     struct Case { const char* text; int v; std::vector<std::pair<int,int>> es; bool directed; };
     const Case cases[] = {
         // 連結
-        {"custom 1 0 0\n5 4\n0 1\n1 2\n2 3\n3 4\n", 5, {{0,1},{1,2},{2,3},{3,4}}, false},
+        {"custom 1 0 0 1\n5 4\n0 1\n1 2\n2 3\n3 4\n", 5, {{0,1},{1,2},{2,3},{3,4}}, false},
         // 非連結（4,5 は孤立した別成分）
-        {"custom 1 0 0\n6 3\n0 1\n1 2\n4 5\n",      6, {{0,1},{1,2},{4,5}},       false},
+        {"custom 1 0 0 1\n6 3\n0 1\n1 2\n4 5\n",      6, {{0,1},{1,2},{4,5}},       false},
         // 有向。0 からは 3 に届かない
-        {"custom 1 1 0\n4 3\n0 1\n1 2\n3 0\n",      4, {{0,1},{1,2},{3,0}},       true},
+        {"custom 1 1 0 1\n4 3\n0 1\n1 2\n3 0\n",      4, {{0,1},{1,2},{3,0}},       true},
         // 自己ループと多重辺
-        {"custom 1 0 0\n3 4\n0 0\n0 1\n0 1\n1 2\n", 3, {{0,0},{0,1},{0,1},{1,2}}, false},
+        {"custom 1 0 0 1\n3 4\n0 0\n0 1\n0 1\n1 2\n", 3, {{0,0},{0,1},{0,1},{1,2}}, false},
         // 孤立点のみ
-        {"custom 1 0 0\n3 0\n",                     3, {},                        false},
+        {"custom 1 0 0 1\n3 0\n",                     3, {},                        false},
     };
 
     for (const auto& c : cases) {
@@ -1118,7 +1125,7 @@ static void testTraversalVisitsEachVertexOnce() {
 
     for (const char* mode : {"bfs", "dfs"}) {
         TraversalVisualizer t;
-        t.load("horizontal", "custom 1 0 0\n8 10\n0 1\n0 2\n1 3\n2 3\n3 4\n4 5\n5 6\n6 7\n7 4\n2 6\n");
+        t.load("horizontal", "custom 1 0 0 1\n8 10\n0 1\n0 2\n1 3\n2 3\n3 4\n4 5\n5 6\n6 7\n7 4\n2 6\n");
         t.load("setTraversal", traversalCmd(mode, 0, -1));
         runTraversal(t);
 
@@ -1134,7 +1141,7 @@ static void testBfsFindsShortestPath() {
 
     // 0-1-2-3 の道と 0-3 の近道。BFS なら 0->3 の1辺で着く
     TraversalVisualizer t;
-    t.load("horizontal", "custom 1 0 0\n4 4\n0 1\n1 2\n2 3\n0 3\n");
+    t.load("horizontal", "custom 1 0 0 1\n4 4\n0 1\n1 2\n2 3\n0 3\n");
     t.load("setTraversal", traversalCmd("bfs", 0, 3));
     runTraversal(t);
 
@@ -1153,9 +1160,9 @@ static void testPathIsActuallyWalkable() {
 
     struct Case { const char* text; int v; std::vector<std::pair<int,int>> es; bool directed; int s, g; };
     const Case cases[] = {
-        {"custom 1 0 0\n6 6\n0 1\n1 2\n2 3\n3 4\n4 5\n0 5\n", 6, {{0,1},{1,2},{2,3},{3,4},{4,5},{0,5}}, false, 0, 4},
-        {"custom 1 1 0\n5 5\n0 1\n1 2\n2 3\n3 4\n0 4\n",      5, {{0,1},{1,2},{2,3},{3,4},{0,4}},       true,  0, 3},
-        {"custom 1 0 0\n7 6\n0 1\n1 2\n2 3\n3 4\n4 5\n5 6\n", 7, {{0,1},{1,2},{2,3},{3,4},{4,5},{5,6}}, false, 0, 6},
+        {"custom 1 0 0 1\n6 6\n0 1\n1 2\n2 3\n3 4\n4 5\n0 5\n", 6, {{0,1},{1,2},{2,3},{3,4},{4,5},{0,5}}, false, 0, 4},
+        {"custom 1 1 0 1\n5 5\n0 1\n1 2\n2 3\n3 4\n0 4\n",      5, {{0,1},{1,2},{2,3},{3,4},{0,4}},       true,  0, 3},
+        {"custom 1 0 0 1\n7 6\n0 1\n1 2\n2 3\n3 4\n4 5\n5 6\n", 7, {{0,1},{1,2},{2,3},{3,4},{4,5},{5,6}}, false, 0, 6},
     };
 
     for (const auto& c : cases) {
@@ -1185,7 +1192,7 @@ static void testNoPathWhenUnreachable() {
 
     for (const char* mode : {"bfs", "dfs"}) {
         TraversalVisualizer t;
-        t.load("horizontal", "custom 1 0 0\n5 2\n0 1\n3 4\n");
+        t.load("horizontal", "custom 1 0 0 1\n5 2\n0 1\n3 4\n");
         t.load("setTraversal", traversalCmd(mode, 0, 4));
         runTraversal(t);
 
@@ -1201,7 +1208,7 @@ static void testDfsGoesDeepBeforeWide() {
 
     // 0 から 1 と 4 へ。1 の先は 2 -> 3 と続く。
     // DFS なら 0,1,2,3 と潜ってから 4 に来る。BFS なら 0,1,4 が先。
-    const char* text = "custom 1 1 0\n5 4\n0 1\n1 2\n2 3\n0 4\n";
+    const char* text = "custom 1 1 0 1\n5 4\n0 1\n1 2\n2 3\n0 4\n";
 
     {
         TraversalVisualizer t;
@@ -1247,7 +1254,7 @@ static void testStepBackReturnsToInitialState() {
 
     for (const char* mode : {"bfs", "dfs"}) {
         TraversalVisualizer t;
-        t.load("horizontal", "custom 1 0 0\n6 7\n0 1\n0 2\n1 3\n2 3\n3 4\n4 5\n2 5\n");
+        t.load("horizontal", "custom 1 0 0 1\n6 7\n0 1\n0 2\n1 3\n2 3\n3 4\n4 5\n2 5\n");
         t.load("setTraversal", traversalCmd(mode, 0, 5));
 
         TravRec initial = readTrav(t);
@@ -1268,7 +1275,7 @@ static void testStepBackRestoresEveryIntermediateState() {
     beginTest("stepBack が各時点の状態を正確に復元する");
 
     TraversalVisualizer t;
-    t.load("horizontal", "custom 1 0 0\n5 5\n0 1\n1 2\n2 3\n3 4\n0 4\n");
+    t.load("horizontal", "custom 1 0 0 1\n5 5\n0 1\n1 2\n2 3\n3 4\n0 4\n");
     t.load("setTraversal", traversalCmd("bfs", 0, -1));
 
     // recs[i] = i 手進めたあとの状態
@@ -1296,7 +1303,7 @@ static void testRunToEndMatchesRepeatedStep() {
 
     for (const char* mode : {"bfs", "dfs"}) {
         TraversalVisualizer a, b;
-        const char* text = "custom 1 0 0\n7 8\n0 1\n0 2\n1 3\n2 4\n3 5\n4 5\n5 6\n1 6\n";
+        const char* text = "custom 1 0 0 1\n7 8\n0 1\n0 2\n1 3\n2 4\n3 5\n4 5\n5 6\n1 6\n";
         a.load("horizontal", text);
         b.load("horizontal", text);
         a.load("setTraversal", traversalCmd(mode, 0, 6));
@@ -1316,7 +1323,7 @@ static void testTraversalColorsNodesAndEdges() {
     beginTest("探索の進行がノードと辺の色に反映される");
 
     TraversalVisualizer t;
-    t.load("horizontal", "custom 1 0 0\n4 3\n0 1\n1 2\n2 3\n");
+    t.load("horizontal", "custom 1 0 0 1\n4 3\n0 1\n1 2\n2 3\n");
     t.load("setTraversal", traversalCmd("bfs", 0, 3));
 
     // 開始直後: 始点だけが処理中、他は未訪問
@@ -1343,12 +1350,12 @@ static void testTraversalResetsWhenGraphChanges() {
     beginTest("グラフを作り直すと探索がやり直しになる");
 
     TraversalVisualizer t;
-    t.load("horizontal", "custom 1 0 0\n5 4\n0 1\n1 2\n2 3\n3 4\n");
+    t.load("horizontal", "custom 1 0 0 1\n5 4\n0 1\n1 2\n2 3\n3 4\n");
     t.load("setTraversal", traversalCmd("bfs", 0, 4));
     t.runToEnd();
     CHECK(t.getState(progressParams())["finished"].as<bool>());
 
-    t.load("horizontal", "custom 1 0 0\n3 2\n0 1\n1 2\n");
+    t.load("horizontal", "custom 1 0 0 1\n3 2\n0 1\n1 2\n");
     val s = t.getState(progressParams());
     CHECK(!s["finished"].as<bool>());
     CHECK_EQ(s["visitOrder"]["length"].as<int>(), 1); // 始点だけ
@@ -1359,7 +1366,7 @@ static void testTraversalHandlesInvalidStart() {
     beginTest("始点が範囲外でも壊れない");
 
     TraversalVisualizer t;
-    t.load("horizontal", "custom 1 0 0\n3 2\n0 1\n1 2\n");
+    t.load("horizontal", "custom 1 0 0 1\n3 2\n0 1\n1 2\n");
     t.load("setTraversal", traversalCmd("bfs", 99, -1));
 
     // 範囲外の始点は 0 に丸められる
@@ -1372,7 +1379,7 @@ static void testStartEqualsGoal() {
     beginTest("始点と終点が同じなら即座に見つかる");
 
     TraversalVisualizer t;
-    t.load("horizontal", "custom 1 0 0\n4 3\n0 1\n1 2\n2 3\n");
+    t.load("horizontal", "custom 1 0 0 1\n4 3\n0 1\n1 2\n2 3\n");
     t.load("setTraversal", traversalCmd("bfs", 2, 2));
 
     val s = t.getState(progressParams());
@@ -1433,25 +1440,25 @@ static void testDijkstraDistancesMatchReference() {
     };
     const Case cases[] = {
         // 遠回りの方が軽い
-        {"custom 1 0 0\n4 4\n0 1 10\n1 2 10\n2 3 10\n0 3 100\n",
+        {"custom 1 0 0 1\n4 4\n0 1 10\n1 2 10\n2 3 10\n0 3 100\n",
          4, {{0,1},{1,2},{2,3},{0,3}}, {10,10,10,100}, false},
         // 近道の方が軽い
-        {"custom 1 0 0\n4 4\n0 1 10\n1 2 10\n2 3 10\n0 3 5\n",
+        {"custom 1 0 0 1\n4 4\n0 1 10\n1 2 10\n2 3 10\n0 3 5\n",
          4, {{0,1},{1,2},{2,3},{0,3}}, {10,10,10,5}, false},
         // 有向。向きを守らないと距離が変わる
-        {"custom 1 1 0\n5 6\n0 1 2\n1 2 3\n0 2 10\n2 3 1\n3 4 4\n0 4 20\n",
+        {"custom 1 1 0 1\n5 6\n0 1 2\n1 2 3\n0 2 10\n2 3 1\n3 4 4\n0 4 20\n",
          5, {{0,1},{1,2},{0,2},{2,3},{3,4},{0,4}}, {2,3,10,1,4,20}, true},
         // 非連結。届かない頂点は無限大のまま
-        {"custom 1 0 0\n6 3\n0 1 5\n1 2 5\n4 5 5\n",
+        {"custom 1 0 0 1\n6 3\n0 1 5\n1 2 5\n4 5 5\n",
          6, {{0,1},{1,2},{4,5}}, {5,5,5}, false},
         // 重み 0 の辺と自己ループ
-        {"custom 1 0 0\n4 4\n0 0 7\n0 1 0\n1 2 3\n2 3 3\n",
+        {"custom 1 0 0 1\n4 4\n0 0 7\n0 1 0\n1 2 3\n2 3 3\n",
          4, {{0,0},{0,1},{1,2},{2,3}}, {7,0,3,3}, false},
         // 多重辺。軽い方が選ばれる
-        {"custom 1 0 0\n3 3\n0 1 9\n0 1 2\n1 2 4\n",
+        {"custom 1 0 0 1\n3 3\n0 1 9\n0 1 2\n1 2 4\n",
          3, {{0,1},{0,1},{1,2}}, {9,2,4}, false},
         // 重みを省略 = すべて 1。幅優先探索と同じ距離になるはず
-        {"custom 1 0 0\n5 4\n0 1\n1 2\n2 3\n3 4\n",
+        {"custom 1 0 0 1\n5 4\n0 1\n1 2\n2 3\n3 4\n",
          5, {{0,1},{1,2},{2,3},{3,4}}, {1,1,1,1}, false},
     };
 
@@ -1485,7 +1492,7 @@ static void testDijkstraPrefersCheaperDetour() {
     beginTest("ダイクストラは辺の本数ではなく重みで選ぶ");
 
     // 0->3 は1本で 100、0->1->2->3 は3本で 30。BFS は前者、ダイクストラは後者。
-    const char* text = "custom 1 0 0\n4 4\n0 1 10\n1 2 10\n2 3 10\n0 3 100\n";
+    const char* text = "custom 1 0 0 1\n4 4\n0 1 10\n1 2 10\n2 3 10\n0 3 100\n";
 
     {
         TraversalVisualizer t;
@@ -1513,7 +1520,7 @@ static void testDijkstraReparentsOnRelaxation() {
 
     // 0->2 は直接 100。0->1->2 は 1+1=2。緩和で 2 の親が 0 から 1 に変わる。
     TraversalVisualizer t;
-    t.load("horizontal", "custom 1 1 0\n3 3\n0 2 100\n0 1 1\n1 2 1\n");
+    t.load("horizontal", "custom 1 1 0 1\n3 3\n0 2 100\n0 1 1\n1 2 1\n");
     t.load("setTraversal", traversalCmd("dijkstra", 0, 2));
     runTraversal(t);
 
@@ -1533,7 +1540,7 @@ static void testDijkstraSettlesInDistanceOrder() {
     beginTest("確定の順序は距離の昇順になる");
 
     TraversalVisualizer t;
-    t.load("horizontal", "custom 1 0 0\n5 5\n0 1 7\n0 2 2\n2 1 1\n1 3 3\n3 4 1\n");
+    t.load("horizontal", "custom 1 0 0 1\n5 5\n0 1 7\n0 2 2\n2 1 1\n1 3 3\n3 4 1\n");
     t.load("setTraversal", traversalCmd("dijkstra", 0, -1));
     runTraversal(t);
 
@@ -1554,7 +1561,7 @@ static void testDijkstraUnreachableGoal() {
     beginTest("届かない終点は無限大のまま見つからない");
 
     TraversalVisualizer t;
-    t.load("horizontal", "custom 1 0 0\n5 2\n0 1 3\n3 4 3\n");
+    t.load("horizontal", "custom 1 0 0 1\n5 2\n0 1 3\n3 4 3\n");
     t.load("setTraversal", traversalCmd("dijkstra", 0, 4));
     runTraversal(t);
 
@@ -1568,7 +1575,7 @@ static void testDijkstraStepBackRestoresState() {
     beginTest("ダイクストラでも stepBack が状態を復元する");
 
     TraversalVisualizer t;
-    t.load("horizontal", "custom 1 0 0\n6 8\n0 1 4\n0 2 1\n2 1 2\n1 3 5\n2 3 8\n3 4 3\n4 5 1\n2 5 20\n");
+    t.load("horizontal", "custom 1 0 0 1\n6 8\n0 1 4\n0 2 1\n2 1 2\n1 3 5\n2 3 8\n3 4 3\n4 5 1\n2 5 20\n");
     t.load("setTraversal", traversalCmd("dijkstra", 0, 5));
 
     TravRec initial = readTrav(t);
@@ -1591,12 +1598,12 @@ static void testDijkstraReportsNegativeEdges() {
 
     {
         TraversalVisualizer t;
-        t.load("horizontal", "custom 1 0 0\n3 2\n0 1 5\n1 2 3\n");
+        t.load("horizontal", "custom 1 0 0 1\n3 2\n0 1 5\n1 2 3\n");
         CHECK(!t.getState(progressParams())["hasNegativeEdge"].as<bool>());
     }
     {
         TraversalVisualizer t;
-        t.load("horizontal", "custom 1 0 0\n3 2\n0 1 5\n1 2 -3\n");
+        t.load("horizontal", "custom 1 0 0 1\n3 2\n0 1 5\n1 2 -3\n");
         CHECK(t.getState(progressParams())["hasNegativeEdge"].as<bool>());
         // 前提を外れていても止まること (無限ループしない)
         t.load("setTraversal", traversalCmd("dijkstra", 0, -1));
@@ -1613,7 +1620,7 @@ static void testNodeWeightsFromText() {
     beginTest("頂点の重みをテキストから読む");
 
     GraphVisualizer g;
-    g.load("horizontal", "custom 1 0 1\n4 2\n5 10 15 20\n0 1 3\n1 2 4\n");
+    g.load("horizontal", "custom 1 0 1 1\n4 2\n5 10 15 20\n0 1 3\n1 2 4\n");
 
     val s = g.getState(progressParams());
     val nodes = s["nodes"];
@@ -1630,7 +1637,7 @@ static void testNodeWeightsOmittedIsZero() {
     beginTest("頂点の重みを使わない指定なら 0 のまま");
 
     GraphVisualizer g;
-    g.load("horizontal", "custom 1 0 0\n3 2\n0 1\n1 2\n");
+    g.load("horizontal", "custom 1 0 0 1\n3 2\n0 1\n1 2\n");
 
     val s = g.getState(progressParams());
     CHECK(!s["hasNodeWeights"].as<bool>());
@@ -1642,7 +1649,7 @@ static void testNodeWeightsRoundTripThroughText() {
     beginTest("頂点の重みがテキスト表現に往復する");
 
     GraphVisualizer g;
-    g.load("horizontal", "custom 1 0 1\n3 1\n7 8 9\n0 1 2\n");
+    g.load("horizontal", "custom 1 0 1 1\n3 1\n7 8 9\n0 1 2\n");
 
     val params = val::object();
     params.set("withText", true);
@@ -1665,7 +1672,7 @@ static void testDijkstraDoesNotDestroyNodeWeights() {
     beginTest("ダイクストラ後もテキストには元の頂点の重みが残る");
 
     TraversalVisualizer t;
-    t.load("horizontal", "custom 1 0 1\n3 2\n11 22 33\n0 1 4\n1 2 4\n");
+    t.load("horizontal", "custom 1 0 1 1\n3 2\n11 22 33\n0 1 4\n1 2 4\n");
     t.load("setTraversal", traversalCmd("dijkstra", 0, -1));
     t.runToEnd();
 
@@ -2047,6 +2054,112 @@ static void testCircularOrderHandlesEdgeCases() {
 }
 
 // ==========================================
+// 重み付き / 重み無しの区別
+// ==========================================
+
+static std::string graphTextOf(GraphVisualizer& g) {
+    val params = val::object();
+    params.set("withText", true);
+    return g.getState(params)["graphText"].as<std::string>();
+}
+
+// 辺の行の列数を数える (1行目の "V E" は除く)
+static std::vector<int> edgeLineColumns(const std::string& text) {
+    std::istringstream iss(text);
+    std::string line;
+    std::getline(iss, line); // "V E"
+
+    std::vector<int> columns;
+    while (std::getline(iss, line)) {
+        if (line.empty()) continue;
+        std::istringstream ls(line);
+        int count = 0;
+        float x;
+        while (ls >> x) count++;
+        columns.push_back(count);
+    }
+    return columns;
+}
+
+static void testUnweightedGraphHasNoWeightColumn() {
+    beginTest("重み無しならテキストは2列で、書き戻しても2列のまま");
+
+    GraphVisualizer g;
+    g.load("horizontal", "random 8 12 1 0 0 0 1 0"); // 末尾 0 = 重み無し
+    CHECK(!g.getState(val::object())["weighted"].as<bool>());
+
+    std::string text = graphTextOf(g);
+    for (int c : edgeLineColumns(text)) CHECK_EQ(c, 2);
+
+    // 書き戻しても2列のまま。ここが崩れると「重み無しにしたのに重みが付いて返る」
+    std::ostringstream cmd;
+    cmd << "custom 1 0 0 0\n" << text;
+    GraphVisualizer again;
+    again.load("horizontal", cmd.str());
+    for (int c : edgeLineColumns(graphTextOf(again))) CHECK_EQ(c, 2);
+
+    // 重み付きなら3列
+    GraphVisualizer w;
+    w.load("horizontal", "random 8 12 1 0 0 0 1 1");
+    CHECK(w.getState(val::object())["weighted"].as<bool>());
+    for (int c : edgeLineColumns(graphTextOf(w))) CHECK_EQ(c, 3);
+}
+
+static void testCustomHeaderDoesNotEatTheBody() {
+    beginTest("custom の引数を省略しても本文を食わない");
+
+    // ヘッダを行またぎで読むと、省略した引数の代わりに本文の数値を吸い込んで
+    // グラフが丸ごと別物になる。1行目だけから読むこと。
+    GraphVisualizer g;
+    g.load("horizontal", "custom 1\n4 3\n0 1\n1 2\n2 3\n"); // dir 以降を省略
+
+    ParsedGraph pg = readGraph(g);
+    CHECK_EQ(pg.v, 4);
+    CHECK_EQ((int)pg.edges.size(), 3);
+}
+
+static void testNodeWeightLineDoesNotEatAnEdge() {
+    beginTest("頂点の重み行が無いテキストでも辺が消えない");
+
+    // 「頂点の重みを入力する」を指定しているのに重み行が無い。
+    // 無条件に1行消費すると、最初の辺が食われて辺が1本消える。
+    GraphVisualizer g;
+    g.load("horizontal", "custom 1 0 1 0\n4 3\n0 1\n1 2\n2 3\n");
+
+    ParsedGraph pg = readGraph(g);
+    CHECK_EQ(pg.v, 4);
+    CHECK_EQ((int)pg.edges.size(), 3);
+    if (pg.edges.size() == 3) {
+        CHECK(pg.edges[0] == std::make_pair(0, 1));
+        CHECK(pg.edges[1] == std::make_pair(1, 2));
+        CHECK(pg.edges[2] == std::make_pair(2, 3));
+    }
+
+    // 重み行があるときは今までどおり読める (行数の判定で取り違えないこと)
+    GraphVisualizer h;
+    h.load("horizontal", "custom 1 0 1 0\n4 3\n5 6 7 8\n0 1\n1 2\n2 3\n");
+    ParsedGraph ph = readGraph(h);
+    CHECK_EQ((int)ph.edges.size(), 3);
+    val nodes = h.getState(val::object())["nodes"];
+    CHECK_EQ(nodes[2].as<float>(), 5.0f);
+}
+
+static void testDijkstraOnUnweightedCountsEdges() {
+    beginTest("重み無しのダイクストラの距離は辺の本数と一致する");
+
+    // 0-1-2-3-4 の道。重み無しなら距離はそのままホップ数になる。
+    TraversalVisualizer t;
+    t.load("horizontal", "custom 1 0 0 0\n5 4\n0 1\n1 2\n2 3\n3 4\n");
+    t.load("setTraversal", traversalCmd("dijkstra", 0, -1));
+    runTraversal(t);
+
+    val s = t.getState(progressParams());
+    std::vector<float> d = valToFloats(s["distances"]);
+    CHECK_EQ((int)d.size(), 5);
+    for (int i = 0; i < (int)d.size(); i++) CHECK_EQ(d[i], (float)i);
+}
+
+// ==========================================
 
 int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
@@ -2140,6 +2253,12 @@ int main(int argc, char** argv) {
     testCircularOrderReducesCrossings();
     testCircularOrderPlacesEveryVertexOnce();
     testCircularOrderHandlesEdgeCases();
+
+    beginSection("重み付き / 重み無し");
+    testUnweightedGraphHasNoWeightColumn();
+    testCustomHeaderDoesNotEatTheBody();
+    testNodeWeightLineDoesNotEatAnEdge();
+    testDijkstraOnUnweightedCountsEdges();
 
     if (g_failures == 0) {
         std::cout << "core: OK (" << g_checks << " checks)" << std::endl;

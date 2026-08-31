@@ -17,25 +17,29 @@ interface PlaybackControlsProps {
     loadLabel?: string;
     /** 縦に積む (サイドバー用) */
     vertical?: boolean;
+    /** 狭い幅。文字を小さくする */
+    compact?: boolean;
     /** ページ固有の追加コントロール */
     children?: React.ReactNode;
 }
 
-const buttonStyle: React.CSSProperties = {
-    padding: '8px',
+const buttonStyle = (compact?: boolean): React.CSSProperties => ({
+    padding: compact ? '6px' : '8px',
+    fontSize: compact ? '12px' : undefined,
     fontWeight: 'bold',
     flexShrink: 0,
     whiteSpace: 'nowrap',
     backgroundColor: '#f5f5f5',
     color: '#000000',
-};
+});
 
 export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
     isPlaying, ready, delay,
     onLoad, onPlayPause, onStepBack, onStepNext, onRunToEnd, onDelayChange,
-    canStepBack, loadLabel = 'ロード', vertical = false, children,
+    canStepBack, loadLabel = 'ロード', vertical = false, compact, children,
 }) => {
     const backEnabled = (canStepBack ?? ready) && !isPlaying;
+    const button = buttonStyle(compact);
 
     return (
         <div style={{
@@ -47,17 +51,21 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
             gap: '10px',
             padding: vertical ? '0' : '0 20px',
         }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
-                <button onClick={onLoad} style={buttonStyle}>{loadLabel}</button>
-                <button onClick={onPlayPause} disabled={!ready} style={buttonStyle}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
+                <button onClick={onLoad} style={button}>{loadLabel}</button>
+                <button onClick={onPlayPause} disabled={!ready} style={button}>
                     {isPlaying ? '停止' : '実行'}
                 </button>
-                <button onClick={onStepBack} disabled={!backEnabled} style={buttonStyle}>戻る</button>
-                <button onClick={onStepNext} disabled={!ready || isPlaying} style={buttonStyle}>進む</button>
+                <button onClick={onStepBack} disabled={!backEnabled} style={button}>戻る</button>
+                <button onClick={onStepNext} disabled={!ready || isPlaying} style={button}>進む</button>
+                <button onClick={onRunToEnd} disabled={!ready} style={button}>一気に実行</button>
             </div>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                <span style={{ fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                <span style={{
+                    fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap',
+                    fontSize: compact ? '12px' : undefined,
+                }}>
                     実行速度
                     <input
                         type="range" min="0" max="1000"
@@ -66,13 +74,6 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
                         style={{ marginLeft: '0.5em', verticalAlign: 'middle', maxWidth: '130px' }}
                     />
                 </span>
-                <button
-                    onClick={onRunToEnd}
-                    disabled={!ready}
-                    style={{ ...buttonStyle, backgroundColor: '#fcfcfc', color: '#ff0000' }}
-                >
-                    一気に実行
-                </button>
                 {children}
             </div>
         </div>
