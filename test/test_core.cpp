@@ -1686,6 +1686,174 @@ static void testDijkstraDoesNotDestroyNodeWeights() {
     CHECK_EQ(w2, 33.0f);
 }
 
+
+// ==========================================
+// 連結なグラフの生成
+// ==========================================
+
+// 頂点 0 からの到達可能集合 (向きを尊重する)
+static std::vector<char> reachableFromZero(const ParsedGraph& pg, bool directed) {
+    std::vector<std::vector<int>> adj(pg.v);
+    for (auto& e : pg.edges) {
+        adj[e.first].push_back(e.second);
+        if (!directed && e.first != e.second) adj[e.second].push_back(e.first);
+    }
+    std::vector<char> seen(pg.v, 0);
+    if (pg.v == 0) return seen;
+    std::vector<int> stack{0};
+    seen[0] = 1;
+    while (!stack.empty()) {
+        int u = stack.back(); stack.pop_back();
+        for (int w : adj[u]) if (!seen[w]) { seen[w] = 1; stack.push_back(w); }
+    }
+    return seen;
+}
+
+static bool allReachable(const ParsedGraph& pg, bool directed) {
+    std::vector<char> seen = reachableFromZero(pg, directed);
+    for (int i = 0; i < pg.v; i++) if (!seen[i]) return false;
+    return true;
+}
+
+static void testConnectedOptionReachesEveryVertex() {
+    beginTest("連結指定なら頂点 0 から全頂点へ届く");
+
+    // random V E skip selfLoop sameEdge dir connected
+    struct Case { const char* cmd; bool directed; };
+    const Case cases[] = {
+        {"random 12 15 1 0 0 0 1", false},  // 無向
+        {"random 12 15 1 0 0 1 1", true},   // 有向
+        {"random 20 25 1 1 1 0 1", false},  // 自己ループ・多重辺あり
+        {"random 20 25 1 1 1 1 1", true},
+        {"random 30 40 1 0 0 1 1", true},
+        {"random 2 1 1 0 0 0 1",  false},   // 最小の連結
+    };
+
+    for (const auto& c : cases) {
+        for (int trial = 0; trial < 20; trial++) {
+            GraphVisualizer g;
+            g.load("horizontal", c.cmd);
+            ParsedGraph pg = readGraph(g);
+            g_checks++;
+            if (!allReachable(pg, c.directed)) {
+                reportFailure(std::string("届かない頂点がある: ") + c.cmd);
+                break;
+            }
+        }
+    }
+}
+
+static void testWithoutConnectedOptionItCanBeDisconnected() {
+    beginTest("連結指定が無いと非連結になりうる");
+
+    // 辺が少なければ必ずどこかで途切れるはず。何回か試して1回でも出れば良い。
+    bool sawDisconnected = false;
+    for (int trial = 0; trial < 60 && !sawDisconnected; trial++) {
+        GraphVisualizer g;
+        g.load("horizontal", "random 20 5 1 0 0 0 0");
+        if (!allReachable(readGraph(g), false)) sawDisconnected = true;
+    }
+    CHECK(sawDisconnected);
+}
+
+static void testConnectedRaisesEdgeCountToSpanningTree() {
+    beginTest("辺数が足りなければ全域木の分まで引き上げる");
+
+    GraphVisualizer g;
+    g.load("horizontal", "random 10 3 1 0 0 0 1"); // 10頂点なのに 3 辺の指定
+    ParsedGraph pg = readGraph(g);
+
+    CHECK_EQ(pg.v, 10);
+    CHECK_EQ((int)pg.edges.size(), 9); // V-1
+    CHECK(allReachable(pg, false));
+}
+
+static void testConnectedKeepsRequestedEdgeCount() {
+    beginTest("辺数が足りていれば指定どおりの本数になる");
+
+    for (int trial = 0; trial < 10; trial++) {
+        GraphVisualizer g;
+        g.load("horizontal", "random 8 14 1 0 0 0 1");
+        ParsedGraph pg = readGraph(g);
+        CHECK_EQ((int)pg.edges.size(), 14);
+    }
+}
+
+static void testConnectedWithoutMultiEdgeHasNoDuplicates() {
+    beginTest("連結指定と多重辺禁止を併用しても辺が重複しない");
+
+    for (int trial = 0; trial < 20; trial++) {
+        // 無向
+        {
+            GraphVisualizer g;
+            g.load("horizontal", "random 10 20 1 0 0 0 1");
+            std::set<std::pair<int, int>> seen;
+            for (auto& e : readGraph(g).edges) {
+                auto key = std::make_pair(std::min(e.first, e.second), std::max(e.first, e.second));
+                if (!seen.insert(key).second) {
+                    g_checks++;
+                    reportFailure("無向で重複 " + std::to_string(key.first) + "-" + std::to_string(key.second));
+                    return;
+                }
+            }
+        }
+        // 有向
+        {
+            GraphVisualizer g;
+            g.load("horizontal", "random 10 25 1 0 0 1 1");
+            std::set<std::pair<int, int>> seen;
+            for (auto& e : readGraph(g).edges) {
+                if (!seen.insert(e).second) {
+                    g_checks++;
+                    reportFailure("有向で重複 " + std::to_string(e.first) + "->" + std::to_string(e.second));
+                    return;
+                }
+            }
+        }
+    }
+    CHECK(true);
+}
+
+static void testConnectedWithTinyGraphs() {
+    beginTest("頂点が 0 個 / 1 個でも壊れない");
+
+    {
+        GraphVisualizer g;
+        g.load("horizontal", "random 0 5 1 0 0 0 1");
+        CHECK_EQ(readGraph(g).v, 0);
+        CHECK(g.prepare());
+    }
+    {
+        GraphVisualizer g;
+        g.load("horizontal", "random 1 5 1 0 0 0 1");
+        ParsedGraph pg = readGraph(g);
+        CHECK_EQ(pg.v, 1);
+        CHECK_EQ((int)pg.edges.size(), 0); // 全域木の辺は不要
+        CHECK(g.prepare());
+    }
+}
+
+static void testConnectedGraphIsFullyTraversed() {
+    beginTest("連結指定で生成したグラフは探索が全頂点を訪問する");
+
+    for (const char* mode : {"bfs", "dfs", "dijkstra"}) {
+        for (int trial = 0; trial < 10; trial++) {
+            TraversalVisualizer t;
+            t.load("horizontal", "random 15 20 1 0 0 1 1"); // 有向 + 連結
+            t.load("setTraversal", traversalCmd(mode, 0, -1));
+            runTraversal(t);
+
+            int visited = t.getState(progressParams())["visitOrder"]["length"].as<int>();
+            g_checks++;
+            if (visited != 15) {
+                reportFailure(std::string(mode) + " が " + std::to_string(visited) +
+                              " 頂点しか訪問していない");
+                break;
+            }
+        }
+    }
+}
+
 // ==========================================
 
 int main(int argc, char** argv) {
@@ -1765,6 +1933,15 @@ int main(int argc, char** argv) {
     testNodeWeightsOmittedIsZero();
     testNodeWeightsRoundTripThroughText();
     testDijkstraDoesNotDestroyNodeWeights();
+
+    beginSection("連結なグラフの生成");
+    testConnectedOptionReachesEveryVertex();
+    testWithoutConnectedOptionItCanBeDisconnected();
+    testConnectedRaisesEdgeCountToSpanningTree();
+    testConnectedKeepsRequestedEdgeCount();
+    testConnectedWithoutMultiEdgeHasNoDuplicates();
+    testConnectedWithTinyGraphs();
+    testConnectedGraphIsFullyTraversed();
 
     if (g_failures == 0) {
         std::cout << "core: OK (" << g_checks << " checks)" << std::endl;

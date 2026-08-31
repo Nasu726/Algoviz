@@ -10,6 +10,7 @@
 #include <random>
 #include <algorithm>
 #include <vector>
+#include <set>
 
 // 一般グラフの「生成 / レイアウト / 描画データの供給」を担う基底クラス。
 //
@@ -22,8 +23,12 @@
 class GraphVisualizer : public IVisualizer {
 public:
     // 頂点数・辺数の上限。C++ 側を唯一の情報源とし、JS へは getState で伝える。
-    // 初期配置に使うヤコビ法が O(n^3) 級なので、これ以上は現実的な時間で収束しない。
-    static constexpr int MAX_NODES = 100;
+    //
+    // 50 にしているのは、100 頂点の探索を1手ずつ追える人がいないため。
+    // 図として読める範囲に合わせてある。副次的に、初期配置の
+    // ヤコビ法 (GeneralGraphLayout の jacobiMethod、実質 O(n^4)) のコストが
+    // 100 頂点のときの 16 分の1 になる。
+    static constexpr int MAX_NODES = 50;
     static constexpr int MAX_EDGES = 1000;
 
     // レイアウト収束を諦めるまでのフレーム数。
@@ -96,35 +101,69 @@ protected:
     // グラフ生成
     // ==========================================
 
-    void generateRandom(int v, int e, bool allowSelfLoop, bool allowSameEdge, bool isDirected) {
+    void addRandomEdge(int from, int to) {
+        graph->addEdge((float)from, (float)to, (float)randInt(99) + 1, 0);
+    }
+
+    // 多重辺を許さないときに「同じ辺」とみなす組。
+    // 無向は向きを無視するので (小, 大) に正規化する。
+    std::pair<int, int> edgeKey(int a, int b, bool isDirected) const {
+        return isDirected ? std::make_pair(a, b)
+                          : std::make_pair(std::min(a, b), std::max(a, b));
+    }
+
+    void generateRandom(int v, int e, bool allowSelfLoop, bool allowSameEdge,
+                        bool isDirected, bool connected) {
         isDirected = isDirected || forceDirected();
         v = std::clamp(v, 0, MAX_NODES);
         e = std::clamp(e, 0, MAX_EDGES);
+
+        // 連結にするには最低でも全域木の V-1 本が要る。足りない指定は引き上げる。
+        // 実際の辺数は getState の edgeCount で返るので、UI 側で入力欄に反映できる。
+        if (connected && v > 1) e = std::max(e, v - 1);
+
         generatedDirected = isDirected;
         hasNodeWeights = false;
         graph = std::make_unique<GraphData>(v, e);
         for (int i = 0; i < v; i++) scatterNode(i);
 
+        std::set<std::pair<int, int>> used;
+
+        // 先に全域木を張る。頂点 0 から順に、既に追加済みの頂点を1つ選んで繋ぐ。
+        // 有向のときは向きを「既存 -> 新規」に固定するので、頂点 0 を根とする
+        // 有向全域木になり、始点 0 からの探索が必ず全頂点へ届く。
+        if (connected) {
+            for (int i = 1; i < v; i++) {
+                int parent = randInt(i);
+                addRandomEdge(parent, i);
+                used.insert(edgeKey(parent, i, isDirected));
+            }
+        }
+
+        int remaining = e - (int)used.size();
+        if (remaining <= 0) return;
+
         std::vector<std::pair<int, int>> possible;
         for (int i = 0; i < v; i++) {
             for (int j = (isDirected ? 0 : i); j < v; j++) {
                 if (!allowSelfLoop && i == j) continue;
+                // 多重辺を許さないなら、全域木で使った組は候補から外す
+                if (!allowSameEdge && used.count(edgeKey(i, j, isDirected))) continue;
                 possible.push_back({i, j});
             }
         }
         if (possible.empty()) return;
 
         if (allowSameEdge) {
-            for (int i = 0; i < e; i++) {
+            for (int i = 0; i < remaining; i++) {
                 const auto& p = possible[randInt((int)possible.size())];
-                graph->addEdge((float)p.first, (float)p.second, (float)randInt(99) + 1, 0);
+                addRandomEdge(p.first, p.second);
             }
         } else {
             std::shuffle(possible.begin(), possible.end(), rng);
-            int actual = std::min((int)possible.size(), e);
+            int actual = std::min((int)possible.size(), remaining);
             for (int i = 0; i < actual; i++) {
-                graph->addEdge((float)possible[i].first, (float)possible[i].second,
-                               (float)randInt(99) + 1, 0);
+                addRandomEdge(possible[i].first, possible[i].second);
             }
         }
     }
@@ -222,7 +261,7 @@ protected:
 
 public:
     GraphVisualizer() {
-        generateRandom(5, 7, false, false, false);
+        generateRandom(8, 10, false, false, false, true);
         rebuildLayout(); // コンストラクタなので仮想フックは呼ばない
     }
 
@@ -243,11 +282,11 @@ public:
         iss >> cmd;
 
         if (cmd == "random") {
-            int v = 0, e = 0, skip = 1, selfLoop = 0, sameEdge = 0, dir = 0;
+            int v = 0, e = 0, skip = 1, selfLoop = 0, sameEdge = 0, dir = 0, conn = 0;
             if (!(iss >> v >> e)) return;
-            iss >> skip >> selfLoop >> sameEdge >> dir;
+            iss >> skip >> selfLoop >> sameEdge >> dir >> conn;
             skipExtension = (skip != 0);
-            generateRandom(v, e, selfLoop != 0, sameEdge != 0, dir != 0);
+            generateRandom(v, e, selfLoop != 0, sameEdge != 0, dir != 0, conn != 0);
             rebuild();
         } else if (cmd == "complete") {
             int v = 0, skip = 1, dir = 0;

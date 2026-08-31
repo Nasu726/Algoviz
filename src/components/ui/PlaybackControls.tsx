@@ -56,14 +56,14 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
                 <button onClick={onStepNext} disabled={!ready || isPlaying} style={buttonStyle}>進む</button>
             </div>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', minWidth: 0 }}>
                 <span style={{ fontWeight: 'bold', flexShrink: 0, whiteSpace: 'nowrap' }}>
                     実行速度
                     <input
                         type="range" min="0" max="1000"
                         value={delayToSlider(delay)}
                         onChange={(e) => onDelayChange(sliderToDelay(Number(e.target.value)))}
-                        style={{ marginLeft: '0.5em', verticalAlign: 'middle' }}
+                        style={{ marginLeft: '0.5em', verticalAlign: 'middle', maxWidth: '130px' }}
                     />
                 </span>
                 <button

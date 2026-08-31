@@ -94,8 +94,10 @@ export class PixiGraphApp {
     // 初期化処理（Reactから呼ばれる）
     public async init() {
         await this.app.init({ 
-            width: 800, 
-            height: 600, 
+            // 置かれた場所の大きさで作る。固定値だと初期表示だけコンテナと食い違う
+            // (ResizeObserver の初回通知は下の await より前に来るので、そこでは直せない)。
+            width: this.container.clientWidth || 800,
+            height: this.container.clientHeight || 600,
             backgroundColor: 0xfcfcfc,
             antialias: true,
             resolution: window.devicePixelRatio || 1,
@@ -130,6 +132,10 @@ export class PixiGraphApp {
         this.app.ticker.add(this.renderLoop);
         
         this.isInitialized = true;
+
+        // init を待っている間にレイアウトが確定していることがあるので、
+        // 最後にもう一度コンテナに合わせる
+        this.resize(this.container.clientWidth, this.container.clientHeight);
     }
 
     // ノード1個分の表示部品をまとめて作る。
