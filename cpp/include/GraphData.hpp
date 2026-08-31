@@ -41,6 +41,21 @@ public:
     int edgeFrom(int i) const { return (int)edgeData[i * EDGE_STRIDE]; }
     int edgeTo(int i)   const { return (int)edgeData[i * EDGE_STRIDE + 1]; }
 
+    // 色は「意味」を表す整数 (GraphColors.hpp)。実際の配色は JS 側が決める。
+    void setNodeColor(int i, int colorId) {
+        if (i >= 0 && i < nodeCount()) nodeData[i * NODE_STRIDE + 3] = (float)colorId;
+    }
+    void setEdgeColor(int i, int colorId) {
+        if (i >= 0 && i < edgeCount()) edgeData[i * EDGE_STRIDE + 3] = (float)colorId;
+    }
+    int nodeColor(int i) const { return (int)nodeData[i * NODE_STRIDE + 3]; }
+    int edgeColor(int i) const { return (int)edgeData[i * EDGE_STRIDE + 3]; }
+
+    void resetColors() {
+        for (int i = 0; i < nodeCount(); i++) nodeData[i * NODE_STRIDE + 3] = 0.0f;
+        for (int i = 0; i < edgeCount(); i++) edgeData[i * EDGE_STRIDE + 3] = 0.0f;
+    }
+
     // JS側にゼロコピーでメモリを公開する
     emscripten::val getNodeView() {
         return emscripten::val(emscripten::typed_memory_view(nodeData.size(), nodeData.data()));

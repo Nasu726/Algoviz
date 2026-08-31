@@ -826,6 +826,92 @@ static void testGraphTextOnlyWhenRequested() {
 }
 
 // ==========================================
+// 色チャンネル
+//
+// アルゴリズムの可視化はノードと辺の colorId だけで表現する。
+// C++ で塗った色が JS 側の配列に載ることを確かめる。
+// ==========================================
+
+// protected な graph を触るためのテスト用サブクラス
+class ColorProbe : public GraphVisualizer {
+public:
+    void paintNode(int i, int c) { graph->setNodeColor(i, c); }
+    void paintEdge(int i, int c) { graph->setEdgeColor(i, c); }
+    void clearColors()           { graph->resetColors(); }
+    int  readNode(int i) const   { return graph->nodeColor(i); }
+    int  readEdge(int i) const   { return graph->edgeColor(i); }
+};
+
+static void testColorChannelReachesTheView() {
+    beginTest("塗った色が JS へ渡す配列に載る");
+
+    ColorProbe g;
+    g.load("horizontal", "custom 1\n4 3\n0 1\n1 2\n2 3\n");
+
+    g.paintNode(0, NODE_START);
+    g.paintNode(1, NODE_FRONTIER);
+    g.paintEdge(0, EDGE_PATH);
+    g.paintEdge(2, EDGE_TREE);
+
+    val state = g.getState(val::object());
+    val nodes = state["nodes"];
+    val edges = state["edges"];
+
+    // nodeData = [x, y, weight, colorId] * V
+    CHECK_EQ((int)nodes[3].as<float>(), (int)NODE_START);
+    CHECK_EQ((int)nodes[7].as<float>(), (int)NODE_FRONTIER);
+    CHECK_EQ((int)nodes[11].as<float>(), (int)NODE_DEFAULT);
+
+    // edgeData = [from, to, weight, colorId] * E
+    CHECK_EQ((int)edges[3].as<float>(), (int)EDGE_PATH);
+    CHECK_EQ((int)edges[7].as<float>(), (int)EDGE_DEFAULT);
+    CHECK_EQ((int)edges[11].as<float>(), (int)EDGE_TREE);
+}
+
+static void testResetColors() {
+    beginTest("resetColors で全部が既定色に戻る");
+
+    ColorProbe g;
+    g.load("horizontal", "custom 1\n3 2\n0 1\n1 2\n");
+    g.paintNode(0, NODE_PATH);
+    g.paintNode(2, NODE_VISITED);
+    g.paintEdge(1, EDGE_ACTIVE);
+
+    g.clearColors();
+    for (int i = 0; i < 3; i++) CHECK_EQ(g.readNode(i), (int)NODE_DEFAULT);
+    for (int i = 0; i < 2; i++) CHECK_EQ(g.readEdge(i), (int)EDGE_DEFAULT);
+}
+
+static void testColorSettersIgnoreOutOfRange() {
+    beginTest("範囲外の添字に色を塗っても壊れない");
+
+    ColorProbe g;
+    g.load("horizontal", "custom 1\n2 1\n0 1\n");
+    g.paintNode(-1, NODE_PATH);
+    g.paintNode(99, NODE_PATH);
+    g.paintEdge(-1, EDGE_PATH);
+    g.paintEdge(99, EDGE_PATH);
+
+    CHECK_EQ(g.readNode(0), (int)NODE_DEFAULT);
+    CHECK_EQ(g.readEdge(0), (int)EDGE_DEFAULT);
+}
+
+static void testGenerationChangesOnRebuild() {
+    beginTest("グラフを作り直すと generation が進む");
+
+    GraphVisualizer g;
+    int before = g.getState(val::object())["generation"].as<int>();
+
+    g.load("horizontal", "random 6 8 1 0 0 0");
+    int after = g.getState(val::object())["generation"].as<int>();
+    CHECK(after > before);
+
+    // レイアウトの向きを変えただけでは作り直さない
+    g.load("vertical", "");
+    CHECK_EQ(g.getState(val::object())["generation"].as<int>(), after);
+}
+
+// ==========================================
 // オートマトン
 // ==========================================
 
@@ -917,6 +1003,10 @@ int main() {
     testPrepareIsIdempotentOnceStable();
     testGraphHasNoAlgorithmStep();
     testGraphTextOnlyWhenRequested();
+    testColorChannelReachesTheView();
+    testResetColors();
+    testColorSettersIgnoreOutOfRange();
+    testGenerationChangesOnRebuild();
     testAutomatonIsAlwaysDirected();
     testAutomatonStartAndAcceptingStates();
     testAutomatonDropsStaleStatesOnRegenerate();

@@ -2,6 +2,7 @@
 #include "IVisualizer.hpp"
 #include "GraphData.hpp"
 #include "GeneralGraphLayout.hpp"
+#include "GraphColors.hpp"
 #include <emscripten/val.h>
 #include <memory>
 #include <sstream>
@@ -34,6 +35,10 @@ protected:
     GeneralGraphLayout layout;
     bool skipExtension = true;
     bool generatedDirected = false;
+
+    // グラフを作り直すたびに増える。JS 側が「別のグラフになった」ことを
+    // 検出してカメラを合わせ直すのに使う。
+    int generation = 0;
 
     // 向きを無視し、自己ループを除いた隣接リスト。レイアウトが使う。
     // 以前は GeneralGraphLayout::init がローカルに作って捨てていたものを一元化した。
@@ -74,6 +79,7 @@ protected:
         buildAdjacency();
         layout.init(graph.get(), adjUndirected);
         layout.is_stable = false;
+        generation++;
     }
 
     // グラフを差し替えたあとに呼ぶ。派生クラスへの通知まで行う。
@@ -254,6 +260,7 @@ public:
         state.set("maxNodes", MAX_NODES);
         state.set("maxEdges", MAX_EDGES);
         state.set("layoutStable", layout.is_stable);
+        state.set("generation", generation);
         state.set("startNodeIndex", graph->startNodeIndex);
         state.set("isDirected", generatedDirected);
         state.set("isAutomaton", false);
