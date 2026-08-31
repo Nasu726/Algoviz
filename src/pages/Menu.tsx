@@ -3,25 +3,25 @@ import { useNavigate } from 'react-router-dom';
 
 // ビジュアライザ一覧。ジャンルごとに枠で分ける。
 // 1ページ1アルゴリズムなので、ここに1行足すのが追加の作業になる。
-const GENRES: { name: string; items: { path: string; label: string; desc: string }[] }[] = [
+const GENRES: { name: string; items: { path: string; label: string }[] }[] = [
     {
         name: 'グラフ探索',
         items: [
-            { path: '/graph/bfs', label: '幅優先探索 (BFS)', desc: '始点から近い順に広がる' },
-            { path: '/graph/dfs', label: '深さ優先探索 (DFS)', desc: '行き止まりまで潜って戻る' },
-            { path: '/graph/dijkstra', label: 'ダイクストラ法', desc: '重みの合計で最短の経路' },
+            { path: '/graph/bfs', label: '幅優先探索 (BFS)' },
+            { path: '/graph/dfs', label: '深さ優先探索 (DFS)' },
+            { path: '/graph/dijkstra', label: 'ダイクストラ法' },
         ],
     },
     {
         name: 'オートマトン',
         items: [
-            { path: '/automaton', label: 'オートマトン', desc: '初期状態と受理状態を持つ有向グラフ' },
+            { path: '/automaton', label: 'オートマトン' },
         ],
     },
     {
         name: 'その他',
         items: [
-            { path: '/brainfuck', label: 'Brainfuck', desc: 'テープとポインタの動きを1命令ずつ追う' },
+            { path: '/brainfuck', label: 'Brainfuck' },
         ],
     },
 ];
@@ -36,10 +36,7 @@ export const MenuPage: React.FC = () => {
             padding: '40px 20px', textAlign: 'center',
             fontFamily: 'sans-serif', backgroundColor: '#ffffff', color: '#000000',
         }}>
-            <h1 style={{ fontSize: '42px', margin: '0 0 8px' }}>AlgoVizへようこそ</h1>
-            <p style={{ margin: '0 0 28px', color: '#546e7a' }}>
-                アルゴリズムやデータ構造の動きを1手ずつ見られます
-            </p>
+            <h1 style={{ fontSize: '42px', margin: '0 0 28px' }}>AlgoVizへようこそ</h1>
 
             <div style={{
                 display: 'flex', flexWrap: 'wrap', justifyContent: 'center',
@@ -61,16 +58,13 @@ export const MenuPage: React.FC = () => {
                                     key={item.path}
                                     onClick={() => navigate(item.path)}
                                     style={{
-                                        display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                                        gap: '2px', padding: '10px 14px', cursor: 'pointer',
+                                        padding: '10px 14px', cursor: 'pointer',
                                         border: '1px solid #cfd8dc', borderRadius: '6px',
                                         background: '#fff', textAlign: 'left', width: '100%',
+                                        fontSize: '17px', fontWeight: 'bold',
                                     }}
                                 >
-                                    <span style={{ fontSize: '17px', fontWeight: 'bold' }}>{item.label}</span>
-                                    <span style={{ fontSize: '12px', color: '#78909c', fontWeight: 'normal' }}>
-                                        {item.desc}
-                                    </span>
+                                    {item.label}
                                 </button>
                             ))}
                         </div>
