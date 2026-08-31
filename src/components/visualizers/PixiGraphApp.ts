@@ -39,7 +39,9 @@ export class PixiGraphApp {
     private nodeContainer!: PIXI.Container;
     private nodeSprites: PIXI.Container[] = [];
     private edgeWeightTexts: PIXI.Text[] = [];
-    private fpsText!: PIXI.Text;
+    // FPS と描画数はデバッグ用。本番では作らない。
+    // グラフに重なって読みづらくなるうえ、見れば分かる情報でもある。
+    private fpsText?: PIXI.Text;
     private nodeRadius: number = 20.0;
     private isDirected: boolean = false;
     private isAutomaton: boolean = false;
@@ -121,10 +123,12 @@ export class PixiGraphApp {
         this.nodeContainer = new PIXI.Container();
         this.world.addChild(this.nodeContainer);
 
-        this.fpsText = new PIXI.Text({ text: 'FPS: 0', style: { fontSize: 16, fill: 0x000000 } });
-        this.fpsText.x = 10;
-        this.fpsText.y = 20;
-        this.app.stage.addChild(this.fpsText);
+        if (import.meta.env.DEV) {
+            this.fpsText = new PIXI.Text({ text: 'FPS: 0', style: { fontSize: 16, fill: 0x000000 } });
+            this.fpsText.x = 10;
+            this.fpsText.y = 20;
+            this.app.stage.addChild(this.fpsText);
+        }
 
         this.setupEvents();
         
@@ -628,7 +632,9 @@ export class PixiGraphApp {
 
         for (let i = nodeIndex; i < this.nodeSprites.length; i++) this.nodeSprites[i].visible = false;
 
-        this.fpsText.text = `FPS: ${Math.round(this.app.ticker.FPS)} / Visible: ${visibleNodeCount}`;
+        if (import.meta.env.DEV && this.fpsText) {
+            this.fpsText.text = `FPS: ${Math.round(this.app.ticker.FPS)} / Visible: ${visibleNodeCount}`;
+        }
     };
 
     // ★ 破棄処理（Reactから呼ばれる）
