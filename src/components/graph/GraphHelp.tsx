@@ -57,20 +57,6 @@ const AlgorithmSection: React.FC<{ variant: GraphVariant }> = ({ variant }) => {
         </>
     );
 
-    if (variant === 'automaton') return (
-        <>
-            <h3>1. オートマトン</h3>
-            <p>
-                常に有向グラフとして扱い、初期状態への矢印と受理状態の二重丸を描きます。
-            </p>
-            <ul>
-                <li>初期状態と受理状態は左のパネルで指定する。範囲外の番号は無視される</li>
-                <li>グラフを作り直すと、存在しなくなった状態の指定は自動で外れる</li>
-                <li>頂点の表示名を「状態名」にすると q₀, q₁, … で表示される</li>
-            </ul>
-        </>
-    );
-
     return (
         <>
             <h3>1. グラフ描画</h3>
@@ -79,7 +65,59 @@ const AlgorithmSection: React.FC<{ variant: GraphVariant }> = ({ variant }) => {
     );
 };
 
-export const GraphHelp: React.FC<{ variant: GraphVariant; maxNodes: number }> = ({ variant, maxNodes }) => (
+const AutomatonHelp: React.FC<{ maxNodes: number }> = ({ maxNodes }) => (
+    <>
+        <h3>1. 画面の見方</h3>
+        <ul>
+            <li>状態は q₀, q₁, … で表示する。二重丸が受理状態、矢印が刺さっているのが初期状態</li>
+            <li>辺に書かれている文字が遷移記号。同じ状態対に複数の遷移があるときは曲線に分かれる</li>
+            <li>入力の欄の <b>|</b> が今どこまで読んだかを表す。左が読んだぶん、右が残り</li>
+            <li>色の意味は実行状態のパネルにある凡例のとおり</li>
+        </ul>
+
+        <h3>2. 遷移規則の作り方</h3>
+        <ul>
+            <li><b>ランダム生成</b>：状態数とアルファベットを決めると、
+                各状態から各記号への遷移を1本ずつ張る。決定性で、どの記号でも必ず遷移できる</li>
+            <li><b>テキストから生成</b>：1行目に「状態数 遷移数」、続けて遷移を1行ずつ
+                「元の状態 先の状態 記号」の形で書く</li>
+        </ul>
+        <pre style={codeBlock}>2 4{'\n'}0 1 a{'\n'}0 0 b{'\n'}1 0 a{'\n'}1 1 b</pre>
+        <ul>
+            <li>記号は1文字。範囲外の状態番号を含む行と、記号の無い行は読み飛ばす</li>
+            <li>アルファベットは書かれた遷移から集める</li>
+            <li>状態数の上限は {maxNodes}。一度に見て分かる範囲に合わせている</li>
+        </ul>
+
+        <h3>3. 実行</h3>
+        <ul>
+            <li>1ステップは「記号を1つ読んで遷移する」。入力を読み切った時点も1ステップとして、
+                そこで受理か拒否かが決まる</li>
+            <li>読んだ記号の遷移が定義されていないと、そこで止まる</li>
+            <li>同じ状態から同じ記号で複数の遷移があると決定性を外れるので、警告して
+                先に書かれた遷移だけを使う</li>
+        </ul>
+
+        <h3>4. 画面の操作</h3>
+        <ul>
+            <li><b>ドラッグ</b>：表示位置を動かす</li>
+            <li><b>ホイール / 2本指のピンチ</b>：拡大・縮小</li>
+        </ul>
+
+        <h3>5. ショートカットキー</h3>
+        <ul>
+            <li><b>Esc</b>：ビジュアライザ一覧へ戻る</li>
+            <li><b>Ctrl + H</b>：ヘルプを開く</li>
+            <li><b>Ctrl + S</b>：テキストから生成</li>
+            <li><b>Ctrl + Enter</b>：実行 / 一時停止</li>
+            <li><b>Ctrl + ←</b> / <b>→</b>：戻る / 進む</li>
+            <li><b>Ctrl + ↑</b> / <b>↓</b>：実行速度の増減</li>
+        </ul>
+    </>
+);
+
+export const GraphHelp: React.FC<{ variant: GraphVariant; maxNodes: number }> = ({ variant, maxNodes }) =>
+    variant === 'automaton' ? <AutomatonHelp maxNodes={maxNodes} /> : (
     <>
         <AlgorithmSection variant={variant} />
 
@@ -113,7 +151,7 @@ export const GraphHelp: React.FC<{ variant: GraphVariant; maxNodes: number }> = 
         <h3>4. 画面の操作</h3>
         <ul>
             <li><b>ドラッグ</b>：表示位置を動かす</li>
-            <li><b>ホイール</b>：拡大・縮小。縮小しすぎると文字は表示されなくなる</li>
+            <li><b>ホイール / 2本指のピンチ</b>：拡大・縮小。縮小しすぎると文字は表示されなくなる</li>
             <li>グラフを作り直すと、自動で全体が画面に収まる位置に戻る</li>
         </ul>
 

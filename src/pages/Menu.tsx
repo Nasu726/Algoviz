@@ -15,7 +15,7 @@ const GENRES: { name: string; items: { path: string; label: string }[] }[] = [
     {
         name: 'オートマトン',
         items: [
-            { path: '/automaton', label: 'オートマトン' },
+            { path: '/automaton', label: '決定性有限オートマトン (DFA)' },
         ],
     },
     {

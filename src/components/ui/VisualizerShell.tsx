@@ -47,7 +47,14 @@ export const VisualizerShell: React.FC<Props> = ({
                 <button onClick={backToMenu} style={{ cursor: 'pointer', fontSize: buttonFont }}>
                     ◀ 戻る
                 </button>
-                <h2 style={{ margin: 0, fontSize: compact ? '14px' : '18px' }}>{title}</h2>
+                {/* 題が長いと狭い端末でボタンにぶつかるので、先に縮む側にしておく */}
+                <h2 style={{
+                    margin: 0, fontSize: compact ? '14px' : '18px',
+                    minWidth: 0, padding: '0 6px',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                    {title}
+                </h2>
                 <button
                     onClick={() => setIsHelpOpen(true)}
                     style={{ cursor: 'pointer', fontWeight: 'bold', fontSize: buttonFont }}

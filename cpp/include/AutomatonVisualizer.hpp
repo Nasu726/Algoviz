@@ -291,6 +291,8 @@ public:
         for (int idx : acceptingStates) accepting.call<void>("push", idx);
         state.set("acceptingStates", accepting);
 
+        state.set("maxAlphabet", MAX_ALPHABET);
+        state.set("maxInput", MAX_INPUT);
         state.set("alphabet", alphabet);
         state.set("inputString", inputStr);
         state.set("inputPos", st.pos);
