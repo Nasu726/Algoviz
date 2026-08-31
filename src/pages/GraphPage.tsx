@@ -1,80 +1,37 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useInterval } from 'react-use';
 import { GraphRenderer } from '../components/visualizers/GraphRenderer';
-import { NODE_STROKE, EDGE_COLOR } from '../components/visualizers/PixiGraphApp';
-import { PlaybackControls } from '../components/ui/PlaybackControls';
-import { speedUp, speedDown } from '../components/ui/playbackSpeed';
 import { Popup } from '../components/ui/popup';
+import { GraphSetupPanel } from '../components/graph/GraphSetupPanel';
+import { TraversalPanel } from '../components/graph/TraversalPanel';
+import { GraphHelp } from '../components/graph/GraphHelp';
+import { defaultSettings, engineAlgorithm, isTraversal, VARIANT_TITLE } from '../components/graph/types';
+import type { GraphSettings, GraphVariant } from '../components/graph/types';
 import { useKeyboardShortcuts } from '../hooks/keyboardShortcut';
+import { useLayoutTier } from '../hooks/useLayoutTier';
+import { speedUp, speedDown } from '../components/ui/playbackSpeed';
 import type { VisualizerEngine, GraphState } from '../types/engine';
 
-interface GraphProps {
+interface Props {
     engine: VisualizerEngine;
     onBack: () => void;
+    /** このページが見せるものを1つに固定する */
+    variant: GraphVariant;
 }
 
-// C++ 側のビジュアライザクラスに対応する。切り替えるとクラスごと差し替わる。
-type Mode = 'graph' | 'traversal' | 'automaton';
-type Algorithm = 'bfs' | 'dfs';
+export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
+    const tier = useLayoutTier();
+    const traversal = isTraversal(variant);
 
-const MODE_LABEL: Record<Mode, string> = {
-    graph: 'グラフを描くだけ',
-    traversal: '探索 (BFS / DFS)',
-    automaton: 'オートマトン',
-};
+    const [settings, setSettings] = useState<GraphSettings>(() => defaultSettings(variant));
+    const update = (patch: Partial<GraphSettings>) => setSettings((s) => ({ ...s, ...patch }));
 
-const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
+    // グラフを作り直さずに反映できる設定は個別に持つ
+    const [startNode, setStartNode] = useState('0');
+    const [goalNode, setGoalNode] = useState('');
+    const [automatonStart, setAutomatonStart] = useState('0');
+    const [acceptingNodes, setAcceptingNodes] = useState('1, 2');
 
-const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <h3 style={{ margin: 0, fontSize: '14px', color: '#37474f', borderBottom: '1px solid #cfd8dc', paddingBottom: '4px' }}>
-            {title}
-        </h3>
-        {children}
-    </div>
-);
-
-const Swatch: React.FC<{ color: number; label: string; isEdge?: boolean }> = ({ color, label, isEdge }) => (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '12px', whiteSpace: 'nowrap' }}>
-        <span style={{
-            width: isEdge ? '16px' : '12px',
-            height: isEdge ? '3px' : '12px',
-            borderRadius: isEdge ? '2px' : '50%',
-            border: isEdge ? 'none' : '3px solid ' + hex(color),
-            backgroundColor: isEdge ? hex(color) : '#fff',
-            flexShrink: 0,
-        }} />
-        {label}
-    </span>
-);
-
-export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
-    const [mode, setMode] = useState<Mode>('traversal');
-
-    // --- グラフ生成 ---
-    const [nodeCount, setNodeCount] = useState("8");
-    const [edgeCount, setEdgeCount] = useState("10");
-    const [isDirected, setIsDirected] = useState(false);
-    const [allowSelfLoop, setAllowSelfLoop] = useState(false);
-    const [allowSameEdge, setAllowSameEdge] = useState(false);
-    const [skipExtension, setSkipExtension] = useState(true);
-    const [isHorizontal, setIsHorizontal] = useState(true);
-    const [inputBuffer, setInputBuffer] = useState("");
-
-    // --- 探索 ---
-    const [algorithm, setAlgorithm] = useState<Algorithm>('bfs');
-    const [startNode, setStartNode] = useState("0");
-    const [goalNode, setGoalNode] = useState("");
-
-    // --- オートマトン ---
-    const [automatonStart, setAutomatonStart] = useState("0");
-    const [acceptingNodes, setAcceptingNodes] = useState("1, 2");
-
-    // --- 表示 ---
-    const [showWeights, setShowWeights] = useState(true);
-    const [labelType, setLabelType] = useState<'index' | 'name'>('index');
-
-    // --- 再生 ---
     const [isPlaying, setIsPlaying] = useState(false);
     const [delay, setDelay] = useState(300);
     const [state, setState] = useState<GraphState | null>(null);
@@ -83,79 +40,84 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
 
     // 生成コマンドを組み立てるときに常に最新の設定を読めるようにしておく。
     // useEffect の依存配列に全部並べると、設定を変えるたびにグラフが作り直されてしまう。
-    const opts = useRef({
-        isHorizontal, skipExtension, isDirected, mode, algorithm,
-        startNode, goalNode, automatonStart, acceptingNodes,
-    });
-    opts.current = {
-        isHorizontal, skipExtension, isDirected, mode, algorithm,
-        startNode, goalNode, automatonStart, acceptingNodes,
+    const latest = useRef({ settings, startNode, goalNode, automatonStart, acceptingNodes });
+    latest.current = { settings, startNode, goalNode, automatonStart, acceptingNodes };
+
+    const orientation = () => latest.current.settings.isHorizontal ? 'horizontal' : 'vertical';
+    const flags = () => {
+        const s = latest.current.settings;
+        return {
+            skip: s.skipExtension ? 1 : 0,
+            dir: s.isDirected ? 1 : 0,
+            nodeW: s.useNodeWeights ? 1 : 0,
+            selfLoop: s.allowSelfLoop ? 1 : 0,
+            sameEdge: s.allowSameEdge ? 1 : 0,
+            conn: s.connected ? 1 : 0,
+        };
     };
 
-    const orientation = () => opts.current.isHorizontal ? "horizontal" : "vertical";
-    const skipFlag = () => opts.current.skipExtension ? 1 : 0;
-    const dirFlag = () => opts.current.isDirected ? 1 : 0;
-
-    // モード固有の設定を C++ 側へ渡す
-    const applyModeSettings = () => {
-        const o = opts.current;
-        if (o.mode === 'traversal') {
-            const goal = o.goalNode.trim() === "" ? -1 : Number(o.goalNode);
-            engine.load("setTraversal", o.algorithm + " " + (Number(o.startNode) || 0) + " " + goal);
-        } else if (o.mode === 'automaton') {
-            engine.load("setStartNode", o.automatonStart);
-            engine.load("setAccepting", o.acceptingNodes);
+    // variant 固有の設定を C++ 側へ渡す
+    const applyVariantSettings = () => {
+        const l = latest.current;
+        if (traversal) {
+            const goal = l.goalNode.trim() === '' ? -1 : Number(l.goalNode);
+            engine.load('setTraversal', `${variant} ${Number(l.startNode) || 0} ${goal}`);
+        } else if (variant === 'automaton') {
+            engine.load('setStartNode', l.automatonStart);
+            engine.load('setAccepting', l.acceptingNodes);
         }
     };
 
-    // 進行状況（キュー・訪問順・経路）は要求したときだけ組み立てられる
     const readState = () => setState(engine.getState<GraphState>({ withProgress: true }));
 
-    // グラフを作り直したあとは、テキスト欄も C++ が持っている内容に合わせる
-    const readStateAndText = () => {
+    // グラフを作り直したあとは、テキスト欄と頂点数・辺数の欄も実際の値に合わせる。
+    // 連結指定で辺が増えた場合などが、入力欄を見れば分かる。
+    const readStateAndSync = () => {
         const s = engine.getState<GraphState>({ withText: true, withProgress: true });
         setState(s);
-        if (s && s.graphText) setInputBuffer(s.graphText);
+        update({
+            inputBuffer: s.graphText ?? latest.current.settings.inputBuffer,
+            nodeCount: String(s.nodeCount),
+            edgeCount: String(s.edgeCount),
+        });
     };
 
     const generate = (command: string) => {
         setIsPlaying(false);
         engine.load(orientation(), command);
-        applyModeSettings();
-        readStateAndText();
+        applyVariantSettings();
+        readStateAndSync();
     };
 
-    // モードを切り替えると C++ 側のクラスごと差し替わるので、
-    // 今のグラフをテキスト経由で作り直す
+    // ページを開いたとき。variant ごとに C++ 側のクラスが決まる。
     useEffect(() => {
         if (!engine) return;
         setIsPlaying(false);
-        engine.setAlgorithm(mode);
-        const body = inputBuffer.trim();
-        engine.load(orientation(), body
-            ? "custom " + skipFlag() + " " + dirFlag() + "\n" + body
-            : "random " + nodeCount + " " + edgeCount + " " + skipFlag() + " 0 0 " + dirFlag());
-        applyModeSettings();
-        readStateAndText();
+        engine.setAlgorithm(engineAlgorithm(variant));
+        const f = flags();
+        const s = latest.current.settings;
+        engine.load(orientation(),
+            `random ${s.nodeCount} ${s.edgeCount} ${f.skip} ${f.selfLoop} ${f.sameEdge} ${f.dir} ${f.conn}`);
+        applyVariantSettings();
+        readStateAndSync();
         setIsLoaded(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [engine, mode]);
+    }, [engine, variant]);
 
-    // 探索・オートマトンの設定変更はグラフを作り直さずに反映する
+    // 始点・終点などはグラフを作り直さずに反映する
     useEffect(() => {
         if (!engine || !isLoaded) return;
         setIsPlaying(false);
-        applyModeSettings();
+        applyVariantSettings();
         readState();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [algorithm, startNode, goalNode, automatonStart, acceptingNodes]);
+    }, [startNode, goalNode, automatonStart, acceptingNodes]);
 
-    // レイアウトの向き
     useEffect(() => {
         if (!engine || !isLoaded) return;
-        engine.load(orientation(), "");
+        engine.load(orientation(), '');
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isHorizontal]);
+    }, [settings.isHorizontal]);
 
     // === 再生ループ ===
     useInterval(() => {
@@ -164,309 +126,170 @@ export const GraphPage: React.FC<GraphProps> = ({ engine, onBack }) => {
         readState();
     }, isPlaying ? delay : null);
 
-    const isTraversal = mode === 'traversal';
+    const handleReset = () => { setIsPlaying(false); engine.load('resetTraversal', ''); readState(); };
+    const handleStep = () => { setIsPlaying(false); engine.step(); readState(); };
+    const handleStepBack = () => { setIsPlaying(false); engine.stepBack(); readState(); };
+    const handleRunToEnd = () => { setIsPlaying(false); engine.runToEnd(); readState(); };
 
-    const handleReset = () => {
-        setIsPlaying(false);
-        engine.load("resetTraversal", "");
-        readState();
+    const handleGenerateRandom = () => {
+        const f = flags();
+        const s = latest.current.settings;
+        generate(`random ${s.nodeCount} ${s.edgeCount} ${f.skip} ${f.selfLoop} ${f.sameEdge} ${f.dir} ${f.conn}`);
     };
-    const handleStep = () => {
-        setIsPlaying(false);
-        engine.step();
-        readState();
+    const handleGenerateComplete = () => {
+        const f = flags();
+        generate(`complete ${latest.current.settings.nodeCount} ${f.skip} ${f.dir}`);
     };
-    const handleStepBack = () => {
-        setIsPlaying(false);
-        engine.stepBack();
-        readState();
+    const handleGenerateFromText = () => {
+        const f = flags();
+        generate(`custom ${f.skip} ${f.dir} ${f.nodeW}\n${latest.current.settings.inputBuffer}`);
     };
-    const handleRunToEnd = () => {
-        setIsPlaying(false);
-        engine.runToEnd();
-        readState();
-    };
-
-    const handleGenerateRandom = () => generate(
-        "random " + nodeCount + " " + edgeCount + " " + skipFlag() + " " +
-        (allowSelfLoop ? 1 : 0) + " " + (allowSameEdge ? 1 : 0) + " " + dirFlag()
-    );
-    const handleGenerateComplete = () =>
-        generate("complete " + nodeCount + " " + skipFlag() + " " + dirFlag());
-    const handleGenerateFromText = () =>
-        generate("custom " + skipFlag() + " " + dirFlag() + "\n" + inputBuffer);
 
     const backToMenu = () => {
-        if (window.confirm("ビジュアライザ一覧へ戻りますか？")) onBack();
+        if (window.confirm('ビジュアライザ一覧へ戻りますか？')) onBack();
     };
 
     useKeyboardShortcuts({
         onEsc: !isHelpOpen ? backToMenu : undefined,
         onHelp: () => setIsHelpOpen(!isHelpOpen),
-        onPlayPause: !isHelpOpen && isTraversal ? () => setIsPlaying(!isPlaying) : undefined,
-        onStepNext: !isHelpOpen && isTraversal ? handleStep : undefined,
-        onStepBack: !isHelpOpen && isTraversal ? handleStepBack : undefined,
         onSave: !isHelpOpen ? handleGenerateFromText : undefined,
+        onPlayPause: !isHelpOpen && traversal ? () => setIsPlaying(!isPlaying) : undefined,
+        onStepNext: !isHelpOpen && traversal ? handleStep : undefined,
+        onStepBack: !isHelpOpen && traversal ? handleStepBack : undefined,
         onSpeedUp: () => { if (!isHelpOpen) setDelay(speedUp(delay)); },
         onSpeedDown: () => { if (!isHelpOpen) setDelay(speedDown(delay)); },
     });
 
-    // 数字だけを受け付ける入力欄
-    const numberInput = (value: string, setter: (v: string) => void, width = '54px') => (
-        <input
-            type="text" value={value}
-            onChange={(e) => setter(e.target.value.replace(/[^0-9]/g, ''))}
-            onBlur={() => {
-                const max = state?.maxNodes ?? 100;
-                if (value.trim() === "") setter("0");
-                else if (Number(value) > max) setter(String(max));
-            }}
-            style={{ width }}
+    const maxNodes = state?.maxNodes ?? 50;
+    const compact = tier === 'narrow';
+
+    const setupPanel = (
+        <GraphSetupPanel
+            variant={variant}
+            settings={settings}
+            update={update}
+            maxNodes={maxNodes}
+            onGenerateRandom={handleGenerateRandom}
+            onGenerateComplete={handleGenerateComplete}
+            onGenerateFromText={handleGenerateFromText}
+            automatonStart={automatonStart}
+            setAutomatonStart={setAutomatonStart}
+            acceptingNodes={acceptingNodes}
+            setAcceptingNodes={setAcceptingNodes}
+            compact={compact}
         />
     );
 
-    const frontierLabel = algorithm === 'bfs' ? 'キュー' : 'スタック';
-    // 進行状況は探索モードのときだけ返ってくる
-    const frontier = state?.frontier ?? [];
-    const visitOrder = state?.visitOrder ?? [];
-    const path = state?.path ?? [];
-    const current = state?.current ?? -1;
-    const total = state?.nodeCount ?? 0;
+    const traversalPanel = traversal ? (
+        <TraversalPanel
+            variant={variant}
+            state={state}
+            maxNodes={maxNodes}
+            startNode={startNode} setStartNode={setStartNode}
+            goalNode={goalNode} setGoalNode={setGoalNode}
+            isPlaying={isPlaying} delay={delay} setDelay={setDelay}
+            onReset={handleReset}
+            onPlayPause={() => setIsPlaying(!isPlaying)}
+            onStepBack={handleStepBack}
+            onStepNext={handleStep}
+            onRunToEnd={handleRunToEnd}
+            horizontal={tier !== 'wide'}
+            compact={compact}
+        />
+    ) : null;
+
+    const canvas = isLoaded ? (
+        <GraphRenderer engine={engine} showWeights={settings.showWeights} labelType={settings.labelType} />
+    ) : null;
+
+    const sidebarStyle: React.CSSProperties = {
+        flexShrink: 0, overflowY: 'auto', padding: '15px', background: '#f8f9fa',
+    };
+
+    const header = (
+        <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: compact ? '8px 10px' : '10px 20px',
+            backgroundColor: '#263238', color: 'white', flexShrink: 0,
+        }}>
+            <button onClick={backToMenu} style={{ cursor: 'pointer', fontSize: compact ? '12px' : '16px' }}>
+                ◀ 戻る
+            </button>
+            <h2 style={{ margin: 0, fontSize: compact ? '14px' : '18px' }}>{VARIANT_TITLE[variant]}</h2>
+            <button
+                onClick={() => setIsHelpOpen(true)}
+                style={{ cursor: 'pointer', fontWeight: 'bold', fontSize: compact ? '12px' : '16px' }}
+            >
+                ヘルプ ❓
+            </button>
+        </div>
+    );
+
+    const help = (
+        <Popup title={`${VARIANT_TITLE[variant]} のヘルプ`} isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)}>
+            <GraphHelp variant={variant} maxNodes={maxNodes} />
+        </Popup>
+    );
+
+    const page: React.CSSProperties = {
+        display: 'flex', flexDirection: 'column',
+        height: '100vh', width: '100vw',
+        margin: 0, overflow: 'hidden', fontFamily: 'sans-serif',
+        backgroundColor: '#fff', color: '#000',
+    };
+
+    // 3つの配置で DOM の構造を変えないのが肝心。
+    // キャンバスの位置が変わると GraphRenderer が再マウントされ、
+    // PixiJS のアプリが作り直されてカメラ位置も失われる。
+    // 並びは flexDirection と order だけで切り替える。
+    const narrow = tier === 'narrow';
+    const wide = tier === 'wide';
 
     return (
-        <div style={{
-            display: 'flex', flexDirection: 'column',
-            height: '100vh', width: '100vw',
-            margin: 0, overflow: 'hidden', fontFamily: 'sans-serif',
-            backgroundColor: '#fff', color: '#000',
-        }}>
-            {/* === ヘッダー === */}
+        <div style={page}>
+            {header}
+
             <div style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '10px 20px', backgroundColor: '#263238', color: 'white', flexShrink: 0,
+                display: 'flex',
+                flexDirection: narrow ? 'column' : 'row',
+                flex: 1, minHeight: 0,
+                overflowY: narrow ? 'auto' : 'hidden',
             }}>
-                <button onClick={backToMenu} style={{ cursor: 'pointer' }}>◀ 戻る</button>
-                <h2 style={{ margin: 0, fontSize: '18px' }}>グラフビジュアライザ</h2>
-                <button onClick={() => setIsHelpOpen(true)} style={{ cursor: 'pointer', fontWeight: 'bold' }}>
-                    ヘルプ ❓
-                </button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0 }}>
-                {/* === 左: 操作パネル === */}
+                {/* 設定。狭いときは一番下へ回す */}
                 <div style={{
-                    width: '300px', flexShrink: 0,
-                    display: 'flex', flexDirection: 'column', gap: '18px',
-                    padding: '15px', overflowY: 'auto',
-                    background: '#f8f9fa', borderRight: '1px solid #ddd',
+                    ...sidebarStyle,
+                    order: narrow ? 2 : 0,
+                    width: narrow ? 'auto' : (wide ? '280px' : '260px'),
+                    borderRight: narrow ? 'none' : '1px solid #ddd',
+                    overflowY: narrow ? 'visible' : 'auto',
                 }}>
-                    <Section title="モード">
-                        <select value={mode} onChange={(e) => setMode(e.target.value as Mode)} style={{ width: '100%', padding: '4px' }}>
-                            {(Object.keys(MODE_LABEL) as Mode[]).map(m => (
-                                <option key={m} value={m}>{MODE_LABEL[m]}</option>
-                            ))}
-                        </select>
-                    </Section>
-
-                    {isTraversal && (
-                        <Section title="探索">
-                            <div style={{ display: 'flex', gap: '12px' }}>
-                                <label style={{ fontSize: '13px' }}>
-                                    <input type="radio" checked={algorithm === 'bfs'} onChange={() => setAlgorithm('bfs')} /> BFS
-                                </label>
-                                <label style={{ fontSize: '13px' }}>
-                                    <input type="radio" checked={algorithm === 'dfs'} onChange={() => setAlgorithm('dfs')} /> DFS
-                                </label>
-                            </div>
-                            <div style={{ fontSize: '13px' }}>
-                                始点 s: {numberInput(startNode, setStartNode)}
-                                <span style={{ marginLeft: '10px' }}>
-                                    終点 t: <input
-                                        type="text" value={goalNode} placeholder="なし"
-                                        onChange={(e) => setGoalNode(e.target.value.replace(/[^0-9]/g, ''))}
-                                        style={{ width: '54px' }}
-                                    />
-                                </span>
-                            </div>
-                            <PlaybackControls
-                                isPlaying={isPlaying}
-                                ready={!!state}
-                                canStepBack={!!state?.canStepBack}
-                                delay={delay}
-                                loadLabel="最初から"
-                                onLoad={handleReset}
-                                onPlayPause={() => setIsPlaying(!isPlaying)}
-                                onStepBack={handleStepBack}
-                                onStepNext={handleStep}
-                                onRunToEnd={handleRunToEnd}
-                                onDelayChange={setDelay}
-                                vertical
-                            />
-                        </Section>
-                    )}
-
-                    <Section title="グラフ生成">
-                        <div style={{ fontSize: '13px' }}>
-                            頂点数 V: {numberInput(nodeCount, setNodeCount)}
-                            <span style={{ marginLeft: '10px' }}>辺の数 E: {numberInput(edgeCount, setEdgeCount)}</span>
-                        </div>
-                        <label style={{ fontSize: '13px' }}>
-                            <input type="checkbox" checked={isDirected} onChange={(e) => setIsDirected(e.target.checked)} /> 有向グラフ
-                        </label>
-                        <label style={{ fontSize: '13px' }}>
-                            <input type="checkbox" checked={allowSelfLoop} onChange={(e) => setAllowSelfLoop(e.target.checked)} /> 自己ループを許す
-                        </label>
-                        <label style={{ fontSize: '13px' }}>
-                            <input type="checkbox" checked={allowSameEdge} onChange={(e) => setAllowSameEdge(e.target.checked)} /> 多重辺を許す
-                        </label>
-                        <button onClick={handleGenerateRandom} style={{ padding: '8px', cursor: 'pointer' }}>ランダム生成</button>
-                        <button onClick={handleGenerateComplete} style={{ padding: '8px', cursor: 'pointer' }}>完全グラフ生成</button>
-                    </Section>
-
-                    <Section title="グラフ入力">
-                        <textarea
-                            value={inputBuffer}
-                            onChange={(e) => setInputBuffer(e.target.value)}
-                            style={{ width: '100%', height: '120px', fontFamily: 'monospace', whiteSpace: 'pre', resize: 'vertical', boxSizing: 'border-box' }}
-                            placeholder="頂点数 辺数&#10;始点 終点 (重み)&#10;始点 終点 (重み)&#10;..."
-                        />
-                        <button onClick={handleGenerateFromText} style={{ padding: '8px', cursor: 'pointer' }}>
-                            📝 テキストから生成
-                        </button>
-                    </Section>
-
-                    <Section title="表示">
-                        <label style={{ fontSize: '13px' }}>
-                            <input type="checkbox" checked={isHorizontal} onChange={(e) => setIsHorizontal(e.target.checked)} /> 横長レイアウト
-                        </label>
-                        <label style={{ fontSize: '13px' }}>
-                            <input type="checkbox" checked={showWeights} onChange={(e) => setShowWeights(e.target.checked)} /> 重みを表示
-                        </label>
-                        <label style={{ fontSize: '13px' }}>
-                            <input type="checkbox" checked={skipExtension} onChange={(e) => setSkipExtension(e.target.checked)} /> 展開アニメーションを飛ばす
-                        </label>
-                        <div style={{ fontSize: '13px' }}>
-                            頂点の表示名:
-                            <select value={labelType} onChange={(e) => setLabelType(e.target.value as 'index' | 'name')} style={{ width: '100%', marginTop: '4px' }}>
-                                <option value="index">インデックス (0, 1...)</option>
-                                <option value="name">状態名 (q₀, q₁...)</option>
-                            </select>
-                        </div>
-                    </Section>
-
-                    {mode === 'automaton' && (
-                        <Section title="オートマトン">
-                            <div style={{ fontSize: '13px' }}>初期状態: {numberInput(automatonStart, setAutomatonStart)}</div>
-                            <div style={{ fontSize: '13px' }}>
-                                受理状態 (カンマ区切り):
-                                <input
-                                    type="text" value={acceptingNodes} placeholder="例: 1, 2"
-                                    onChange={(e) => setAcceptingNodes(e.target.value)}
-                                    style={{ width: '100%', marginTop: '4px' }}
-                                />
-                            </div>
-                        </Section>
-                    )}
-
-                    {isTraversal && (
-                        <Section title="実行状態">
-                            <div style={{ fontSize: '13px', lineHeight: 1.7 }}>
-                                <div>
-                                    <b>{frontierLabel}</b>: {frontier.length
-                                        ? frontier.join(' → ')
-                                        : <span style={{ color: '#90a4ae' }}>空</span>}
-                                </div>
-                                <div>
-                                    <b>処理中</b>: {current >= 0
-                                        ? current
-                                        : <span style={{ color: '#90a4ae' }}>なし</span>}
-                                </div>
-                                <div>
-                                    <b>訪問順</b>: {visitOrder.length
-                                        ? visitOrder.join(', ')
-                                        : <span style={{ color: '#90a4ae' }}>なし</span>}
-                                    <span style={{ color: '#90a4ae' }}> ({visitOrder.length} / {total})</span>
-                                </div>
-                                <div>
-                                    <b>経路</b>: {path.length
-                                        ? path.join(' → ')
-                                        : <span style={{ color: '#90a4ae' }}>未発見</span>}
-                                </div>
-                                <div style={{ marginTop: '6px', fontWeight: 'bold', color: state?.found ? '#27ae60' : '#78909c' }}>
-                                    {!state?.finished ? '探索中…'
-                                        : state?.found ? '終点に到達しました'
-                                        : goalNode.trim() === "" ? '到達できる範囲を調べ終えました'
-                                        : '終点には到達できませんでした'}
-                                </div>
-                            </div>
-
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px', marginTop: '4px' }}>
-                                <Swatch color={NODE_STROKE[0]} label="未訪問" />
-                                <Swatch color={NODE_STROKE[1]} label={frontierLabel + "の中"} />
-                                <Swatch color={NODE_STROKE[2]} label="処理中" />
-                                <Swatch color={NODE_STROKE[3]} label="訪問済み" />
-                                <Swatch color={NODE_STROKE[4]} label="経路上" />
-                                <Swatch color={EDGE_COLOR[1]} label="探索木の辺" isEdge />
-                                <Swatch color={EDGE_COLOR[3]} label="調べ済みの辺" isEdge />
-                                <Swatch color={EDGE_COLOR[4]} label="経路の辺" isEdge />
-                            </div>
-                        </Section>
-                    )}
+                    {setupPanel}
                 </div>
 
-                {/* === 右: キャンバス === */}
-                <div style={{ flex: 1, display: 'flex', minWidth: 0, padding: '15px' }}>
-                    {isLoaded && (
-                        <GraphRenderer engine={engine} showWeights={showWeights} labelType={labelType} />
-                    )}
+                {/* キャンバスと、広くないときの実行帯 */}
+                <div style={{
+                    order: 1, flex: narrow ? 'none' : 1,
+                    display: 'flex', flexDirection: 'column', minWidth: 0,
+                }}>
+                    <div style={{
+                        flex: narrow ? 'none' : 1,
+                        height: narrow ? '45vh' : 'auto',
+                        display: 'flex', minHeight: 0, padding: narrow ? '10px' : '15px',
+                    }}>
+                        {canvas}
+                    </div>
+                    {!wide && traversalPanel}
                 </div>
+
+                {/* 広いときだけ右サイドバー */}
+                {wide && traversalPanel && (
+                    <div style={{ ...sidebarStyle, order: 2, width: '280px', borderLeft: '1px solid #ddd' }}>
+                        {traversalPanel}
+                    </div>
+                )}
             </div>
 
-            <Popup title="ヘルプ" isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)}>
-                <h3>1. モード</h3>
-                <ul>
-                    <li><b>グラフを描くだけ</b>：生成したグラフを表示する</li>
-                    <li><b>探索 (BFS / DFS)</b>：始点 s から幅優先 / 深さ優先で探索する様子を1手ずつ見る。終点 t を指定すると s から t への経路を探す</li>
-                    <li><b>オートマトン</b>：常に有向グラフとして扱い、初期状態への矢印と受理状態の二重丸を描く</li>
-                </ul>
-
-                <h3>2. 探索の見方</h3>
-                <p>1ステップは「辺を1本調べる」か「その頂点の隣接をすべて調べ終える」のどちらかです。</p>
-                <ul>
-                    <li><b>BFS</b>：見つけた頂点をキューの末尾に積み、先頭から取り出す。始点から近い順に広がる</li>
-                    <li><b>DFS</b>：見つけた頂点をスタックに積み、すぐそこへ潜る。行き止まりまで進んでから戻る（バックトラック）</li>
-                    <li>BFS が見つける経路は、辺の本数で数えて最短になる</li>
-                </ul>
-                <p>色の意味はサイドバーの凡例のとおりです。「探索木の辺」はその頂点を最初に見つけたときに通った辺、「調べ済みの辺」は見に行ったが既に発見済みの頂点へ向かっていた辺です。</p>
-
-                <h3>3. グラフの入力</h3>
-                <p>1行目に「頂点数 辺数」、続けて辺を1行ずつ「始点 終点 重み」の形で書きます。重みは省略できます。</p>
-                <pre style={{ background: '#eceff1', padding: '8px', borderRadius: '4px' }}>
-                    4 4{'\n'}0 1 5{'\n'}1 2 3{'\n'}2 3 7{'\n'}0 3
-                </pre>
-                <ul>
-                    <li>範囲外の頂点番号を含む行は読み飛ばされます</li>
-                    <li>頂点数には上限があります（現在 {state?.maxNodes ?? 100}）</li>
-                    <li>「有向グラフ」のチェックは生成時に反映されます。探索が辺の向きを守るかどうかもこれで決まります</li>
-                </ul>
-
-                <h3>4. 画面の操作</h3>
-                <ul>
-                    <li><b>ドラッグ</b>：表示位置を動かす</li>
-                    <li><b>ホイール</b>：拡大・縮小。縮小しすぎると文字は表示されなくなります</li>
-                    <li>グラフを作り直すと、自動で全体が画面に収まる位置に戻ります</li>
-                </ul>
-
-                <h3>5. ショートカットキー</h3>
-                <ul>
-                    <li><b>Esc</b>：ビジュアライザ選択画面へ戻る</li>
-                    <li><b>Ctrl + Enter</b>：実行 / 一時停止</li>
-                    <li><b>Ctrl + H</b>：ヘルプを開く</li>
-                    <li><b>Ctrl + S</b>：テキストからグラフを生成</li>
-                    <li><b>Ctrl + ←</b> / <b>→</b>：戻る / 進む</li>
-                    <li><b>Ctrl + ↑</b> / <b>↓</b>：実行速度の増減</li>
-                </ul>
-            </Popup>
+            {help}
         </div>
     );
 };

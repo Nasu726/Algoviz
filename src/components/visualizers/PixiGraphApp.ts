@@ -20,6 +20,9 @@ const EDGE_WIDTH  = [2, 3, 4, 2, 4];
 // 描いても情報にならないうえに、辺の多いグラフでは描画コストの主因になる。
 const TEXT_MIN_SCALE = 0.4;
 
+// 頂点の脇に出す数値。ダイクストラの未到達は Infinity で渡ってくる。
+const formatNodeValue = (v: number) => (Number.isFinite(v) ? v.toString() : '\u221e');
+
 const nodeStroke = (id: number) => NODE_STROKE[id] ?? NODE_STROKE[0];
 const nodeFill   = (id: number) => NODE_FILL[id] ?? NODE_FILL[0];
 const edgeColor  = (id: number) => EDGE_COLOR[id] ?? EDGE_COLOR[0];
@@ -91,8 +94,10 @@ export class PixiGraphApp {
     // 初期化処理（Reactから呼ばれる）
     public async init() {
         await this.app.init({ 
-            width: 800, 
-            height: 600, 
+            // 置かれた場所の大きさで作る。固定値だと初期表示だけコンテナと食い違う
+            // (ResizeObserver の初回通知は下の await より前に来るので、そこでは直せない)。
+            width: this.container.clientWidth || 800,
+            height: this.container.clientHeight || 600,
             backgroundColor: 0xfcfcfc,
             antialias: true,
             resolution: window.devicePixelRatio || 1,
@@ -127,6 +132,10 @@ export class PixiGraphApp {
         this.app.ticker.add(this.renderLoop);
         
         this.isInitialized = true;
+
+        // init を待っている間にレイアウトが確定していることがあるので、
+        // 最後にもう一度コンテナに合わせる
+        this.resize(this.container.clientWidth, this.container.clientHeight);
     }
 
     // ノード1個分の表示部品をまとめて作る。
@@ -602,7 +611,7 @@ export class PixiGraphApp {
                 const wText = group.getChildByLabel("weightText") as PIXI.Text;
                 if (wText) {
                     wText.visible = showText;
-                    wText.text = weight.toString();
+                    wText.text = formatNodeValue(weight);
                     
                     // ★ 自己ループも含めた上で、最も広く空いている角度を再計算！
                     const bestAngle = this.getLargestGapAngle(nodeAngles[nodeIndex], x, y);

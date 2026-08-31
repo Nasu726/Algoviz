@@ -5,6 +5,7 @@ import type { VisualizerEngine, CreateVisualizerModule } from './types/engine';
 import { MenuPage } from './pages/Menu';
 import { BrainfuckPage } from './pages/BrainfuckPage';
 import { GraphPage } from './pages/GraphPage';
+import type { GraphVariant } from './components/graph/types';
 
 function MainMenu() {
   return (
@@ -22,11 +23,13 @@ function BrainfuckWrapper({ engine }: { engine: VisualizerEngine }) {
   );
 }
 
-function GraphWrapper({engine}: {engine: VisualizerEngine}){
+// グラフ系は1ページ1アルゴリズム。variant がそのままページの中身を決める。
+function GraphWrapper({ engine, variant }: { engine: VisualizerEngine; variant: GraphVariant }) {
   const navigate = useNavigate();
   return (
     <GraphPage
       engine={engine}
+      variant={variant}
       onBack={() => navigate("/")}
     />
   );
@@ -105,9 +108,16 @@ function App() {
       {/* URLが '/brainfuck' のときはビジュアライザを表示 */}
       <Route path="/brainfuck" element={<BrainfuckWrapper engine={engineRef.current!} />} />
 
-      {/* グラフ描画システム自体は公開しない (メニューには載せない) が、
-          レイアウトとパッキングの回帰を目視確認する手段としてルートは残す */}
-      <Route path="/graph" element={<GraphWrapper engine={engineRef.current!} />} />
+      {/* グラフ探索。1ページ1アルゴリズム */}
+      <Route path="/graph/bfs" element={<GraphWrapper engine={engineRef.current!} variant="bfs" />} />
+      <Route path="/graph/dfs" element={<GraphWrapper engine={engineRef.current!} variant="dfs" />} />
+      <Route path="/graph/dijkstra" element={<GraphWrapper engine={engineRef.current!} variant="dijkstra" />} />
+
+      <Route path="/automaton" element={<GraphWrapper engine={engineRef.current!} variant="automaton" />} />
+
+      {/* 描くだけのページ。メニューには載せないが、レイアウトとパッキングの
+          回帰を目視確認する手段としてルートは残す */}
+      <Route path="/graph" element={<GraphWrapper engine={engineRef.current!} variant="plain" />} />
     </Routes>
 
     </BrowserRouter>
