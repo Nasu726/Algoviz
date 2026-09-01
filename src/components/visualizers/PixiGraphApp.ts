@@ -50,15 +50,18 @@ export class PixiGraphApp {
     private nodeRadius: number = 20.0;
     private isDirected: boolean = false;
     private isAutomaton: boolean = false;
+    private labelMode: GraphState['labelMode'] = 'index';
     private showWeights: boolean = false;
     
     // 状態管理フラグ
     private isInitialized = false;
     private isDestroyed = false;
 
-    // グラフが差し替わったら一度だけカメラを合わせ直すための状態
+    // グラフが差し替わったらカメラを合わせ直すための状態
     private lastGeneration = -1;
     private needsFit = false;
+    // 利用者が自分でカメラを動かしたか。動かしたなら自動の追従はやめる
+    private userAdjusted = false;
 
     // マウス操作用
     private isDragging = false;
@@ -95,8 +98,9 @@ export class PixiGraphApp {
         if (width <= 0 || height <= 0) return;
         this.app.renderer.resize(width, height);
         this.app.stage.hitArea = new PIXI.Rectangle(0, 0, this.app.screen.width, this.app.screen.height);
-        // 表示領域が変わったので、次のフレームで全体が収まるよう合わせ直す
+        // 表示領域が変わったので、全体が収まるよう合わせ直す
         this.needsFit = true;
+        this.userAdjusted = false;
     }
 
     // 初期化処理（Reactから呼ばれる）
@@ -236,6 +240,7 @@ export class PixiGraphApp {
             if (!this.isDragging || e.pointerType === 'touch') return;
             const dx = e.global.x - this.lastPos.x;
             const dy = e.global.y - this.lastPos.y;
+            if (dx !== 0 || dy !== 0) this.userAdjusted = true;
             this.world.position.x += dx;
             this.world.position.y += dy;
             this.lastPos = { x: e.global.x, y: e.global.y };
@@ -295,6 +300,7 @@ export class PixiGraphApp {
     // ★ アロー関数にしておくことで、thisのスコープが外れない＆イベント解除が簡単に！
     private onWheel = (e: WheelEvent) => {
         e.preventDefault();
+        this.userAdjusted = true;
         const p = this.toCanvas(e.clientX, e.clientY);
         this.zoomAround(p.x, p.y, e.deltaY < 0 ? WHEEL_ZOOM_STEP : 1 / WHEEL_ZOOM_STEP);
     };
@@ -305,6 +311,7 @@ export class PixiGraphApp {
     private onTouchMove = (e: TouchEvent) => {
         // ブラウザ既定のピンチやページスクロールに持っていかれないようにする
         e.preventDefault();
+        this.userAdjusted = true;
 
         if (e.touches.length >= 2) {
             const a = this.toCanvas(e.touches[0].clientX, e.touches[0].clientY);
@@ -389,19 +396,28 @@ export class PixiGraphApp {
             this.nodeSprites.push(this.createNodeGroup());
         }
 
-        // グラフが作り直されたら、レイアウトが落ち着いた時点で全体を画面に収める
+        // グラフが作り直されたら全体を画面に収め直す
         if (state.generation !== this.lastGeneration) {
             this.lastGeneration = state.generation;
             this.needsFit = true;
+            this.userAdjusted = false;
         }
-        if (this.needsFit && state.layoutStable) {
-            this.needsFit = false;
+
+        // 収束を待たずに追従させる。木は挿入のたびに形が変わるので、
+        // 安定するまで待つと育った先が画面の外へ出たままになる。
+        //
+        // ただし利用者がカメラを動かしたらそこで追従をやめる。
+        // 力学モデルの収束は最大 LAYOUT_FRAME_LIMIT フレームかかるので、
+        // 待たずに合わせ続けると、その間ずっとドラッグやホイールが打ち消される。
+        if (this.needsFit && !this.userAdjusted) {
             this.fitToView(nodeArray);
+            if (state.layoutStable) this.needsFit = false;
         }
 
         // グラフ自身の性質は C++ が唯一の情報源
         this.isDirected = !!state.isDirected;
         this.isAutomaton = !!state.isAutomaton;
+        this.labelMode = state.labelMode ?? 'index';
         const startIdx: number = state.startNodeIndex ?? -1;
         const accepting: Set<number> = new Set(state.acceptingStates ?? []);
 
@@ -639,10 +655,11 @@ export class PixiGraphApp {
                 const labelText = group.getChildByLabel("labelText") as PIXI.Text;
                 if (labelText) {
                     labelText.visible = readable;
-                    // グラフの頂点は 0, 1, 2、オートマトンの状態は q₀, q₁, q₂。
-                    // どちらで書くかは分類で決まるので、利用者には選ばせない。
-                    labelText.text = this.isAutomaton
-                        ? `q${this.toSubscript(nodeIndex)}`
+                    // 何を表示名にするかは分類で決まる (C++ 側 labelMode)。
+                    // グラフの頂点は 0,1,2、オートマトンの状態は q₀,q₁,q₂、木は節点の値。
+                    labelText.text =
+                        this.labelMode === 'state' ? `q${this.toSubscript(nodeIndex)}`
+                        : this.labelMode === 'value' ? formatNodeValue(nodeArray[i + 2])
                         : `${nodeIndex}`;
                 }
 

@@ -40,6 +40,8 @@ export interface GraphState {
     startNodeIndex: number;
     isDirected: boolean;
     isAutomaton: boolean;
+    /** 頂点に出す表示名。分類ごとに C++ 側が決める */
+    labelMode: 'index' | 'state' | 'value';
     /** テキスト入力で頂点の重みを受け取ったか */
     hasNodeWeights: boolean;
     /** 重み付きグラフか。重み無しならテキストにも表示にも重みは出ない */
@@ -77,6 +79,17 @@ export interface GraphState {
     nodeValueMode?: 'weight' | 'distance';
     /** ダイクストラの前提を外れる負の重みが混ざっているか */
     hasNegativeEdge?: boolean;
+
+    /** BstVisualizer のときだけ */
+    values?: number[];
+    /** これから挿入する値が values の何番目か */
+    pending?: number;
+    /** 今比べている節点。-1 なら次の値の挿入前 */
+    cursor?: number;
+    /** 直前の値が既にあったので捨てた */
+    duplicate?: boolean;
+    insertedCount?: number;
+    maxValues?: number;
 
     /** TraversalVisualizer かつ getState({ withProgress: true }) のときだけ */
     frontier?: number[];

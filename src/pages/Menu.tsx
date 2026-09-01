@@ -13,6 +13,12 @@ const GENRES: { name: string; items: { path: string; label: string }[] }[] = [
         ],
     },
     {
+        name: '木',
+        items: [
+            { path: '/tree/bst', label: '二分探索木の構築' },
+        ],
+    },
+    {
         name: 'オートマトン',
         items: [
             { path: '/automaton', label: '決定性有限オートマトン (DFA)' },

@@ -155,6 +155,7 @@ private:
 protected:
     bool forceDirected() const override { return true; }
     bool usesSymbols() const override { return true; }
+    const char* labelMode() const override { return "state"; }
 
     // グラフが差し替わったら、範囲外になった状態指定を捨てて遷移を組み直す
     void onGraphChanged() override {

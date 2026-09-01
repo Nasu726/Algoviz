@@ -12,11 +12,16 @@
 
 #include <cmath>
 #include <set>
+#include <map>
+#include <array>
+#include <algorithm>
 
 #include "../cpp/include/Brainfuck.hpp"
 #include "../cpp/include/GraphVisualizer.hpp"
+#include "../cpp/include/TreeLayout.hpp"
 #include "../cpp/include/AutomatonVisualizer.hpp"
 #include "../cpp/include/TraversalVisualizer.hpp"
+#include "../cpp/include/BstVisualizer.hpp"
 
 using emscripten::val;
 
@@ -66,6 +71,18 @@ static void reportFailure(const std::string& detail) {
             failHeader();                                                  \
             std::cerr << "  L" << __LINE__ << ": " << #actual << std::endl \
                       << "    expected: " << (expected) << std::endl       \
+                      << "    actual  : " << (actual) << std::endl;        \
+        }                                                                  \
+    } while (0)
+
+#define CHECK_NEAR(actual, expected, tol)                                  \
+    do {                                                                   \
+        g_checks++;                                                        \
+        if (!(std::fabs((actual) - (expected)) <= (tol))) {                \
+            g_failures++;                                                  \
+            failHeader();                                                  \
+            std::cerr << "  L" << __LINE__ << ": " << #actual << std::endl \
+                      << "    expected: " << (expected) << " (許容 " << (tol) << ")" << std::endl \
                       << "    actual  : " << (actual) << std::endl;        \
         }                                                                  \
     } while (0)
@@ -2373,6 +2390,364 @@ static void testGeneratedDfaIsDeterministicAndTotal() {
     CHECK_EQ(dup.getState(val::object())["alphabet"].as<std::string>(), std::string("ab"));
 }
 
+
+// ==========================================
+// 木の配置 (Reingold-Tilford)
+// ==========================================
+
+// 親子の組から木を作り、配置を確定させる。
+// 節点 i の座標は g.nodeData[i * NODE_STRIDE] / +1 に入る。
+static GraphData makeTree(int n, const std::vector<std::pair<int, int>>& edges) {
+    GraphData g(n, (int)edges.size());
+    for (int i = 0; i < n; i++) g.setNode(i, 0.0f, 0.0f, (float)i, 0);
+    for (const auto& e : edges) g.addEdge((float)e.first, (float)e.second, 0.0f, 0);
+    return g;
+}
+
+static void placeTree(GraphData& g, TreeLayout& layout) {
+    std::vector<std::vector<int>> adj(g.nodeCount());
+    layout.init(&g, adj);
+    layout.finish(&g);
+}
+
+static float nodeX(const GraphData& g, int i) { return g.nodeData[i * GraphData::NODE_STRIDE]; }
+static float nodeY(const GraphData& g, int i) { return g.nodeData[i * GraphData::NODE_STRIDE + 1]; }
+
+static void testTreeDepthBecomesY() {
+    beginTest("深さがそのまま y になる");
+
+    //   0
+    //  / \
+    // 1   2
+    //     |
+    //     3
+    GraphData g = makeTree(4, {{0, 1}, {0, 2}, {2, 3}});
+    TreeLayout layout;
+    placeTree(g, layout);
+
+    CHECK_EQ(nodeY(g, 0), 0.0f);
+    CHECK_EQ(nodeY(g, 1), TreeLayout::LEVEL_GAP);
+    CHECK_EQ(nodeY(g, 2), TreeLayout::LEVEL_GAP);
+    CHECK_EQ(nodeY(g, 3), TreeLayout::LEVEL_GAP * 2.0f);
+}
+
+static void testTreeParentIsCenteredOverChildren() {
+    beginTest("親が子たちの中央に来る");
+
+    GraphData g = makeTree(3, {{0, 1}, {0, 2}});
+    TreeLayout layout;
+    placeTree(g, layout);
+    CHECK_NEAR(nodeX(g, 0), (nodeX(g, 1) + nodeX(g, 2)) / 2.0f, 0.01f);
+
+    // 深い部分木を片側に持つ形でも、端の子2つの中央に来る
+    //       0
+    //     /   \
+    //    1     2
+    //   / \
+    //  3   4
+    GraphData h = makeTree(5, {{0, 1}, {0, 2}, {1, 3}, {1, 4}});
+    TreeLayout layout2;
+    placeTree(h, layout2);
+    CHECK_NEAR(nodeX(h, 0), (nodeX(h, 1) + nodeX(h, 2)) / 2.0f, 0.01f);
+    CHECK_NEAR(nodeX(h, 1), (nodeX(h, 3) + nodeX(h, 4)) / 2.0f, 0.01f);
+}
+
+static void testTreeNodesDoNotOverlap() {
+    beginTest("同じ深さの節点が最小の間隔より近づかない");
+
+    // 両側に部分木がぶら下がる形。輪郭を見ずに置くと、
+    // 1 の右の子と 2 の左の子がぶつかる。
+    //        0
+    //     /     \
+    //    1       2
+    //   / \    / \
+    //  3   4   5   6
+    GraphData g = makeTree(7, {{0, 1}, {0, 2}, {1, 3}, {1, 4}, {2, 5}, {2, 6}});
+    TreeLayout layout;
+    placeTree(g, layout);
+
+    // 深さごとにまとめて、隣り合う節点の間隔を見る
+    std::map<float, std::vector<float>> rows;
+    for (int i = 0; i < g.nodeCount(); i++) rows[nodeY(g, i)].push_back(nodeX(g, i));
+    for (auto& row : rows) {
+        std::sort(row.second.begin(), row.second.end());
+        for (std::size_t i = 1; i < row.second.size(); i++) {
+            CHECK(row.second[i] - row.second[i - 1] >= TreeLayout::SIBLING_GAP - 0.01f);
+        }
+    }
+}
+
+static void testForestIsPlacedSideBySide() {
+    beginTest("森は左右に分かれて重ならない");
+
+    // 木が2つ (0-1-2 と 3-4)
+    GraphData g = makeTree(5, {{0, 1}, {0, 2}, {3, 4}});
+    TreeLayout layout;
+    placeTree(g, layout);
+
+    // 片方の木の右端より、もう片方の木の左端が右にある
+    float leftMax = std::max({nodeX(g, 0), nodeX(g, 1), nodeX(g, 2)});
+    float rightMin = std::min(nodeX(g, 3), nodeX(g, 4));
+    CHECK(rightMin > leftMax);
+}
+
+static void testTreeLayoutHandlesEdgeCases() {
+    beginTest("節点が0個・1個・閉路混じりでも落ちない");
+
+    GraphData empty(0, 0);
+    TreeLayout l0;
+    placeTree(empty, l0);
+    CHECK(l0.isStable());
+
+    GraphData single = makeTree(1, {});
+    TreeLayout l1;
+    placeTree(single, l1);
+    CHECK_EQ(nodeY(single, 0), 0.0f);
+
+    // 閉路だけの入力。根が1つも無いので、無限再帰せずに置き切れること
+    GraphData cyclic = makeTree(3, {{0, 1}, {1, 2}, {2, 0}});
+    TreeLayout l2;
+    placeTree(cyclic, l2);
+    CHECK(l2.isStable());
+    for (int i = 0; i < 3; i++) CHECK(std::isfinite(nodeX(cyclic, i)));
+}
+
+static void testTreeLayoutEasesToTarget() {
+    beginTest("update を繰り返すと finish と同じ座標に落ち着く");
+
+    std::vector<std::pair<int, int>> edges = {{0, 1}, {0, 2}, {1, 3}, {1, 4}};
+
+    GraphData atOnce = makeTree(5, edges);
+    TreeLayout la;
+    placeTree(atOnce, la);
+
+    GraphData eased = makeTree(5, edges);
+    TreeLayout le;
+    std::vector<std::vector<int>> adj(eased.nodeCount());
+    le.init(&eased, adj);
+    int frames = 0;
+    while (!le.update(&eased) && frames < 500) frames++;
+
+    CHECK(le.isStable());
+    CHECK(frames < 500); // 収束せずに打ち切られていない
+    for (int i = 0; i < 5; i++) {
+        CHECK_NEAR(nodeX(eased, i), nodeX(atOnce, i), 0.01f);
+        CHECK_NEAR(nodeY(eased, i), nodeY(atOnce, i), 0.01f);
+    }
+}
+
+
+// ==========================================
+// 二分探索木の構築
+// ==========================================
+
+struct ParsedTree {
+    int root = -1;
+    std::vector<float> values;
+    std::vector<std::vector<int>> children; // 値の小さい順
+};
+
+static ParsedTree readTree(BstVisualizer& b) {
+    val s = b.getState(val::object());
+    ParsedTree t;
+    t.root = s["startNodeIndex"].as<int>();
+
+    val nodes = s["nodes"];
+    int n = s["nodeCount"].as<int>();
+    for (int i = 0; i < n; i++) {
+        t.values.push_back(nodes[i * GraphData::NODE_STRIDE + 2].as<float>());
+    }
+    t.children.assign(n, {});
+
+    val edges = s["edges"];
+    int m = s["edgeCount"].as<int>();
+    for (int i = 0; i < m; i++) {
+        int from = (int)edges[i * GraphData::EDGE_STRIDE].as<float>();
+        int to   = (int)edges[i * GraphData::EDGE_STRIDE + 1].as<float>();
+        if (from >= 0 && from < n && to >= 0 && to < n) t.children[from].push_back(to);
+    }
+    for (int i = 0; i < n; i++) {
+        std::sort(t.children[i].begin(), t.children[i].end(),
+                  [&](int a, int c) { return t.values[a] < t.values[c]; });
+    }
+    return t;
+}
+
+// 中順走査。二分探索木なら昇順に並ぶ。
+static void inorder(const ParsedTree& t, int u, std::vector<float>& out, int depth = 0) {
+    if (u < 0 || u >= (int)t.values.size() || depth > 100) return;
+    const std::vector<int>& kids = t.children[u];
+    // 値の小さい子が左。子が1つのときは値の大小で左右が決まる
+    for (int c : kids) if (t.values[c] < t.values[u]) inorder(t, c, out, depth + 1);
+    out.push_back(t.values[u]);
+    for (int c : kids) if (t.values[c] > t.values[u]) inorder(t, c, out, depth + 1);
+}
+
+static void buildBst(BstVisualizer& b, const std::string& values) {
+    b.load("setValues", values);
+    b.runToEnd();
+}
+
+static void testBstInorderIsSorted() {
+    beginTest("挿入後の木を中順に辿ると昇順になる");
+
+    const char* inputs[] = {
+        "50 30 70 20 40 60 80",
+        "1 2 3 4 5",          // 右に伸び続ける
+        "5 4 3 2 1",          // 左に伸び続ける
+        "42",
+    };
+    for (const char* in : inputs) {
+        BstVisualizer b;
+        buildBst(b, in);
+
+        ParsedTree t = readTree(b);
+        std::vector<float> order;
+        inorder(t, t.root, order);
+
+        // 入力の値がすべて現れ、しかも昇順
+        std::vector<float> expected;
+        std::istringstream iss(in);
+        float v;
+        while (iss >> v) expected.push_back(v);
+        std::sort(expected.begin(), expected.end());
+
+        CHECK_EQ((int)order.size(), (int)expected.size());
+        CHECK(order == expected);
+    }
+}
+
+static void testBstDrawsSmallerValuesOnTheLeft() {
+    beginTest("小さい値が左に描かれる");
+
+    // 挿入の順と左右の並びが食い違う形。辺の追加順のまま並べると
+    // 70 が 30 の左に来てしまう。
+    BstVisualizer b;
+    buildBst(b, "50 70 30");
+
+    val s = b.getState(val::object());
+    CHECK_EQ(s["nodeCount"].as<int>(), 3);
+
+    val nodes = s["nodes"];
+    // 節点の値から x 座標を引く
+    std::map<int, float> xOf;
+    for (int i = 0; i < s["nodeCount"].as<int>(); i++) {
+        int v = (int)nodes[i * GraphData::NODE_STRIDE + 2].as<float>();
+        xOf[v] = nodes[i * GraphData::NODE_STRIDE].as<float>();
+    }
+
+    // レイアウトを確定させてから比べる
+    for (int i = 0; i < 200; i++) b.prepare();
+    val after = b.getState(val::object());
+    val an = after["nodes"];
+    for (int i = 0; i < after["nodeCount"].as<int>(); i++) {
+        int v = (int)an[i * GraphData::NODE_STRIDE + 2].as<float>();
+        xOf[v] = an[i * GraphData::NODE_STRIDE].as<float>();
+    }
+
+    CHECK(xOf[30] < xOf[50]);
+    CHECK(xOf[50] < xOf[70]);
+}
+
+static void testBstIgnoresDuplicates() {
+    beginTest("同じ値を2回入れても節点が増えない");
+
+    BstVisualizer b;
+    buildBst(b, "5 3 8 3 5 8");
+    val s = b.getState(val::object());
+    CHECK_EQ(s["nodeCount"].as<int>(), 3);
+    CHECK_EQ(s["edgeCount"].as<int>(), 2);
+}
+
+static void testBstStepMatchesRunToEnd() {
+    beginTest("step を繰り返した結果と runToEnd の結果が一致する");
+
+    const char* inputs[] = {"50 30 70 20 40", "1 2 3", "9 9 9", ""};
+    for (const char* in : inputs) {
+        BstVisualizer stepwise;
+        stepwise.load("setValues", in);
+        int guard = 0;
+        while (stepwise.step() && guard++ < 1000) {}
+
+        BstVisualizer atOnce;
+        buildBst(atOnce, in);
+
+        val a = stepwise.getState(val::object());
+        val o = atOnce.getState(val::object());
+        CHECK_EQ(a["nodeCount"].as<int>(), o["nodeCount"].as<int>());
+        CHECK_EQ(a["edgeCount"].as<int>(), o["edgeCount"].as<int>());
+        CHECK_EQ(a["finished"].as<bool>(), o["finished"].as<bool>());
+
+        std::vector<float> sa, so;
+        ParsedTree ta = readTree(stepwise), to = readTree(atOnce);
+        inorder(ta, ta.root, sa);
+        inorder(to, to.root, so);
+        CHECK(sa == so);
+    }
+}
+
+static void testBstStepBackReturnsToPreviousState() {
+    beginTest("stepBack で1手前の状態に戻る");
+
+    BstVisualizer b;
+    b.load("setValues", "50 30 70 20");
+
+    // 1手ずつ進めて、そのつどの (節点数, 比較中, 挿入位置) を控える
+    std::vector<std::array<int, 3>> seen;
+    auto snapshot = [&]() {
+        val s = b.getState(val::object());
+        return std::array<int, 3>{ s["nodeCount"].as<int>(),
+                                   s["cursor"].as<int>(),
+                                   s["pending"].as<int>() };
+    };
+    seen.push_back(snapshot());
+    CHECK(!b.getState(val::object())["canStepBack"].as<bool>());
+
+    int guard = 0;
+    while (b.step() && guard++ < 1000) seen.push_back(snapshot());
+
+    // 逆順に戻ると、控えた並びをそのまま辿り直す
+    for (int i = (int)seen.size() - 1; i >= 1; i--) {
+        b.stepBack();
+        CHECK(snapshot() == seen[i - 1]);
+    }
+    CHECK(!b.getState(val::object())["canStepBack"].as<bool>());
+}
+
+static void testBstHandlesEmptyInput() {
+    beginTest("値が1つも無くても落ちない");
+
+    BstVisualizer b;
+    buildBst(b, "");
+    val s = b.getState(val::object());
+    CHECK_EQ(s["nodeCount"].as<int>(), 0);
+    CHECK(s["finished"].as<bool>());
+    CHECK(!s["canStepBack"].as<bool>());
+
+    b.stepBack(); // 戻せないときに何も壊さない
+    CHECK_EQ(b.getState(val::object())["nodeCount"].as<int>(), 0);
+}
+
+static void testGeneratedValuesHaveNoDuplicates() {
+    beginTest("ランダム生成した値に重複が無い");
+
+    BstVisualizer b;
+    b.load("genRandom", "20");
+    b.runToEnd();
+
+    val s = b.getState(val::object());
+    val vals = s["values"];
+    int count = vals["length"].as<int>();
+    CHECK_EQ(count, 20);
+
+    std::set<int> unique;
+    for (int i = 0; i < count; i++) unique.insert(vals[i].as<int>());
+    CHECK_EQ((int)unique.size(), 20);
+
+    // 重複が無いので、節点の数は値の数と一致する
+    CHECK_EQ(s["nodeCount"].as<int>(), 20);
+}
+
 // ==========================================
 
 int main(int argc, char** argv) {
@@ -2482,6 +2857,23 @@ int main(int argc, char** argv) {
     testDfaDetectsNondeterminism();
     testDfaTextRoundTrip();
     testGeneratedDfaIsDeterministicAndTotal();
+
+    beginSection("木の配置");
+    testTreeDepthBecomesY();
+    testTreeParentIsCenteredOverChildren();
+    testTreeNodesDoNotOverlap();
+    testForestIsPlacedSideBySide();
+    testTreeLayoutHandlesEdgeCases();
+    testTreeLayoutEasesToTarget();
+
+    beginSection("二分探索木");
+    testBstInorderIsSorted();
+    testBstDrawsSmallerValuesOnTheLeft();
+    testBstIgnoresDuplicates();
+    testBstStepMatchesRunToEnd();
+    testBstStepBackReturnsToPreviousState();
+    testBstHandlesEmptyInput();
+    testGeneratedValuesHaveNoDuplicates();
 
     if (g_failures == 0) {
         std::cout << "core: OK (" << g_checks << " checks)" << std::endl;

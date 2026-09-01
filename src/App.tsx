@@ -5,6 +5,7 @@ import type { VisualizerEngine, CreateVisualizerModule } from './types/engine';
 import { MenuPage } from './pages/Menu';
 import { BrainfuckPage } from './pages/BrainfuckPage';
 import { GraphPage } from './pages/GraphPage';
+import { TreePage } from './pages/TreePage';
 import type { GraphVariant } from './components/graph/types';
 
 function MainMenu() {
@@ -21,6 +22,11 @@ function BrainfuckWrapper({ engine }: { engine: VisualizerEngine }) {
       onBack={() => navigate('/')} // ★ '/' (トップ) へ遷移
     />
   );
+}
+
+function TreeWrapper({ engine }: { engine: VisualizerEngine }) {
+  const navigate = useNavigate();
+  return <TreePage engine={engine} onBack={() => navigate('/')} />;
 }
 
 // グラフ系は1ページ1アルゴリズム。variant がそのままページの中身を決める。
@@ -114,6 +120,9 @@ function App() {
       <Route path="/graph/dijkstra" element={<GraphWrapper engine={engineRef.current!} variant="dijkstra" />} />
 
       <Route path="/automaton" element={<GraphWrapper engine={engineRef.current!} variant="automaton" />} />
+
+      {/* 木 */}
+      <Route path="/tree/bst" element={<TreeWrapper engine={engineRef.current!} />} />
 
       {/* 描くだけのページ。メニューには載せないが、レイアウトとパッキングの
           回帰を目視確認する手段としてルートは残す */}
