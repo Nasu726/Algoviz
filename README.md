@@ -17,6 +17,7 @@
 **木**
 
 - [二分探索木の構築](https://algoviz.nasu.uk/tree/bst)
+- [AVL 木の構築](https://algoviz.nasu.uk/tree/avl)
 - [ヒープの構築](https://algoviz.nasu.uk/tree/heap)
 - [trie (接頭辞木) の構築](https://algoviz.nasu.uk/tree/trie)
 - [ハフマン木の構築](https://algoviz.nasu.uk/tree/huffman)
@@ -87,6 +88,7 @@ cpp/
     TraversalVisualizer.hpp    ├ BFS / DFS / ダイクストラ法
     AutomatonVisualizer.hpp    ├ DFA (常に有向 + 初期状態 + 受理状態 + 遷移記号)
     BstVisualizer.hpp          ├ 二分探索木の構築
+    AvlVisualizer.hpp          ├ AVL 木の構築 (回転で形が変わる)
     HeapVisualizer.hpp         ├ ヒープの構築
     TrieVisualizer.hpp         ├ trie の構築
     HuffmanVisualizer.hpp      └ ハフマン木の構築
