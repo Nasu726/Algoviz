@@ -192,8 +192,64 @@ const HuffmanHelp: React.FC<{ maxLeaves: number }> = ({ maxLeaves }) => (
     </>
 );
 
+
+const AvlHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
+    <>
+        <h3>1. 画面の見方</h3>
+        <ul>
+            <li>丸の中がその節点の値。小さい値が左、大きい値が右に来る (二分探索木と同じ)</li>
+            <li><b>丸の脇の数字が偏り</b>。左の高さから右の高さを引いたもの</li>
+            <li>偏りが <b>2</b> か <b>-2</b> になった節点で回転が起きる</li>
+            <li>色の意味は実行状態のパネルにある凡例のとおり</li>
+        </ul>
+
+        <h3>2. 1ステップの単位</h3>
+        <p>降りるときと戻るときで単位が変わります。</p>
+        <ul>
+            <li><b>降りるとき</b>：1回比べて1つ降りる (二分探索木と同じ)</li>
+            <li><b>戻るとき</b>：通ってきた道を根へ向かって1つずつ、偏りを見て必要なら回す</li>
+        </ul>
+
+        <h3>3. 回転の4通り</h3>
+        <ul>
+            <li><b>右回転</b>：左の子の左が重いとき</li>
+            <li><b>左回転</b>：右の子の右が重いとき</li>
+            <li><b>左右</b>：左の子の<b>右</b>が重いとき。左の子を左に回してから、右に回す</li>
+            <li><b>右左</b>：右の子の<b>左</b>が重いとき。右の子を右に回してから、左に回す</li>
+        </ul>
+
+        <h3>4. 値の入れ方</h3>
+        <ul>
+            <li><b>この値で作り直す</b>：空白か改行で区切って値を並べる。左から順に挿入する</li>
+            <li><b>ランダム生成</b>：個数を決めると、重複しない値を選んで並べる</li>
+        </ul>
+        <pre style={codeBlock}>10 20 30 40 50 25</pre>
+        <ul>
+            <li>値の個数の上限は {maxValues}</li>
+            <li>昇順に入れても一直線にならない。そこが二分探索木との違い</li>
+        </ul>
+
+        <h3>5. 画面の操作</h3>
+        <ul>
+            <li><b>ドラッグ</b>：表示位置を動かす</li>
+            <li><b>ホイール / 2本指のピンチ</b>：拡大・縮小</li>
+        </ul>
+
+        <h3>6. ショートカットキー</h3>
+        <ul>
+            <li><b>Esc</b>：ビジュアライザ一覧へ戻る</li>
+            <li><b>Ctrl + H</b>：ヘルプを開く</li>
+            <li><b>Ctrl + S</b>：この値で作り直す</li>
+            <li><b>Ctrl + Enter</b>：実行 / 一時停止</li>
+            <li><b>Ctrl + &larr;</b> / <b>&rarr;</b>：戻る / 進む</li>
+            <li><b>Ctrl + &uarr;</b> / <b>&darr;</b>：実行速度の増減</li>
+        </ul>
+    </>
+);
+
 export const TreeHelp: React.FC<{ variant: TreeVariant; maxValues: number }> = ({ variant, maxValues }) =>
-    variant === 'huffman' ? <HuffmanHelp maxLeaves={maxValues} />
+    variant === 'avl' ? <AvlHelp maxValues={maxValues} />
+    : variant === 'huffman' ? <HuffmanHelp maxLeaves={maxValues} />
     : variant === 'trie' ? <TrieHelp maxWords={maxValues} />
     : variant === 'heap' ? <HeapHelp maxValues={maxValues} />
     : <BstHelp maxValues={maxValues} />;

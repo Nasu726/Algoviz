@@ -133,7 +133,7 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
                         compact={compact}
                     />
                 }
-                canvas={isLoaded ? <GraphRenderer engine={engine} showWeights={usesText(variant)} /> : null}
+                canvas={isLoaded ? <GraphRenderer engine={engine} showWeights={usesText(variant) || variant === 'avl'} /> : null}
                 controlPanel={
                     <TreePanel
                         variant={variant}

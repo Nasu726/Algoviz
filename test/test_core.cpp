@@ -26,6 +26,7 @@
 #include "../cpp/include/HeapVisualizer.hpp"
 #include "../cpp/include/TrieVisualizer.hpp"
 #include "../cpp/include/HuffmanVisualizer.hpp"
+#include "../cpp/include/AvlVisualizer.hpp"
 
 using emscripten::val;
 
@@ -3346,6 +3347,201 @@ static void testHuffmanHandlesTinyInput() {
     CHECK_EQ(empty.getState(val::object())["nodeCount"].as<int>(), 0);
 }
 
+
+// ==========================================
+// AVL 木の構築
+// ==========================================
+
+struct ParsedAvl {
+    int n = 0;
+    int root = -1;
+    std::vector<int> keys;
+    std::vector<int> left, right; // 辺の3列目 (0 が左 / 1 が右) から復元する
+};
+
+static ParsedAvl readAvl(AvlVisualizer& a) {
+    val s = a.getState(val::object());
+    ParsedAvl pa;
+    pa.n = s["nodeCount"].as<int>();
+    pa.root = s["startNodeIndex"].as<int>();
+    pa.left.assign(pa.n, -1);
+    pa.right.assign(pa.n, -1);
+
+    val ls = s["nodeLabels"];
+    for (int i = 0; i < pa.n; i++) pa.keys.push_back(std::stoi(ls[i].as<std::string>()));
+
+    val edges = s["edges"];
+    int m = s["edgeCount"].as<int>();
+    for (int i = 0; i < m; i++) {
+        int from = (int)edges[i * GraphData::EDGE_STRIDE].as<float>();
+        int to   = (int)edges[i * GraphData::EDGE_STRIDE + 1].as<float>();
+        float side = edges[i * GraphData::EDGE_STRIDE + 2].as<float>();
+        if (from < 0 || from >= pa.n) continue;
+        if (side < 0.5f) pa.left[from] = to; else pa.right[from] = to;
+    }
+    return pa;
+}
+
+static int avlHeight(const ParsedAvl& pa, int node, int depth = 0) {
+    if (node < 0 || depth > 60) return 0;
+    return 1 + std::max(avlHeight(pa, pa.left[node], depth + 1),
+                        avlHeight(pa, pa.right[node], depth + 1));
+}
+
+static void avlInorder(const ParsedAvl& pa, int node, std::vector<int>& out, int depth = 0) {
+    if (node < 0 || depth > 60) return;
+    avlInorder(pa, pa.left[node], out, depth + 1);
+    out.push_back(pa.keys[node]);
+    avlInorder(pa, pa.right[node], out, depth + 1);
+}
+
+// すべての節点で |左の高さ - 右の高さ| <= 1 か
+static bool avlIsBalanced(const ParsedAvl& pa, int node, int depth = 0) {
+    if (node < 0 || depth > 60) return true;
+    int diff = avlHeight(pa, pa.left[node]) - avlHeight(pa, pa.right[node]);
+    if (diff < -1 || diff > 1) return false;
+    return avlIsBalanced(pa, pa.left[node], depth + 1) &&
+           avlIsBalanced(pa, pa.right[node], depth + 1);
+}
+
+static ParsedAvl buildAvl(const std::string& values) {
+    AvlVisualizer a;
+    a.load("setValues", values);
+    a.runToEnd();
+    return readAvl(a);
+}
+
+static void testAvlStaysBalanced() {
+    beginTest("挿入し終えた木がどの節点でも釣り合っている");
+
+    const char* inputs[] = {
+        "10 20 30 40 50 25",
+        "1 2 3 4 5 6 7 8 9 10",   // 昇順。二分探索木なら一直線になる
+        "10 9 8 7 6 5 4 3 2 1",   // 降順
+        "50 30 70 20 40 60 80",
+        "42",
+    };
+    for (const char* in : inputs) {
+        ParsedAvl pa = buildAvl(in);
+        g_checks++;
+        if (!avlIsBalanced(pa, pa.root)) {
+            reportFailure(std::string(in) + ": 釣り合っていない節点がある");
+        }
+        // 中順に辿ると昇順。回転しても二分探索木の性質は保たれる
+        std::vector<int> order;
+        avlInorder(pa, pa.root, order);
+        std::vector<int> sorted = order;
+        std::sort(sorted.begin(), sorted.end());
+        CHECK(order == sorted);
+    }
+}
+
+static void testAvlKeepsHeightLow() {
+    beginTest("昇順に入れても高さが伸びきらない");
+
+    // 二分探索木なら 10 段の一直線になるところ。AVL は 4 段に収まる。
+    ParsedAvl pa = buildAvl("1 2 3 4 5 6 7 8 9 10");
+    CHECK_EQ(pa.n, 10);
+    int h = avlHeight(pa, pa.root);
+    g_checks++;
+    if (h > 4) reportFailure("高さが " + std::to_string(h) + " 段ある (4 段以下のはず)");
+}
+
+static void testAvlRotationCases() {
+    beginTest("4通りの回転がどれも起きる");
+
+    // それぞれの形を最小の3つで作る
+    struct Case { const char* values; const char* name; int rootKey; };
+    const Case cases[] = {
+        {"30 20 10", "右回転 (左左)",   20},
+        {"10 20 30", "左回転 (右右)",   20},
+        {"30 10 20", "左右",           20},
+        {"10 30 20", "右左",           20},
+    };
+    for (const Case& c : cases) {
+        ParsedAvl pa = buildAvl(c.values);
+        CHECK_EQ(pa.n, 3);
+        g_checks++;
+        if (pa.root < 0 || pa.keys[pa.root] != c.rootKey) {
+            reportFailure(std::string(c.name) + ": 根が " +
+                          (pa.root < 0 ? std::string("無い") : std::to_string(pa.keys[pa.root])) +
+                          " になっている (" + std::to_string(c.rootKey) + " のはず)");
+        }
+        CHECK_EQ(avlHeight(pa, pa.root), 2);
+    }
+}
+
+static void testAvlIgnoresDuplicates() {
+    beginTest("同じ値を2回入れても節点が増えない");
+
+    ParsedAvl pa = buildAvl("50 30 70 30 50 70");
+    CHECK_EQ(pa.n, 3);
+}
+
+static void testAvlStepMatchesRunToEnd() {
+    beginTest("step を繰り返した結果と runToEnd の結果が一致する");
+
+    const char* inputs[] = { "10 20 30 40 50 25", "1 2 3", "9 9 9", "" };
+    for (const char* in : inputs) {
+        AvlVisualizer stepwise;
+        stepwise.load("setValues", in);
+        int guard = 0;
+        while (stepwise.step() && guard++ < 3000) {}
+
+        AvlVisualizer atOnce;
+        atOnce.load("setValues", in);
+        atOnce.runToEnd();
+
+        ParsedAvl a = readAvl(stepwise), b = readAvl(atOnce);
+        CHECK_EQ(a.n, b.n);
+        CHECK_EQ(a.root, b.root);
+        CHECK(a.keys == b.keys);
+        CHECK(a.left == b.left);
+        CHECK(a.right == b.right);
+    }
+}
+
+static void testAvlStepBackReturnsToPreviousState() {
+    beginTest("stepBack で1手前の状態に戻る");
+
+    AvlVisualizer a;
+    a.load("setValues", "10 20 30 40");
+
+    auto snapshot = [&]() {
+        val s = a.getState(val::object());
+        ParsedAvl pa = readAvl(a);
+        return std::make_tuple(s["nodeCount"].as<int>(), s["cursor"].as<int>(),
+                               s["pending"].as<int>(), pa.left, pa.right);
+    };
+
+    std::vector<decltype(snapshot())> seen;
+    seen.push_back(snapshot());
+    CHECK(!a.getState(val::object())["canStepBack"].as<bool>());
+
+    int guard = 0;
+    while (a.step() && guard++ < 3000) seen.push_back(snapshot());
+
+    for (int i = (int)seen.size() - 1; i >= 1; i--) {
+        a.stepBack();
+        CHECK(snapshot() == seen[i - 1]);
+    }
+    CHECK(!a.getState(val::object())["canStepBack"].as<bool>());
+}
+
+static void testAvlHandlesEmptyInput() {
+    beginTest("値が1つも無くても落ちない");
+
+    AvlVisualizer a;
+    a.load("setValues", "");
+    a.runToEnd();
+    val s = a.getState(val::object());
+    CHECK_EQ(s["nodeCount"].as<int>(), 0);
+    CHECK(s["finished"].as<bool>());
+
+    a.stepBack();
+    CHECK_EQ(a.getState(val::object())["nodeCount"].as<int>(), 0);
+}
+
 // ==========================================
 
 int main(int argc, char** argv) {
@@ -3500,6 +3696,15 @@ int main(int argc, char** argv) {
     testHuffmanStepMatchesRunToEnd();
     testHuffmanStepBackReturnsToPreviousState();
     testHuffmanHandlesTinyInput();
+
+    beginSection("AVL 木の構築");
+    testAvlStaysBalanced();
+    testAvlKeepsHeightLow();
+    testAvlRotationCases();
+    testAvlIgnoresDuplicates();
+    testAvlStepMatchesRunToEnd();
+    testAvlStepBackReturnsToPreviousState();
+    testAvlHandlesEmptyInput();
 
     if (g_failures == 0) {
         std::cout << "core: OK (" << g_checks << " checks)" << std::endl;
