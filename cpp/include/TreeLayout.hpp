@@ -22,7 +22,9 @@ public:
     static constexpr float TREE_GAP    = 120.0f; // 森にしたときの木と木の間隔
 
 private:
-    static constexpr float EASE    = 0.3f;
+    // 目標へ寄せる割合。指数的に減衰するので、所要フレームは
+    // log(1/(1-EASE)) に反比例する。0.3 から 0.277 にすると 1.1 倍かかる。
+    static constexpr float EASE    = 0.277f;
     static constexpr float EPSILON = 0.5f;
 
     bool stable = false;
