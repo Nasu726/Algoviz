@@ -6,6 +6,15 @@ import { usesWords, usesText } from './types';
 import type { TreeVariant } from './types';
 import type { GraphState } from '../../types/engine';
 
+// AvlVisualizer の rotation と同じ並び
+const ROTATION_LABEL: Record<number, string> = {
+    0: '偏りを確かめています',
+    1: '右に回しました',
+    2: '左に回しました',
+    3: '左の子を左に回してから、右に回しました',
+    4: '右の子を右に回してから、左に回しました',
+};
+
 interface Props {
     variant: TreeVariant;
     state: GraphState | null;
@@ -35,6 +44,7 @@ export const TreePanel: React.FC<Props> = ({
 
     const trie = usesWords(variant);
     const huffman = usesText(variant);
+    const avl = variant === 'avl';
     // trie は値の列ではなく単語の列を入れる
     const items: (number | string)[] = huffman
         ? (state?.counts ?? []).map((c) => `${c.ch}:${c.count}`)
@@ -49,6 +59,8 @@ export const TreePanel: React.FC<Props> = ({
            : (state?.selectedA ?? -1) >= 0 ? 'この2つを繋ぎます'
            : '重みが最小の2つを選びます')
         : state?.finished ? 'すべて挿入し終えました'
+        : avl && cursor < 0 && (state?.checking ?? -1) >= 0
+            ? (ROTATION_LABEL[state?.rotation ?? 0] ?? '偏りを確かめています')
         : cursor >= 0 ? (heap ? '親と比べながら上げています'
                         : trie ? '1文字ずつ降りています'
                         : '比べながら降りています')
@@ -99,6 +111,11 @@ export const TreePanel: React.FC<Props> = ({
                     {cursor >= 0 ? '光っている節点' : <span style={dim}>なし</span>}
                 </div>
             )}
+            {avl && (
+                <div>
+                    <b>木の高さ</b>: {state?.treeHeight ?? 0}
+                </div>
+            )}
             <div>
                 <b>節点の数</b>: {inserted}
                 {!trie && !huffman && <span style={dim}> / {items.length}</span>}
@@ -115,7 +132,16 @@ export const TreePanel: React.FC<Props> = ({
 
     const legend = (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px' }}>
-            {huffman ? (
+            {avl ? (
+                <>
+                    <Swatch color={NODE_STROKE[2]} label="比べている節点" />
+                    <Swatch color={NODE_STROKE[1]} label="偏りを見ている節点" />
+                    <Swatch color={NODE_STROKE[3]} label="通った節点" />
+                    <Swatch color={NODE_STROKE[4]} label="今つないだ / 回した節点" />
+                    <Swatch color={EDGE_COLOR[2]} label="回した枝" isEdge />
+                    <Swatch color={EDGE_COLOR[3]} label="通った枝" isEdge />
+                </>
+            ) : huffman ? (
                 <>
                     <Swatch color={NODE_STROKE[2]} label="繋ぐ2つのうち左" />
                     <Swatch color={NODE_STROKE[1]} label="繋ぐ2つのうち右" />

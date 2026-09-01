@@ -98,6 +98,12 @@ export interface GraphState {
     prefix?: string;
     maxWords?: number;
 
+    /** AvlVisualizer のときだけ */
+    checking?: number;
+    /** 直前の回転。0 無し / 1 右 / 2 左 / 3 左右 / 4 右左 */
+    rotation?: number;
+    treeHeight?: number;
+
     /** BstVisualizer のときだけ */
     values?: number[];
     /** これから挿入する値が values の何番目か */
