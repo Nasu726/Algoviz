@@ -37,8 +37,9 @@ export const AutomatonPanel: React.FC<Props> = ({
     const rest = state?.inputString?.slice(state?.inputPos ?? 0) ?? '';
     const current = state?.currentState ?? -1;
 
+    // 遷移が無いのも拒否。理由が分かるように書き分けるが、結論は同じ
     const verdict = !state?.finished ? { text: '読み取り中…', color: '#78909c' }
-        : state?.stuck ? { text: '遷移が無いので止まりました', color: '#e67e22' }
+        : state?.stuck ? { text: '拒否 (その記号では遷移できない)', color: '#c0392b' }
         : state?.accepted ? { text: '受理', color: '#27ae60' }
         : { text: '拒否', color: '#c0392b' };
 
