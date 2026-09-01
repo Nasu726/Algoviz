@@ -42,16 +42,30 @@ private:
 
     // 辺の向きをそのまま親子関係として読む。木は向きに意味があるので、
     // 呼び出し側がくれる無向の隣接リストは使わない。
+    //
+    // 左右の並びは辺の3列目で決める。辺は木が育った順に増えるので、
+    // 追加順のままだと二分探索木で小さい値が右に来ることがある。
     void buildChildren(GraphData* graph) {
         children.assign(nodeSize, {});
+        std::vector<std::vector<std::pair<float, int>>> ordered(nodeSize);
         std::vector<int> indeg(nodeSize, 0);
 
         for (int i = 0; i < graph->edgeCount(); i++) {
             int from = graph->edgeFrom(i), to = graph->edgeTo(i);
             if (from < 0 || from >= nodeSize || to < 0 || to >= nodeSize) continue;
             if (from == to) continue;
-            children[from].push_back(to);
+            float order = graph->edgeData[(std::size_t)i * GraphData::EDGE_STRIDE + 2];
+            ordered[from].push_back({order, to});
             indeg[to]++;
+        }
+
+        for (int i = 0; i < nodeSize; i++) {
+            // 同じ並び順の値どうしは辺の追加順を保つ
+            std::stable_sort(ordered[i].begin(), ordered[i].end(),
+                             [](const std::pair<float, int>& a, const std::pair<float, int>& b) {
+                                 return a.first < b.first;
+                             });
+            for (const auto& p : ordered[i]) children[i].push_back(p.second);
         }
 
         roots.clear();
