@@ -318,9 +318,12 @@ export class PixiGraphApp {
             this.lastGeneration = state.generation;
             this.needsFit = true;
         }
-        if (this.needsFit && state.layoutStable) {
-            this.needsFit = false;
+        // 収束を待たずに追従させる。木は挿入のたびに形が変わるので、
+        // 安定するまで待つと育った先が画面の外へ出たままになる。
+        // 収束したところで合わせるのをやめ、以降は利用者の操作に任せる。
+        if (this.needsFit) {
             this.fitToView(nodeArray);
+            if (state.layoutStable) this.needsFit = false;
         }
 
         // グラフ自身の性質は C++ が唯一の情報源

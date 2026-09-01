@@ -80,6 +80,17 @@ export interface GraphState {
     /** ダイクストラの前提を外れる負の重みが混ざっているか */
     hasNegativeEdge?: boolean;
 
+    /** BstVisualizer のときだけ */
+    values?: number[];
+    /** これから挿入する値が values の何番目か */
+    pending?: number;
+    /** 今比べている節点。-1 なら次の値の挿入前 */
+    cursor?: number;
+    /** 直前の値が既にあったので捨てた */
+    duplicate?: boolean;
+    insertedCount?: number;
+    maxValues?: number;
+
     /** TraversalVisualizer かつ getState({ withProgress: true }) のときだけ */
     frontier?: number[];
     visitOrder?: number[];
