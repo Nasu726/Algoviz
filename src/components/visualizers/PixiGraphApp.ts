@@ -50,6 +50,7 @@ export class PixiGraphApp {
     private nodeRadius: number = 20.0;
     private isDirected: boolean = false;
     private isAutomaton: boolean = false;
+    private labelMode: GraphState['labelMode'] = 'index';
     private showWeights: boolean = false;
     
     // 状態管理フラグ
@@ -402,6 +403,7 @@ export class PixiGraphApp {
         // グラフ自身の性質は C++ が唯一の情報源
         this.isDirected = !!state.isDirected;
         this.isAutomaton = !!state.isAutomaton;
+        this.labelMode = state.labelMode ?? 'index';
         const startIdx: number = state.startNodeIndex ?? -1;
         const accepting: Set<number> = new Set(state.acceptingStates ?? []);
 
@@ -639,10 +641,11 @@ export class PixiGraphApp {
                 const labelText = group.getChildByLabel("labelText") as PIXI.Text;
                 if (labelText) {
                     labelText.visible = readable;
-                    // グラフの頂点は 0, 1, 2、オートマトンの状態は q₀, q₁, q₂。
-                    // どちらで書くかは分類で決まるので、利用者には選ばせない。
-                    labelText.text = this.isAutomaton
-                        ? `q${this.toSubscript(nodeIndex)}`
+                    // 何を表示名にするかは分類で決まる (C++ 側 labelMode)。
+                    // グラフの頂点は 0,1,2、オートマトンの状態は q₀,q₁,q₂、木は節点の値。
+                    labelText.text =
+                        this.labelMode === 'state' ? `q${this.toSubscript(nodeIndex)}`
+                        : this.labelMode === 'value' ? formatNodeValue(nodeArray[i + 2])
                         : `${nodeIndex}`;
                 }
 

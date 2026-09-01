@@ -40,6 +40,8 @@ export interface GraphState {
     startNodeIndex: number;
     isDirected: boolean;
     isAutomaton: boolean;
+    /** 頂点に出す表示名。分類ごとに C++ 側が決める */
+    labelMode: 'index' | 'state' | 'value';
     /** テキスト入力で頂点の重みを受け取ったか */
     hasNodeWeights: boolean;
     /** 重み付きグラフか。重み無しならテキストにも表示にも重みは出ない */
