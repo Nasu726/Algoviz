@@ -50,6 +50,7 @@ export class PixiGraphApp {
     private nodeRadius: number = 20.0;
     private isDirected: boolean = false;
     private isAutomaton: boolean = false;
+    private edgeSymbols: boolean = false;
     private labelMode: GraphState['labelMode'] = 'index';
     private showWeights: boolean = false;
     
@@ -418,6 +419,7 @@ export class PixiGraphApp {
         this.isDirected = !!state.isDirected;
         this.isAutomaton = !!state.isAutomaton;
         this.labelMode = state.labelMode ?? 'index';
+        this.edgeSymbols = !!state.edgeSymbols;
         const startIdx: number = state.startNodeIndex ?? -1;
         const accepting: Set<number> = new Set(state.acceptingStates ?? []);
 
@@ -426,10 +428,10 @@ export class PixiGraphApp {
         // 何が「重み」として意味を持つかはグラフ側の性質で決まる。
         // 重み無しグラフに辺の重みは無いし、頂点の脇の数字はダイクストラの
         // 暫定距離か、入力された頂点の重みのどちらかがあるときだけ意味を持つ。
-        // オートマトンの辺に載っているのは重みではなく遷移記号。
-        // 記号が無いと遷移が読めないので、表示の好みでは消さない。
+        // 辺に載っているのが記号のとき (オートマトンの遷移記号、trie の文字) は、
+        // それが無いと図が読めないので表示の好みでは消さない。
         const showEdgeWeight = readable &&
-            (this.isAutomaton || (this.showWeights && !!state.weighted));
+            (this.edgeSymbols || (this.showWeights && !!state.weighted));
         const hasNodeValue = state.nodeValueMode === 'distance' || !!state.hasNodeWeights;
         const showNodeValue = this.showWeights && readable && hasNodeValue;
 
@@ -502,7 +504,7 @@ export class PixiGraphApp {
 
                 const actualRadius = this.nodeRadius + 2;
                 // 3列目の意味はグラフの種類で変わる (C++ 側 usesSymbols)
-                textObj.text = this.isAutomaton
+                textObj.text = this.edgeSymbols
                     ? String.fromCharCode(weight)
                     : weight.toString();
 
@@ -660,6 +662,8 @@ export class PixiGraphApp {
                     labelText.text =
                         this.labelMode === 'state' ? `q${this.toSubscript(nodeIndex)}`
                         : this.labelMode === 'value' ? formatNodeValue(nodeArray[i + 2])
+                        // trie の節点には名前が無い。根からの道がその接頭辞を表す
+                        : this.labelMode === 'none' ? ''
                         : `${nodeIndex}`;
                 }
 

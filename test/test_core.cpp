@@ -13,6 +13,7 @@
 #include <cmath>
 #include <set>
 #include <map>
+#include <tuple>
 #include <array>
 #include <algorithm>
 
@@ -23,6 +24,7 @@
 #include "../cpp/include/TraversalVisualizer.hpp"
 #include "../cpp/include/BstVisualizer.hpp"
 #include "../cpp/include/HeapVisualizer.hpp"
+#include "../cpp/include/TrieVisualizer.hpp"
 
 using emscripten::val;
 
@@ -2959,6 +2961,192 @@ static void testHeapHandlesEmptyInput() {
     CHECK_EQ(h.getState(val::object())["nodeCount"].as<int>(), 0);
 }
 
+
+// ==========================================
+// trie (接頭辞木) の構築
+// ==========================================
+
+struct ParsedTrie {
+    int n = 0;
+    std::vector<std::vector<std::pair<char, int>>> children; // 文字コード順
+    std::set<int> terminals;
+};
+
+static ParsedTrie readTrie(TrieVisualizer& t) {
+    val s = t.getState(val::object());
+    ParsedTrie pt;
+    pt.n = s["nodeCount"].as<int>();
+    pt.children.assign(pt.n, {});
+
+    val edges = s["edges"];
+    int m = s["edgeCount"].as<int>();
+    for (int i = 0; i < m; i++) {
+        int from = (int)edges[i * GraphData::EDGE_STRIDE].as<float>();
+        int to   = (int)edges[i * GraphData::EDGE_STRIDE + 1].as<float>();
+        char c   = (char)(int)edges[i * GraphData::EDGE_STRIDE + 2].as<float>();
+        if (from >= 0 && from < pt.n) pt.children[from].push_back({c, to});
+    }
+
+    val accepting = s["acceptingStates"];
+    int k = accepting["length"].as<int>();
+    for (int i = 0; i < k; i++) pt.terminals.insert(accepting[i].as<int>());
+    return pt;
+}
+
+// 根から単語をたどれるか。たどり着けたら終端かどうかを返す
+static int walk(const ParsedTrie& pt, const std::string& word) {
+    int cur = 0;
+    for (char c : word) {
+        int next = -1;
+        for (const auto& e : pt.children[cur]) if (e.first == c) next = e.second;
+        if (next < 0) return -1;
+        cur = next;
+    }
+    return cur;
+}
+
+static ParsedTrie buildTrie(const std::string& words) {
+    TrieVisualizer t;
+    t.load("setWords", words);
+    t.runToEnd();
+    return readTrie(t);
+}
+
+static void testTrieHoldsExactlyTheInsertedWords() {
+    beginTest("入れた単語だけが終端として辿れる");
+
+    ParsedTrie pt = buildTrie("to tea ten ted i in inn");
+
+    // 入れた単語はすべて終端に届く
+    for (const char* w : {"to", "tea", "ten", "ted", "i", "in", "inn"}) {
+        int node = walk(pt, w);
+        g_checks++;
+        if (node < 0 || pt.terminals.count(node) == 0) {
+            reportFailure(std::string(w) + " が終端として辿れない");
+        }
+    }
+
+    // 接頭辞だけの並びは終端ではない
+    for (const char* w : {"t", "te", "tea?"}) {
+        int node = walk(pt, w);
+        CHECK(node < 0 || pt.terminals.count(node) == 0);
+    }
+    // 入れていない単語は辿れない
+    CHECK(walk(pt, "top") < 0);
+    CHECK(walk(pt, "z") < 0);
+}
+
+static void testTrieSharesCommonPrefixes() {
+    beginTest("共通の接頭辞は1本にまとまる");
+
+    // to / tea / ten / ted は t を共有し、tea / ten / ted は te まで共有する。
+    // 節点は 根 + t,o + e,a,n,d = 7 個で足りる。
+    ParsedTrie pt = buildTrie("to tea ten ted");
+    CHECK_EQ(pt.n, 7);
+
+    int t = walk(pt, "t");
+    CHECK(t > 0);
+    CHECK_EQ(walk(pt, "te"), walk(pt, "te")); // 同じ節点に着く
+    CHECK_EQ((int)pt.children[walk(pt, "te")].size(), 3); // a / n / d
+
+    // 同じ単語を2回入れても節点は増えない
+    ParsedTrie twice = buildTrie("to tea ten ted to tea");
+    CHECK_EQ(twice.n, pt.n);
+}
+
+static void testTrieChildrenAreInAlphabeticalOrder() {
+    beginTest("子は辞書順に並ぶ");
+
+    // 辺の3列目は文字コード。TreeLayout がこの値で並べ替えるので、
+    // 挿入した順ではなく辞書順に左から並ぶ。
+    TrieVisualizer t;
+    t.load("setWords", "tc ta tb");
+    t.runToEnd();
+    for (int i = 0; i < 400; i++) t.prepare();
+
+    val s = t.getState(val::object());
+    val nodes = s["nodes"];
+    ParsedTrie pt = readTrie(t);
+
+    int tn = walk(pt, "t");
+    CHECK(tn > 0);
+    std::vector<std::pair<char, float>> byChar;
+    for (const auto& e : pt.children[tn]) {
+        byChar.push_back({e.first, nodes[e.second * GraphData::NODE_STRIDE].as<float>()});
+    }
+    std::sort(byChar.begin(), byChar.end());
+    CHECK_EQ((int)byChar.size(), 3);
+    for (std::size_t i = 1; i < byChar.size(); i++) {
+        g_checks++;
+        if (!(byChar[i - 1].second < byChar[i].second)) {
+            reportFailure(std::string(1, byChar[i - 1].first) + " が " +
+                          std::string(1, byChar[i].first) + " より右に描かれている");
+        }
+    }
+}
+
+static void testTrieStepMatchesRunToEnd() {
+    beginTest("step を繰り返した結果と runToEnd の結果が一致する");
+
+    const char* inputs[] = { "to tea ten", "a", "aa ab", "" };
+    for (const char* in : inputs) {
+        TrieVisualizer stepwise;
+        stepwise.load("setWords", in);
+        int guard = 0;
+        while (stepwise.step() && guard++ < 2000) {}
+
+        TrieVisualizer atOnce;
+        atOnce.load("setWords", in);
+        atOnce.runToEnd();
+
+        ParsedTrie a = readTrie(stepwise), b = readTrie(atOnce);
+        CHECK_EQ(a.n, b.n);
+        CHECK(a.children == b.children);
+        CHECK(a.terminals == b.terminals);
+    }
+}
+
+static void testTrieStepBackReturnsToPreviousState() {
+    beginTest("stepBack で1手前の状態に戻る");
+
+    TrieVisualizer t;
+    t.load("setWords", "to tea");
+
+    auto snapshot = [&]() {
+        val s = t.getState(val::object());
+        return std::make_tuple(s["nodeCount"].as<int>(), s["cursor"].as<int>(),
+                               s["pending"].as<int>(), s["prefix"].as<std::string>());
+    };
+
+    std::vector<decltype(snapshot())> seen;
+    seen.push_back(snapshot());
+    CHECK(!t.getState(val::object())["canStepBack"].as<bool>());
+
+    int guard = 0;
+    while (t.step() && guard++ < 2000) seen.push_back(snapshot());
+
+    for (int i = (int)seen.size() - 1; i >= 1; i--) {
+        t.stepBack();
+        CHECK(snapshot() == seen[i - 1]);
+    }
+    CHECK(!t.getState(val::object())["canStepBack"].as<bool>());
+}
+
+static void testTrieHandlesEmptyInput() {
+    beginTest("単語が1つも無くても根だけが残る");
+
+    TrieVisualizer t;
+    t.load("setWords", "");
+    t.runToEnd();
+    val s = t.getState(val::object());
+    CHECK_EQ(s["nodeCount"].as<int>(), 1); // 根だけ
+    CHECK_EQ(s["edgeCount"].as<int>(), 0);
+    CHECK(s["finished"].as<bool>());
+
+    t.stepBack(); // 戻せないときに何も壊さない
+    CHECK_EQ(t.getState(val::object())["nodeCount"].as<int>(), 1);
+}
+
 // ==========================================
 
 int main(int argc, char** argv) {
@@ -3096,6 +3284,14 @@ int main(int argc, char** argv) {
     testHeapStepMatchesRunToEnd();
     testHeapStepBackReturnsToPreviousState();
     testHeapHandlesEmptyInput();
+
+    beginSection("trie の構築");
+    testTrieHoldsExactlyTheInsertedWords();
+    testTrieSharesCommonPrefixes();
+    testTrieChildrenAreInAlphabeticalOrder();
+    testTrieStepMatchesRunToEnd();
+    testTrieStepBackReturnsToPreviousState();
+    testTrieHandlesEmptyInput();
 
     if (g_failures == 0) {
         std::cout << "core: OK (" << g_checks << " checks)" << std::endl;

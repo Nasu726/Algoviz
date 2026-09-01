@@ -125,6 +125,7 @@ function App() {
       {/* 木 */}
       <Route path="/tree/bst" element={<TreeWrapper engine={engineRef.current!} variant="bst" />} />
       <Route path="/tree/heap" element={<TreeWrapper engine={engineRef.current!} variant="heap" />} />
+      <Route path="/tree/trie" element={<TreeWrapper engine={engineRef.current!} variant="trie" />} />
 
       {/* 描くだけのページ。メニューには載せないが、レイアウトとパッキングの
           回帰を目視確認する手段としてルートは残す */}

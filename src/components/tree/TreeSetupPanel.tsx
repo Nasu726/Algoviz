@@ -1,5 +1,6 @@
 import React from 'react';
 import { Section, NumberInput, Check } from '../graph/panelParts';
+import { usesWords } from './types';
 import type { TreeVariant } from './types';
 
 interface Props {
@@ -25,10 +26,11 @@ export const TreeSetupPanel: React.FC<Props> = ({
 }) => {
     const fontSize = compact ? '12px' : '13px';
     const button: React.CSSProperties = { padding: '8px', cursor: 'pointer' };
+    const words = usesWords(variant);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', fontSize }}>
-            <Section title="挿入する値">
+            <Section title={words ? '挿入する単語' : '挿入する値'}>
                 <textarea
                     value={valueText}
                     onChange={(e) => setValueText(e.target.value)}
@@ -36,9 +38,11 @@ export const TreeSetupPanel: React.FC<Props> = ({
                         width: '100%', height: compact ? '70px' : '90px',
                         fontFamily: 'monospace', resize: 'vertical', boxSizing: 'border-box',
                     }}
-                    placeholder="50 30 70 20 40"
+                    placeholder={words ? 'to tea ten ted' : '50 30 70 20 40'}
                 />
-                <button onClick={onApply} style={button}>📝 この値で作り直す</button>
+                <button onClick={onApply} style={button}>
+                    📝 {words ? 'この単語で作り直す' : 'この値で作り直す'}
+                </button>
             </Section>
 
             {/* どちらも正しいヒープで、分類では決まらないので選ばせる */}
@@ -50,15 +54,20 @@ export const TreeSetupPanel: React.FC<Props> = ({
                 </Section>
             )}
 
-            <Section title="ランダム生成">
-                <div>
-                    個数: <NumberInput value={count} max={maxValues} onChange={setCount} />
-                </div>
-                <button onClick={onGenerateRandom} style={button}>ランダム生成</button>
-            </Section>
+            {/* 単語のランダム生成に意味のある形が無いので、値のときだけ出す */}
+            {!words && (
+                <Section title="ランダム生成">
+                    <div>
+                        個数: <NumberInput value={count} max={maxValues} onChange={setCount} />
+                    </div>
+                    <button onClick={onGenerateRandom} style={button}>ランダム生成</button>
+                </Section>
+            )}
 
             <p style={{ margin: 0, fontSize: '12px', color: '#78909c', lineHeight: 1.6 }}>
-                値は左から順に挿入します。上限は {maxValues} 個です。
+                {words
+                    ? `単語は空白で区切って、左から順に挿入します。上限は ${maxValues} 個です。`
+                    : `値は左から順に挿入します。上限は ${maxValues} 個です。`}
             </p>
         </div>
     );

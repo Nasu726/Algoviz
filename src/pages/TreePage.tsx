@@ -8,7 +8,7 @@ import { TreeHelp } from '../components/tree/TreeHelp';
 import { useKeyboardShortcuts } from '../hooks/keyboardShortcut';
 import { useLayoutTier } from '../hooks/useLayoutTier';
 import { usePlayback } from '../hooks/usePlayback';
-import { TREE_TITLE, treeAlgorithm, defaultValues } from '../components/tree/types';
+import { TREE_TITLE, treeAlgorithm, defaultValues, usesWords } from '../components/tree/types';
 import type { TreeVariant } from '../components/tree/types';
 import type { VisualizerEngine, GraphState } from '../types/engine';
 
@@ -48,7 +48,7 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
 
     const applyValues = () => {
         setIsPlaying(false);
-        engine.load('setValues', latest.current.valueText);
+        engine.load(usesWords(variant) ? 'setWords' : 'setValues', latest.current.valueText);
         readState();
     };
 
@@ -65,7 +65,7 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
         if (!engine) return;
         setIsPlaying(false);
         engine.setAlgorithm(treeAlgorithm(variant));
-        engine.load('setValues', latest.current.valueText);
+        engine.load(usesWords(variant) ? 'setWords' : 'setValues', latest.current.valueText);
         readState();
         setIsLoaded(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -97,7 +97,7 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
     });
 
     const compact = tier === 'narrow';
-    const maxValues = state?.maxValues ?? 50;
+    const maxValues = usesWords(variant) ? (state?.maxWords ?? 12) : (state?.maxValues ?? 50);
 
     return (
         <VisualizerShell

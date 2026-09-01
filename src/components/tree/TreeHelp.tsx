@@ -102,5 +102,52 @@ const HeapHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
     </>
 );
 
+
+const TrieHelp: React.FC<{ maxWords: number }> = ({ maxWords }) => (
+    <>
+        <h3>1. 画面の見方</h3>
+        <ul>
+            <li><b>枝に書かれた文字</b>がその一歩で読む文字。根からの道をつなげたものが接頭辞になる</li>
+            <li>節点そのものには名前が無い。だから丸の中は空</li>
+            <li><b>二重丸</b>がそこで終わる単語がある印</li>
+            <li>枝は文字の順に左から並ぶ</li>
+        </ul>
+
+        <h3>2. 1ステップの単位</h3>
+        <p><b>1文字進む</b>のが1ステップです。単語を1つ入れるのに、根から文字数ぶんのステップがかかります。</p>
+        <ul>
+            <li>その文字の枝が既にあればたどるだけ。無ければ新しい節点を作る</li>
+            <li>共通の接頭辞を持つ単語は、枝を共有して1本にまとまる</li>
+            <li>読み切ったところで二重丸が付く</li>
+        </ul>
+
+        <h3>3. 単語の入れ方</h3>
+        <p>空白か改行で区切って並べます。左から順に挿入します。</p>
+        <pre style={codeBlock}>to tea ten ted i in inn</pre>
+        <ul>
+            <li>単語の数の上限は {maxWords}</li>
+            <li>同じ単語を2回入れても節点は増えない</li>
+        </ul>
+
+        <h3>4. 画面の操作</h3>
+        <ul>
+            <li><b>ドラッグ</b>：表示位置を動かす</li>
+            <li><b>ホイール / 2本指のピンチ</b>：拡大・縮小</li>
+        </ul>
+
+        <h3>5. ショートカットキー</h3>
+        <ul>
+            <li><b>Esc</b>：ビジュアライザ一覧へ戻る</li>
+            <li><b>Ctrl + H</b>：ヘルプを開く</li>
+            <li><b>Ctrl + S</b>：この単語で作り直す</li>
+            <li><b>Ctrl + Enter</b>：実行 / 一時停止</li>
+            <li><b>Ctrl + &larr;</b> / <b>&rarr;</b>：戻る / 進む</li>
+            <li><b>Ctrl + &uarr;</b> / <b>&darr;</b>：実行速度の増減</li>
+        </ul>
+    </>
+);
+
 export const TreeHelp: React.FC<{ variant: TreeVariant; maxValues: number }> = ({ variant, maxValues }) =>
-    variant === 'heap' ? <HeapHelp maxValues={maxValues} /> : <BstHelp maxValues={maxValues} />;
+    variant === 'trie' ? <TrieHelp maxWords={maxValues} />
+    : variant === 'heap' ? <HeapHelp maxValues={maxValues} />
+    : <BstHelp maxValues={maxValues} />;
