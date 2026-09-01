@@ -404,6 +404,8 @@ public:
         if (!graph) return state;
 
         state.set("nodes", graph->getNodeView());
+        // 節点ごとの半幅。B木のように1つの節点が複数の値を持つものが使う
+        state.set("nodeHalfWidths", graph->getNodeHalfWidthView());
         state.set("edges", graph->getEdgeView());
         state.set("nodeCount", graph->nodeCount());
         state.set("edgeCount", graph->edgeCount());

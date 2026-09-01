@@ -2487,14 +2487,69 @@ static void testTreeNodesDoNotOverlap() {
     TreeLayout layout;
     placeTree(g, layout);
 
-    // 深さごとにまとめて、隣り合う節点の間隔を見る
+    // 深さごとにまとめて、隣り合う節点の間隔を見る。
+    // SIBLING_GAP は縁どうしの間隔なので、既定の幅なら中心の間隔は
+    // 半幅 x 2 + SIBLING_GAP になる。
+    const float MIN_CENTER_GAP =
+        GraphData::DEFAULT_HALF_WIDTH * 2.0f + TreeLayout::SIBLING_GAP;
     std::map<float, std::vector<float>> rows;
     for (int i = 0; i < g.nodeCount(); i++) rows[nodeY(g, i)].push_back(nodeX(g, i));
     for (auto& row : rows) {
         std::sort(row.second.begin(), row.second.end());
         for (std::size_t i = 1; i < row.second.size(); i++) {
-            CHECK(row.second[i] - row.second[i - 1] >= TreeLayout::SIBLING_GAP - 0.01f);
+            CHECK(row.second[i] - row.second[i - 1] >= MIN_CENTER_GAP - 0.01f);
         }
+    }
+}
+
+static void testWideNodesDoNotOverlap() {
+    beginTest("幅の広い節点どうしも重ならない");
+
+    // 真ん中の子だけを広くする。幅を見ていないと、両隣にめり込む。
+    //      0
+    //   /  |      //  1   2   3     ← 2 だけ幅が広い
+    GraphData g = makeTree(4, {{0, 1}, {0, 2}, {0, 3}});
+    g.setHalfWidth(2, 90.0f);
+
+    TreeLayout layout;
+    placeTree(g, layout);
+
+    // 縁どうしが SIBLING_GAP 以上あいているか
+    for (int i = 1; i <= 3; i++) {
+        for (int j = i + 1; j <= 3; j++) {
+            if (nodeY(g, i) != nodeY(g, j)) continue;
+            float gap = std::fabs(nodeX(g, i) - nodeX(g, j))
+                      - g.halfWidthOf(i) - g.halfWidthOf(j);
+            g_checks++;
+            if (gap < TreeLayout::SIBLING_GAP - 0.01f) {
+                reportFailure("節点 " + std::to_string(i) + " と " + std::to_string(j) +
+                              " の縁が " + std::to_string(gap) + " しかあいていない");
+            }
+        }
+    }
+
+    // 親は端の子2つの中央のまま
+    CHECK_NEAR(nodeX(g, 0), (nodeX(g, 1) + nodeX(g, 3)) / 2.0f, 0.01f);
+}
+
+static void testDefaultWidthKeepsOldLayout() {
+    beginTest("幅を指定しなければ今までと同じ配置になる");
+
+    // 幅を可変にした影響で、既存の木の見た目が変わっていないこと
+    std::vector<std::pair<int, int>> edges = {{0, 1}, {0, 2}, {1, 3}, {1, 4}, {2, 5}, {2, 6}};
+
+    GraphData plain = makeTree(7, edges);
+    TreeLayout l1;
+    placeTree(plain, l1);
+
+    GraphData explicitWidth = makeTree(7, edges);
+    for (int i = 0; i < 7; i++) explicitWidth.setHalfWidth(i, GraphData::DEFAULT_HALF_WIDTH);
+    TreeLayout l2;
+    placeTree(explicitWidth, l2);
+
+    for (int i = 0; i < 7; i++) {
+        CHECK_NEAR(nodeX(plain, i), nodeX(explicitWidth, i), 0.01f);
+        CHECK_NEAR(nodeY(plain, i), nodeY(explicitWidth, i), 0.01f);
     }
 }
 
@@ -3658,6 +3713,8 @@ int main(int argc, char** argv) {
     testTreeDepthBecomesY();
     testTreeParentIsCenteredOverChildren();
     testTreeNodesDoNotOverlap();
+    testWideNodesDoNotOverlap();
+    testDefaultWidthKeepsOldLayout();
     testForestIsPlacedSideBySide();
     testTreeLayoutHandlesEdgeCases();
     testTreeLayoutEasesToTarget();
@@ -3705,6 +3762,7 @@ int main(int argc, char** argv) {
     testAvlStepMatchesRunToEnd();
     testAvlStepBackReturnsToPreviousState();
     testAvlHandlesEmptyInput();
+
 
     if (g_failures == 0) {
         std::cout << "core: OK (" << g_checks << " checks)" << std::endl;

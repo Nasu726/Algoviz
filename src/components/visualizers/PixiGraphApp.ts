@@ -52,6 +52,7 @@ export class PixiGraphApp {
     private isAutomaton: boolean = false;
     private edgeSymbols: boolean = false;
     private nodeLabels: string[] = [];
+    private halfWidths: Float32Array = new Float32Array(0);
     private labelMode: GraphState['labelMode'] = 'index';
     private showWeights: boolean = false;
     
@@ -76,6 +77,28 @@ export class PixiGraphApp {
     private lastPinchDist = 0;
 
     // 数字を下付き文字（Unicode）に変換する関数
+    // 節点の半幅。指定が無ければ半径と同じ (今までどおりの円)
+    private halfWidthOf(i: number): number {
+        const w = this.halfWidths[i];
+        return Number.isFinite(w) && w > 0 ? w : this.nodeRadius;
+    }
+
+    // 節点の中心から、外周までの距離を向き (dx, dy) について返す。
+    // 円なら半径そのもの、横長の箱なら箱との交点までの距離。
+    private edgeInset(i: number, dx: number, dy: number): number {
+        const hw = this.halfWidthOf(i);
+        const hh = this.nodeRadius;
+        if (hw <= hh + 0.01) return hh + 2; // 円のまま
+
+        const len = Math.hypot(dx, dy);
+        if (len < 1e-6) return hh + 2;
+        const nx = Math.abs(dx) / len, ny = Math.abs(dy) / len;
+        // 箱の縁に当たるまでの距離。x か y のどちらが先に縁へ届くか
+        const tx = nx > 1e-6 ? hw / nx : Infinity;
+        const ty = ny > 1e-6 ? hh / ny : Infinity;
+        return Math.min(tx, ty) + 2;
+    }
+
     private toSubscript(num: number): string {
         const subscripts = ['₀', '₁', '₂', '₃', '₄', '₅', '₆', '₇', '₈', '₉'];
         return num.toString().split('').map(digit => subscripts[parseInt(digit, 10)]).join('');
@@ -422,6 +445,7 @@ export class PixiGraphApp {
         this.labelMode = state.labelMode ?? 'index';
         this.edgeSymbols = !!state.edgeSymbols;
         this.nodeLabels = state.nodeLabels ?? [];
+        this.halfWidths = state.nodeHalfWidths ?? new Float32Array(0);
         const startIdx: number = state.startNodeIndex ?? -1;
         const accepting: Set<number> = new Set(state.acceptingStates ?? []);
 
@@ -582,8 +606,11 @@ export class PixiGraphApp {
                     if (actualOffset === 0) {
                         // 直線
                         const ndx = dx / dist, ndy = dy / dist;
-                        const startX = fx + ndx * actualRadius, startY = fy + ndy * actualRadius;
-                        const endX = tx - ndx * actualRadius, endY = ty - ndy * actualRadius;
+                        // 節点ごとに形が違うので、端点はそれぞれの縁で止める
+                        const fromInset = this.edgeInset(fromIdx, ndx, ndy);
+                        const toInset   = this.edgeInset(toIdx, ndx, ndy);
+                        const startX = fx + ndx * fromInset, startY = fy + ndy * fromInset;
+                        const endX = tx - ndx * toInset, endY = ty - ndy * toInset;
 
                         this.edgeGraphics.moveTo(startX, startY).lineTo(endX, endY).stroke(strokeStyle);
 
@@ -602,11 +629,13 @@ export class PixiGraphApp {
                         
                         const vFromControlX = controlX - fx, vFromControlY = controlY - fy;
                         const lenFrom = Math.sqrt(vFromControlX ** 2 + vFromControlY ** 2);
-                        const startX = fx + (vFromControlX / lenFrom) * actualRadius, startY = fy + (vFromControlY / lenFrom) * actualRadius;
+                        const fromInset = this.edgeInset(fromIdx, vFromControlX, vFromControlY);
+                        const startX = fx + (vFromControlX / lenFrom) * fromInset, startY = fy + (vFromControlY / lenFrom) * fromInset;
 
                         const vToControlX = controlX - tx, vToControlY = controlY - ty;
                         const lenTo = Math.sqrt(vToControlX ** 2 + vToControlY ** 2);
-                        const endX = tx + (vToControlX / lenTo) * actualRadius, endY = ty + (vToControlY / lenTo) * actualRadius;
+                        const toInset = this.edgeInset(toIdx, vToControlX, vToControlY);
+                        const endX = tx + (vToControlX / lenTo) * toInset, endY = ty + (vToControlY / lenTo) * toInset;
 
                         this.edgeGraphics.moveTo(startX, startY).quadraticCurveTo(controlX, controlY, endX, endY).stroke(strokeStyle);
 
@@ -649,10 +678,17 @@ export class PixiGraphApp {
                 group.x = x; group.y = y;
 
                 const borderColor = nodeStroke(colorId);
+                const halfWidth = this.halfWidthOf(nodeIndex);
                 const bg = group.children[0] as PIXI.Graphics;
-                bg.clear().circle(0, 0, this.nodeRadius)
-                  .fill(nodeFill(colorId))
-                  .stroke({ width: 3, color: borderColor });
+                bg.clear();
+                if (halfWidth > this.nodeRadius + 0.01) {
+                    // 値を並べる節点 (B木) は角丸の長方形。高さは円と同じ
+                    bg.roundRect(-halfWidth, -this.nodeRadius,
+                                 halfWidth * 2, this.nodeRadius * 2, this.nodeRadius * 0.6);
+                } else {
+                    bg.circle(0, 0, this.nodeRadius);
+                }
+                bg.fill(nodeFill(colorId)).stroke({ width: 3, color: borderColor });
 
                 
                 // labelText のみを取得してテキストを更新する
