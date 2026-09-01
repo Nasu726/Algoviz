@@ -1989,7 +1989,7 @@ static void testCircularOrderReducesCrossings() {
     beginTest("円形配置は構造順に並べて弦の交差を減らす");
 
     struct Case { int clusters, per; };
-    const Case cases[] = { {3, 6}, {4, 5}, {2, 8} };
+    const Case cases[] = { {3, 6}, {4, 6}, {2, 8} };
 
     for (const auto& c : cases) {
         ClusteredGraph cg = makeClusteredGraph(c.clusters, c.per);
@@ -1998,6 +1998,11 @@ static void testCircularOrderReducesCrossings() {
         g.load("horizontal", cg.command);
         g.prepare();
         ParsedGraph pg = readGraph(g);
+
+        // 円形配置になっていなければ、この比較は円周の並び順を見ていない。
+        // ringOrderFromPositions はどんな配置でも角度順を返してしまうので、
+        // ここを確かめないとテストが黙って別のものを検査する。
+        CHECK(looksCircular(pg));
 
         std::vector<int> byIndex(cg.v);
         for (int i = 0; i < cg.v; i++) byIndex[i] = i;
@@ -2043,6 +2048,98 @@ static void testCircularOrderPlacesEveryVertexOnce() {
     g_checks++;
     // ノード半径は 20。円形配置は直径 + 隙間を確保して半径を決めている
     if (worst < 40.0f) reportFailure("頂点が近すぎる: 最接近 " + std::to_string(worst));
+}
+
+// 辺の並びから custom コマンドを組み立てる
+static std::string customCommand(int v, const std::vector<std::pair<int, int>>& edges) {
+    std::ostringstream oss;
+    oss << "custom 1 0 0 0\n" << v << " " << edges.size() << "\n";
+    for (const auto& e : edges) oss << e.first << " " << e.second << "\n";
+    return oss.str();
+}
+
+static bool laidOutAsCircle(int v, const std::vector<std::pair<int, int>>& edges) {
+    GraphVisualizer g;
+    g.load("horizontal", customCommand(v, edges));
+    g.prepare();
+    return looksCircular(readGraph(g));
+}
+
+static std::vector<std::pair<int, int>> starEdges(int n) {
+    std::vector<std::pair<int, int>> e;
+    for (int i = 1; i < n; i++) e.push_back({0, i});
+    return e;
+}
+
+static std::vector<std::pair<int, int>> binaryTreeEdges(int n) {
+    std::vector<std::pair<int, int>> e;
+    for (int i = 1; i < n; i++) e.push_back({(i - 1) / 2, i});
+    return e;
+}
+
+static std::vector<std::pair<int, int>> gridEdges(int w, int h) {
+    std::vector<std::pair<int, int>> e;
+    auto id = [&](int r, int c) { return r * w + c; };
+    for (int r = 0; r < h; r++) {
+        for (int c = 0; c < w; c++) {
+            if (c + 1 < w) e.push_back({id(r, c), id(r, c + 1)});
+            if (r + 1 < h) e.push_back({id(r, c), id(r + 1, c)});
+        }
+    }
+    return e;
+}
+
+static std::vector<std::pair<int, int>> wheelEdges(int n) {
+    std::vector<std::pair<int, int>> e;
+    for (int i = 1; i < n; i++) e.push_back({0, i});
+    for (int i = 1; i < n; i++) e.push_back({i, (i % (n - 1)) + 1});
+    return e;
+}
+
+static std::vector<std::pair<int, int>> completeEdges(int n) {
+    std::vector<std::pair<int, int>> e;
+    for (int i = 0; i < n; i++) for (int j = i + 1; j < n; j++) e.push_back({i, j});
+    return e;
+}
+
+static void testSparseStructuresKeepForceLayout() {
+    beginTest("力学モデルがきれいに描ける形は円形にしない");
+
+    // どれも力学モデルが構造を見せられる形。円形にすると読めなくなる。
+    // 特に星は、円周に並べるとハブが縁に来て弦が全部円を横切る。
+    CHECK(!laidOutAsCircle(20, starEdges(20)));       // 平均次数 1.9
+    CHECK(!laidOutAsCircle(31, binaryTreeEdges(31))); // 1.94
+    CHECK(!laidOutAsCircle(25, gridEdges(5, 5)));     // 3.2
+    CHECK(!laidOutAsCircle(36, gridEdges(6, 6)));     // 3.33
+    CHECK(!laidOutAsCircle(20, wheelEdges(20)));      // 3.8
+}
+
+static void testDenseStructuresUseCircularLayout() {
+    beginTest("どう置いても辺が交わる密度なら円形にする");
+
+    CHECK(laidOutAsCircle(8, completeEdges(8)));   // 平均次数 7
+    CHECK(laidOutAsCircle(12, completeEdges(12))); // 11
+}
+
+static void testCircularCutoffIsAboutAverageDegree() {
+    beginTest("切り替えは頂点数ではなく平均次数で決まる");
+
+    // 同じ平均次数なら、頂点数が変わっても判定は変わらない。
+    // 密度そのもので切ると、大きいグラフほど円形になりにくくなってしまう。
+    for (int n : {12, 20, 30}) {
+        // 平均次数 4 の環状グラフ (各頂点を隣と2つ先に繋ぐ)
+        std::vector<std::pair<int, int>> sparse;
+        for (int i = 0; i < n; i++) {
+            sparse.push_back({i, (i + 1) % n});
+            sparse.push_back({i, (i + 2) % n});
+        }
+        CHECK(!laidOutAsCircle(n, sparse));
+
+        // 平均次数 6
+        std::vector<std::pair<int, int>> dense = sparse;
+        for (int i = 0; i < n; i++) dense.push_back({i, (i + 3) % n});
+        CHECK(laidOutAsCircle(n, dense));
+    }
 }
 
 static void testCircularOrderHandlesEdgeCases() {
@@ -2842,6 +2939,9 @@ int main(int argc, char** argv) {
     testCircularOrderReducesCrossings();
     testCircularOrderPlacesEveryVertexOnce();
     testCircularOrderHandlesEdgeCases();
+    testSparseStructuresKeepForceLayout();
+    testDenseStructuresUseCircularLayout();
+    testCircularCutoffIsAboutAverageDegree();
 
     beginSection("重み付き / 重み無し");
     testUnweightedGraphHasNoWeightColumn();

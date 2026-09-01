@@ -414,25 +414,20 @@ private:
     // ==========================================
     // 密度に基づくハイブリッド初期配置
     // ==========================================
-    // 密度がこれを超えたら円形配置にする。
+    // 円形配置に切り替える平均次数。
     //
-    // 【触るときの注意】
-    // 呼び出し側が渡す maxK は最大次数ではなく「自分より大きい番号の隣接数」の
-    // 最大値になっている (comp_edges の二重カウント防止の u < v ガードに
-    // k_count が巻き込まれているため)。つまり同じグラフでも頂点の採番で
-    // しきい値が変わる。
+    // 密度 D = 2E / V(V-1)、平均次数 K = 2E / V なので D = K / (V-1)。
+    // つまり「D >= C/(V-1)」は「平均次数が C 以上」と同じで、頂点数に依らない。
     //
-    // ただしこれを単体で直すと min(1, C/maxK) が小さくなってしきい値が下がり、
-    // 円形になる頻度が「増える」。C の引き上げとセットでないと逆効果になる。
-    //
-    // また、円形配置は結果として下の jacobiMethod (古典ヤコビ法、実質 O(n^4)) を
-    // 回避する性能ガードも兼ねている。しきい値を上げると重い経路へ流れ込む
-    // 頂点数も増える。レイアウトアルゴリズムの組み合わせを見直すまでは触らないこと。
-    float getDensityThreshold(float V, int maxK) {
-        if (V <= 1) return 1.0;
-        const float C = 3; // 許容平均次数
-        float density_threshold = C / (V - 1) * std::min((float)1.0, C / maxK);
-        return std::min((float)1.0, density_threshold);
+    // 5 にしているのは、平均次数4までなら力学モデルが構造を見せられるから。
+    // 格子 (3.2)、車輪 (3.8)、木 (2) はどれも力学モデルの方がきれいに出る。
+    // 完全グラフ (K8 なら 7) のように、どう配置しても辺が交わる密度になって
+    // 初めて円形の方が読める。
+    static constexpr float CIRCULAR_MIN_DEGREE = 5.0f;
+
+    float getDensityThreshold(float V) {
+        if (V <= 1) return 1.0f;
+        return std::min(1.0f, CIRCULAR_MIN_DEGREE / (V - 1));
     }
 
     void applySmartInitialLayout(GraphData* graph, const std::vector<std::vector<int>>& adj) {
@@ -455,19 +450,12 @@ private:
             }
 
             // 1. コンポーネント内の辺の数 (E) をカウント
+            // 無向グラフの重複カウントを防ぐため u < v のみ数える
             int comp_edges = 0;
-            int maxK = 0;
             for (int u : components[c]) {
-                int k_count = 0;
                 for (int v : adj[u]) {
-                    // 両方の頂点がこのコンポーネントに属しているか（通常は属している）
-                    // 無向グラフの重複カウントを防ぐため u < v のみカウント
-                    if (u < v) {
-                        comp_edges++; 
-                        k_count++;
-                    }
+                    if (u < v) comp_edges++;
                 }
-                maxK = std::max(maxK, k_count);
             }
 
             // 2. 密度の計算: D = 2E / V(V-1)
@@ -476,7 +464,7 @@ private:
             // ==================================================
             // 高密度グラフ -> 円状配置 (Circular Layout)
             // ==================================================
-            if (density >= getDensityThreshold(n, maxK)) {
+            if (density >= getDensityThreshold(n)) {
                 is_circular_layout[c] = true;
                 // ★ PixiJS側の nodeRadius (20.0) を基準に、重ならない半径を計算
                 float nodeRadius = 20.0f;
