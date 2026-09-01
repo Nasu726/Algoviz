@@ -41,7 +41,9 @@ export interface GraphState {
     isDirected: boolean;
     isAutomaton: boolean;
     /** 頂点に出す表示名。分類ごとに C++ 側が決める */
-    labelMode: 'index' | 'state' | 'value' | 'none';
+    labelMode: 'index' | 'state' | 'value' | 'none' | 'text';
+    /** labelMode が text のときに使う、節点ごとの表示名 */
+    nodeLabels?: string[];
     /** 辺の3列目が重みではなく記号 (1文字) か */
     edgeSymbols: boolean;
     /** テキスト入力で頂点の重みを受け取ったか */
@@ -81,6 +83,14 @@ export interface GraphState {
     nodeValueMode?: 'weight' | 'distance';
     /** ダイクストラの前提を外れる負の重みが混ざっているか */
     hasNegativeEdge?: boolean;
+
+    /** HuffmanVisualizer のときだけ */
+    counts?: { ch: string; count: number }[];
+    /** まだ繋がっていない木の数 */
+    rootCount?: number;
+    selectedA?: number;
+    selectedB?: number;
+    maxLeaves?: number;
 
     /** TrieVisualizer のときだけ */
     words?: string[];

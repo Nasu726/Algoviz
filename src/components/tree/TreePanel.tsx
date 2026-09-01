@@ -2,7 +2,7 @@ import React from 'react';
 import { PlaybackControls } from '../ui/PlaybackControls';
 import { NODE_STROKE, EDGE_COLOR } from '../visualizers/PixiGraphApp';
 import { Section, Swatch } from '../graph/panelParts';
-import { usesWords } from './types';
+import { usesWords, usesText } from './types';
 import type { TreeVariant } from './types';
 import type { GraphState } from '../../types/engine';
 
@@ -34,14 +34,21 @@ export const TreePanel: React.FC<Props> = ({
     const dim = { color: '#90a4ae' };
 
     const trie = usesWords(variant);
+    const huffman = usesText(variant);
     // trie は値の列ではなく単語の列を入れる
-    const items: (number | string)[] = trie ? (state?.words ?? []) : (state?.values ?? []);
+    const items: (number | string)[] = huffman
+        ? (state?.counts ?? []).map((c) => `${c.ch}:${c.count}`)
+        : trie ? (state?.words ?? []) : (state?.values ?? []);
     const pending = state?.pending ?? 0;
     const cursor = state?.cursor ?? -1;
     const inserted = state?.insertedCount ?? 0;
 
     const heap = variant === 'heap';
-    const statusText = state?.finished ? 'すべて挿入し終えました'
+    const statusText = huffman
+        ? (state?.finished ? '1本の木にまとまりました'
+           : (state?.selectedA ?? -1) >= 0 ? 'この2つを繋ぎます'
+           : '重みが最小の2つを選びます')
+        : state?.finished ? 'すべて挿入し終えました'
         : cursor >= 0 ? (heap ? '親と比べながら上げています'
                         : trie ? '1文字ずつ降りています'
                         : '比べながら降りています')
@@ -58,8 +65,8 @@ export const TreePanel: React.FC<Props> = ({
                 : items.map((v, i) => (
                 <span key={i} style={{
                     marginRight: '8px',
-                    color: i < pending ? '#90a4ae' : i === pending ? '#e74c3c' : '#000',
-                    fontWeight: i === pending ? 'bold' : 'normal',
+                    color: huffman ? '#000' : i < pending ? '#90a4ae' : i === pending ? '#e74c3c' : '#000',
+                    fontWeight: !huffman && i === pending ? 'bold' : 'normal',
                 }}>
                     {v}
                 </span>
@@ -70,23 +77,31 @@ export const TreePanel: React.FC<Props> = ({
     const progress = (
         <div style={{ fontSize, lineHeight: 1.7, minWidth: 0 }}>
             {queue}
-            <div>
-                <b>{trie ? '今挿入している単語' : '今挿入している値'}</b>:{' '}
-                {pending < items.length ? items[pending] : <span style={dim}>なし</span>}
-            </div>
+            {huffman ? (
+                <div>
+                    <b>まだ繋がっていない木</b>: {state?.rootCount ?? 0}
+                </div>
+            ) : (
+                <div>
+                    <b>{trie ? '今挿入している単語' : '今挿入している値'}</b>:{' '}
+                    {pending < items.length ? items[pending] : <span style={dim}>なし</span>}
+                </div>
+            )}
             {trie && (
                 <div>
                     <b>ここまで読んだ接頭辞</b>:{' '}
                     {state?.prefix ? <code>{state.prefix}</code> : <span style={dim}>なし</span>}
                 </div>
             )}
-            <div>
-                <b>{heap ? '上げている位置' : trie ? '今いる節点' : '比べている節点'}</b>:{' '}
-                {cursor >= 0 ? '光っている節点' : <span style={dim}>なし</span>}
-            </div>
+            {!huffman && (
+                <div>
+                    <b>{heap ? '上げている位置' : trie ? '今いる節点' : '比べている節点'}</b>:{' '}
+                    {cursor >= 0 ? '光っている節点' : <span style={dim}>なし</span>}
+                </div>
+            )}
             <div>
                 <b>節点の数</b>: {inserted}
-                {!trie && <span style={dim}> / {items.length}</span>}
+                {!trie && !huffman && <span style={dim}> / {items.length}</span>}
             </div>
             {!heap && state?.duplicate && (
                 <div style={{ color: '#e67e22' }}>同じ値が既にあったので入れませんでした</div>
@@ -100,7 +115,14 @@ export const TreePanel: React.FC<Props> = ({
 
     const legend = (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px' }}>
-            {trie ? (
+            {huffman ? (
+                <>
+                    <Swatch color={NODE_STROKE[2]} label="繋ぐ2つのうち左" />
+                    <Swatch color={NODE_STROKE[1]} label="繋ぐ2つのうち右" />
+                    <Swatch color={NODE_STROKE[4]} label="今作った節点" />
+                    <Swatch color={EDGE_COLOR[2]} label="今繋いだ枝" isEdge />
+                </>
+            ) : trie ? (
                 <>
                     <Swatch color={NODE_STROKE[2]} label="今いる節点" />
                     <Swatch color={NODE_STROKE[3]} label="通った節点" />

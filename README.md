@@ -6,8 +6,28 @@
 
 ## 現在利用可能なビジュアライザ
 
-- [Brainfuck](https://algoviz.nasu.uk/brainfuck) — テープとポインタの動きを1命令ずつ追える
-- [グラフ探索](https://algoviz.nasu.uk/graph) — BFS / DFS の探索過程を1手ずつ追える。オートマトンの表示にも対応
+1ページ1アルゴリズムです。
+
+**グラフ探索**
+
+- [幅優先探索 (BFS)](https://algoviz.nasu.uk/graph/bfs)
+- [深さ優先探索 (DFS)](https://algoviz.nasu.uk/graph/dfs)
+- [ダイクストラ法](https://algoviz.nasu.uk/graph/dijkstra)
+
+**木**
+
+- [二分探索木の構築](https://algoviz.nasu.uk/tree/bst)
+- [ヒープの構築](https://algoviz.nasu.uk/tree/heap)
+- [trie (接頭辞木) の構築](https://algoviz.nasu.uk/tree/trie)
+- [ハフマン木の構築](https://algoviz.nasu.uk/tree/huffman)
+
+**オートマトン**
+
+- [決定性有限オートマトン (DFA)](https://algoviz.nasu.uk/automaton)
+
+**その他**
+
+- [Brainfuck](https://algoviz.nasu.uk/brainfuck)
 
 ## 設計方針
 
@@ -39,10 +59,10 @@
 - **1ページ1アルゴリズム。** 「このページは DFS を見せるためだけのもの」と決まっている方が、
   作る側も見る側も迷わない。モードを切り替えるプルダウンは置かない
 - **アルゴリズムの論理は C++、見た目は JS。** どちらに置くか迷うものは、
-  「別の描画方法に差し替えても必要か」で決める。必要なら論理side (C++)
+  「別の描画方法に差し替えても必要か」で決める。必要なら論理側 (C++)
 - **デバッグ用の表示は本番に出さない。** `import.meta.env.DEV` で囲んでバンドルから落とす
 - **分類ごとに決まるものは選ばせず固定する。** グラフの頂点は `0, 1, 2`、
-  オートマトンの状態は `q₀, q₁, q₂`。どちらかを選ぶ場面は実際には無い
+  オートマトンの状態は `q₀, q₁, q₂`、木は節点の値。どれかを選ぶ場面は実際には無い
 
 エージェント向けの指針は [AGENTS.md](AGENTS.md) にあります。
 
@@ -60,10 +80,16 @@ cpp/
     Brainfuck.hpp / src/       Brainfuck インタプリタ
     GraphData.hpp              頂点・辺の平坦な float 配列。JS とゼロコピー共有する
     GraphColors.hpp            colorId の「意味」の定義 (実際の配色は JS 側)
-    GeneralGraphLayout.hpp     レイアウト計算 (MDS → Stress Majorization → 凸包パッキング)
+    ILayout.hpp                配置アルゴリズムの面。向きは配置が決める
+    GeneralGraphLayout.hpp     ├ 一般グラフ (MDS → Stress Majorization → 凸包パッキング)
+    TreeLayout.hpp             └ 木 (Reingold-Tilford)。常に上から下
     GraphVisualizer.hpp        グラフの生成・レイアウト・描画データ供給の基底クラス
-    AutomatonVisualizer.hpp    ├ オートマトン (常に有向 + 初期状態 + 受理状態)
-    TraversalVisualizer.hpp    └ BFS / DFS
+    TraversalVisualizer.hpp    ├ BFS / DFS / ダイクストラ法
+    AutomatonVisualizer.hpp    ├ DFA (常に有向 + 初期状態 + 受理状態 + 遷移記号)
+    BstVisualizer.hpp          ├ 二分探索木の構築
+    HeapVisualizer.hpp         ├ ヒープの構築
+    TrieVisualizer.hpp         ├ trie の構築
+    HuffmanVisualizer.hpp      └ ハフマン木の構築
 src/
   types/engine.ts              WASM 境界の型定義。C++ を変えたらここも揃える
   pages/                       ページ

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Section, NumberInput, Check } from '../graph/panelParts';
-import { usesWords } from './types';
+import { usesWords, usesText } from './types';
 import type { TreeVariant } from './types';
 
 interface Props {
@@ -27,10 +27,11 @@ export const TreeSetupPanel: React.FC<Props> = ({
     const fontSize = compact ? '12px' : '13px';
     const button: React.CSSProperties = { padding: '8px', cursor: 'pointer' };
     const words = usesWords(variant);
+    const text = usesText(variant);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', fontSize }}>
-            <Section title={words ? '挿入する単語' : '挿入する値'}>
+            <Section title={text ? '数える文章' : words ? '挿入する単語' : '挿入する値'}>
                 <textarea
                     value={valueText}
                     onChange={(e) => setValueText(e.target.value)}
@@ -38,10 +39,10 @@ export const TreeSetupPanel: React.FC<Props> = ({
                         width: '100%', height: compact ? '70px' : '90px',
                         fontFamily: 'monospace', resize: 'vertical', boxSizing: 'border-box',
                     }}
-                    placeholder={words ? 'to tea ten ted' : '50 30 70 20 40'}
+                    placeholder={text ? 'abracadabra' : words ? 'to tea ten ted' : '50 30 70 20 40'}
                 />
                 <button onClick={onApply} style={button}>
-                    📝 {words ? 'この単語で作り直す' : 'この値で作り直す'}
+                    📝 {text ? 'この文章で作り直す' : words ? 'この単語で作り直す' : 'この値で作り直す'}
                 </button>
             </Section>
 
@@ -55,7 +56,7 @@ export const TreeSetupPanel: React.FC<Props> = ({
             )}
 
             {/* 単語のランダム生成に意味のある形が無いので、値のときだけ出す */}
-            {!words && (
+            {!words && !text && (
                 <Section title="ランダム生成">
                     <div>
                         個数: <NumberInput value={count} max={maxValues} onChange={setCount} />
@@ -65,7 +66,9 @@ export const TreeSetupPanel: React.FC<Props> = ({
             )}
 
             <p style={{ margin: 0, fontSize: '12px', color: '#78909c', lineHeight: 1.6 }}>
-                {words
+                {text
+                    ? `文章に出てくる文字を数えます。空白は数えません。文字の種類の上限は ${maxValues} です。`
+                    : words
                     ? `単語は空白で区切って、左から順に挿入します。上限は ${maxValues} 個です。`
                     : `値は左から順に挿入します。上限は ${maxValues} 個です。`}
             </p>

@@ -25,6 +25,7 @@
 #include "../cpp/include/BstVisualizer.hpp"
 #include "../cpp/include/HeapVisualizer.hpp"
 #include "../cpp/include/TrieVisualizer.hpp"
+#include "../cpp/include/HuffmanVisualizer.hpp"
 
 using emscripten::val;
 
@@ -2363,9 +2364,12 @@ static void testDfaTextRoundTrip() {
 static void testGeneratedDfaIsDeterministicAndPartial() {
     beginTest("ランダム生成した DFA は決定性で、遷移に空きがある");
 
+    // "aab" は重複した指定。記号としては ab の2つにまとまる。
+    // まとまっていないと、同じ状態から a の遷移が2本出て決定性が崩れる。
+    const char* alphabets[] = { "abc", "aab" };
     for (int trial = 0; trial < 20; trial++) {
         AutomatonVisualizer a;
-        a.load("genRandom", "8 abc");
+        a.load("genRandom", std::string("8 ") + alphabets[trial % 2]);
 
         int v = 0;
         std::vector<DfaEdge> edges = readDfaEdges(a, &v);
@@ -2395,11 +2399,6 @@ static void testGeneratedDfaIsDeterministicAndPartial() {
         }
         CHECK_EQ((int)std::count(visited.begin(), visited.end(), (char)1), v);
     }
-
-    // 記号が重複していても、アルファベットとしては1つにまとまる
-    AutomatonVisualizer dup;
-    dup.load("genRandom", "3 aab");
-    CHECK_EQ(dup.getState(val::object())["alphabet"].as<std::string>(), std::string("ab"));
 }
 
 static void testUndefinedTransitionIsARejection() {
@@ -3147,6 +3146,206 @@ static void testTrieHandlesEmptyInput() {
     CHECK_EQ(t.getState(val::object())["nodeCount"].as<int>(), 1);
 }
 
+
+// ==========================================
+// ハフマン木の構築
+// ==========================================
+
+struct ParsedHuffman {
+    int n = 0;
+    std::vector<float> weights;
+    std::vector<std::string> labels;
+    std::vector<std::vector<std::pair<char, int>>> children; // (0 or 1, 子)
+    int root = -1;
+};
+
+static ParsedHuffman readHuffman(HuffmanVisualizer& h) {
+    val s = h.getState(val::object());
+    ParsedHuffman ph;
+    ph.n = s["nodeCount"].as<int>();
+    ph.root = s["startNodeIndex"].as<int>();
+
+    val nodes = s["nodes"];
+    for (int i = 0; i < ph.n; i++) {
+        ph.weights.push_back(nodes[i * GraphData::NODE_STRIDE + 2].as<float>());
+    }
+    val ls = s["nodeLabels"];
+    for (int i = 0; i < ph.n; i++) ph.labels.push_back(ls[i].as<std::string>());
+
+    ph.children.assign(ph.n, {});
+    val edges = s["edges"];
+    int m = s["edgeCount"].as<int>();
+    for (int i = 0; i < m; i++) {
+        int from = (int)edges[i * GraphData::EDGE_STRIDE].as<float>();
+        int to   = (int)edges[i * GraphData::EDGE_STRIDE + 1].as<float>();
+        char bit = (char)(int)edges[i * GraphData::EDGE_STRIDE + 2].as<float>();
+        if (from >= 0 && from < ph.n) ph.children[from].push_back({bit, to});
+    }
+    return ph;
+}
+
+static ParsedHuffman buildHuffman(const std::string& text) {
+    HuffmanVisualizer h;
+    h.load("setText", text);
+    h.runToEnd();
+    return readHuffman(h);
+}
+
+// 葉ごとの符号長を集める
+static void collectDepths(const ParsedHuffman& ph, int node, int depth,
+                          std::map<std::string, int>& out) {
+    if (node < 0 || node >= ph.n || depth > 60) return;
+    if (ph.children[node].empty()) { out[ph.labels[node]] = depth; return; }
+    for (const auto& e : ph.children[node]) collectDepths(ph, e.second, depth + 1, out);
+}
+
+static void testHuffmanBuildsOneTreeFromTheForest() {
+    beginTest("森が1本の木にまとまる");
+
+    ParsedHuffman ph = buildHuffman("abracadabra");
+    // a:5 b:2 r:2 c:1 d:1 の5種類。葉5 + 内部4 = 9 節点
+    CHECK_EQ(ph.n, 9);
+    CHECK(ph.root >= 0);
+
+    // 根の重みは入力の文字数と一致する
+    CHECK_EQ(ph.weights[ph.root], 11.0f);
+
+    // 内部の節点はちょうど2つの子を持つ
+    int leaves = 0;
+    for (int i = 0; i < ph.n; i++) {
+        if (ph.children[i].empty()) leaves++;
+        else CHECK_EQ((int)ph.children[i].size(), 2);
+    }
+    CHECK_EQ(leaves, 5);
+}
+
+static void testHuffmanGivesShorterCodesToFrequentCharacters() {
+    beginTest("出現回数が多い文字ほど符号が短い");
+
+    ParsedHuffman ph = buildHuffman("abracadabra");
+    std::map<std::string, int> depth;
+    collectDepths(ph, ph.root, 0, depth);
+
+    CHECK_EQ((int)depth.size(), 5);
+    // a(5) は b(2) r(2) より短く、b r は c(1) d(1) より短い
+    CHECK(depth["a"] < depth["b"]);
+    CHECK(depth["a"] < depth["r"]);
+    CHECK(depth["b"] <= depth["c"]);
+    CHECK(depth["r"] <= depth["d"]);
+
+    // 符号長 x 出現回数 の合計が、素朴な固定長より短い
+    std::map<std::string, int> freq = {{"a", 5}, {"b", 2}, {"r", 2}, {"c", 1}, {"d", 1}};
+    int huffmanBits = 0;
+    for (const auto& d : depth) huffmanBits += d.second * freq[d.first];
+    CHECK(huffmanBits < 11 * 3); // 5種類なら固定長で3ビット要る
+}
+
+static void testHuffmanNodesDoNotOverlap() {
+    beginTest("節点どうしが重ならない");
+
+    // 途中は森になり、木を横に並べる。並べ方が崩れると節点が重なる。
+    HuffmanVisualizer h;
+    h.load("setText", "abracadabra");
+    h.runToEnd();
+    for (int i = 0; i < 600; i++) h.prepare();
+
+    val s = h.getState(val::object());
+    val nodes = s["nodes"];
+    int n = s["nodeCount"].as<int>();
+    const float MIN_GAP = 40.0f; // 描画側の頂点の半径は 20
+    for (int i = 0; i < n; i++) {
+        for (int j = i + 1; j < n; j++) {
+            float dx = nodes[i * GraphData::NODE_STRIDE].as<float>()
+                     - nodes[j * GraphData::NODE_STRIDE].as<float>();
+            float dy = nodes[i * GraphData::NODE_STRIDE + 1].as<float>()
+                     - nodes[j * GraphData::NODE_STRIDE + 1].as<float>();
+            float d = std::sqrt(dx * dx + dy * dy);
+            g_checks++;
+            if (d < MIN_GAP) {
+                reportFailure("節点 " + std::to_string(i) + " と " + std::to_string(j) +
+                              " が " + std::to_string(d) + " しか離れていない");
+            }
+        }
+    }
+}
+
+static void testHuffmanEdgesCarryCodeBits() {
+    beginTest("枝が 0 と 1 になっている");
+
+    ParsedHuffman ph = buildHuffman("abracadabra");
+    for (int i = 0; i < ph.n; i++) {
+        if (ph.children[i].empty()) continue;
+        std::set<char> bits;
+        for (const auto& e : ph.children[i]) bits.insert(e.first);
+        CHECK(bits == std::set<char>({'0', '1'}));
+    }
+}
+
+static void testHuffmanStepMatchesRunToEnd() {
+    beginTest("step を繰り返した結果と runToEnd の結果が一致する");
+
+    const char* inputs[] = { "abracadabra", "aabbc", "xyz", "aaaa", "" };
+    for (const char* in : inputs) {
+        HuffmanVisualizer stepwise;
+        stepwise.load("setText", in);
+        int guard = 0;
+        while (stepwise.step() && guard++ < 2000) {}
+
+        HuffmanVisualizer atOnce;
+        atOnce.load("setText", in);
+        atOnce.runToEnd();
+
+        ParsedHuffman a = readHuffman(stepwise), b = readHuffman(atOnce);
+        CHECK_EQ(a.n, b.n);
+        CHECK(a.weights == b.weights);
+        CHECK(a.children == b.children);
+    }
+}
+
+static void testHuffmanStepBackReturnsToPreviousState() {
+    beginTest("stepBack で1手前の状態に戻る");
+
+    HuffmanVisualizer h;
+    h.load("setText", "aabbc");
+
+    auto snapshot = [&]() {
+        val s = h.getState(val::object());
+        return std::make_tuple(s["nodeCount"].as<int>(), s["rootCount"].as<int>(),
+                               s["selectedA"].as<int>(), s["selectedB"].as<int>());
+    };
+
+    std::vector<decltype(snapshot())> seen;
+    seen.push_back(snapshot());
+    CHECK(!h.getState(val::object())["canStepBack"].as<bool>());
+
+    int guard = 0;
+    while (h.step() && guard++ < 2000) seen.push_back(snapshot());
+
+    for (int i = (int)seen.size() - 1; i >= 1; i--) {
+        h.stepBack();
+        CHECK(snapshot() == seen[i - 1]);
+    }
+    CHECK(!h.getState(val::object())["canStepBack"].as<bool>());
+}
+
+static void testHuffmanHandlesTinyInput() {
+    beginTest("文字が1種類しかなくても、空でも落ちない");
+
+    ParsedHuffman one = buildHuffman("aaaa");
+    CHECK_EQ(one.n, 1); // 葉が1つだけ。繋ぐ相手がいない
+    CHECK_EQ(one.weights[0], 4.0f);
+
+    HuffmanVisualizer empty;
+    empty.load("setText", "");
+    empty.runToEnd();
+    val s = empty.getState(val::object());
+    CHECK_EQ(s["nodeCount"].as<int>(), 0);
+    CHECK(s["finished"].as<bool>());
+
+    empty.stepBack(); // 戻せないときに何も壊さない
+    CHECK_EQ(empty.getState(val::object())["nodeCount"].as<int>(), 0);
+}
+
 // ==========================================
 
 int main(int argc, char** argv) {
@@ -3292,6 +3491,15 @@ int main(int argc, char** argv) {
     testTrieStepMatchesRunToEnd();
     testTrieStepBackReturnsToPreviousState();
     testTrieHandlesEmptyInput();
+
+    beginSection("ハフマン木の構築");
+    testHuffmanBuildsOneTreeFromTheForest();
+    testHuffmanGivesShorterCodesToFrequentCharacters();
+    testHuffmanNodesDoNotOverlap();
+    testHuffmanEdgesCarryCodeBits();
+    testHuffmanStepMatchesRunToEnd();
+    testHuffmanStepBackReturnsToPreviousState();
+    testHuffmanHandlesTinyInput();
 
     if (g_failures == 0) {
         std::cout << "core: OK (" << g_checks << " checks)" << std::endl;
