@@ -2776,7 +2776,7 @@ struct ParsedHeap {
     int n = 0;
     std::vector<float> values;                 // 節点の添字ごとの値
     std::vector<std::pair<int, int>> edges;    // (親, 子)
-    std::vector<float> xs;
+    std::vector<float> xs, ys;
 };
 
 static ParsedHeap readHeap(HeapVisualizer& h) {
@@ -2788,6 +2788,7 @@ static ParsedHeap readHeap(HeapVisualizer& h) {
     for (int i = 0; i < ph.n; i++) {
         ph.values.push_back(nodes[i * GraphData::NODE_STRIDE + 2].as<float>());
         ph.xs.push_back(nodes[i * GraphData::NODE_STRIDE].as<float>());
+        ph.ys.push_back(nodes[i * GraphData::NODE_STRIDE + 1].as<float>());
     }
 
     val edges = s["edges"];
@@ -2861,6 +2862,38 @@ static void testHeapShapeIsCompleteBinaryTree() {
         CHECK(hasParent.insert(e.second).second); // 親は1つだけ
     }
     for (int i = 1; i < ph.n; i++) CHECK(hasParent.count(i) == 1);
+}
+
+static void testSwapMovesNodesInsteadOfJumping() {
+    beginTest("値の入れ替えは座標も入れ替えて動きで見せる");
+
+    // 10 を置く / 根なので止まる / 20 を置く、まで進めてから配置を落ち着かせる
+    HeapVisualizer h;
+    h.load("setValues", "10 20");
+    for (int i = 0; i < 3; i++) h.step();
+    for (int i = 0; i < 500; i++) h.prepare();
+
+    ParsedHeap before = readHeap(h);
+    CHECK_EQ(before.n, 2);
+    CHECK(before.ys[0] != before.ys[1]); // 根と子で高さが違う
+
+    h.step(); // ここで 20 が親と入れ替わる
+    ParsedHeap after = readHeap(h);
+
+    // 値は入れ替わっている
+    CHECK_EQ(after.values[0], 20.0f);
+    CHECK_EQ(after.values[1], 10.0f);
+
+    // 今いる座標も入れ替わっている。ここから目標へ戻る間に
+    // 「値が上がっていった」ように見える。
+    CHECK_NEAR(after.ys[0], before.ys[1], 0.01f);
+    CHECK_NEAR(after.ys[1], before.ys[0], 0.01f);
+
+    // 落ち着けば元の高さに戻る (目標の座標は動かしていない)
+    for (int i = 0; i < 500; i++) h.prepare();
+    ParsedHeap settled = readHeap(h);
+    CHECK_NEAR(settled.ys[0], before.ys[0], 0.01f);
+    CHECK_NEAR(settled.ys[1], before.ys[1], 0.01f);
 }
 
 static void testHeapStepMatchesRunToEnd() {
@@ -3059,6 +3092,7 @@ int main(int argc, char** argv) {
     testHeapConditionHolds();
     testMinHeapReversesTheOrder();
     testHeapShapeIsCompleteBinaryTree();
+    testSwapMovesNodesInsteadOfJumping();
     testHeapStepMatchesRunToEnd();
     testHeapStepBackReturnsToPreviousState();
     testHeapHandlesEmptyInput();

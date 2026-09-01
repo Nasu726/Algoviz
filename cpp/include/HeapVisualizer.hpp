@@ -198,11 +198,16 @@ public:
             return true;
         }
 
-        // 親と入れ替えて1つ上がる。動くのは値だけ
+        // 親と入れ替えて1つ上がる。木の形は変わらず、動くのは値だけ。
         int parent = parentOf(st.cursor);
         float tmp = nodeValue(parent);
         setNodeValue(parent, nodeValue(st.cursor));
         setNodeValue(st.cursor, tmp);
+
+        // 値だけ差し替えると数字が瞬間的に入れ替わって何が起きたか分からない。
+        // 今いる座標を相手側にしておくと、イージングが戻す間に
+        // 「値が上がっていった」ように見える。
+        swapNodePositions(parent, st.cursor);
 
         st.lastSwap = st.cursor;
         st.cursor = parent;
