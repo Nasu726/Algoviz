@@ -247,8 +247,62 @@ const AvlHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
     </>
 );
 
+const BTreeHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
+    <>
+        <h3>1. 画面の見方</h3>
+        <ul>
+            <li><b>1つの節点に値が複数並ぶ</b>。値の数だけ節点が横に広がる</li>
+            <li>子は値の区切りに対応する。左端の子は一番小さい値より小さいものが入る</li>
+            <li>次数を m とすると、1つの節点に入る値は <b>m - 1 個</b>まで</li>
+            <li>色の意味は実行状態のパネルにある凡例のとおり</li>
+        </ul>
+
+        <h3>2. 1ステップの単位</h3>
+        <ul>
+            <li><b>降りる</b>：節点の値と比べて、どの子へ進むかを決める</li>
+            <li><b>入れる</b>：葉に着いたら、その葉に値を差し込む</li>
+            <li><b>割る</b>：値が m 個になったら、真ん中の値を親へ押し上げて2つに割る</li>
+        </ul>
+        <p>割った結果、親もあふれたら次の手でその親を割ります。根が割れると木が1段深くなります。</p>
+
+        <h3>3. 次数の決め方</h3>
+        <ul>
+            <li>次数はこのページで選ぶ。<b>3 が 2-3木、4 が 2-3-4木</b>に当たる</li>
+            <li>次数を変えると同じ値の並びでも別の形の木になる</li>
+        </ul>
+
+        <h3>4. 値の入れ方</h3>
+        <ul>
+            <li><b>この値で作り直す</b>：空白か改行で区切って値を並べる。左から順に挿入する</li>
+            <li><b>ランダム生成</b>：個数を決めると、重複しない値を選んで並べる</li>
+        </ul>
+        <pre style={codeBlock}>10 20 30 40 50 60 70</pre>
+        <ul>
+            <li>値の個数の上限は {maxValues}</li>
+            <li>昇順に入れてもどの葉も同じ深さに揃う。そこが二分探索木との違い</li>
+        </ul>
+
+        <h3>5. 画面の操作</h3>
+        <ul>
+            <li><b>ドラッグ</b>：表示位置を動かす</li>
+            <li><b>ホイール / 2本指のピンチ</b>：拡大・縮小</li>
+        </ul>
+
+        <h3>6. ショートカットキー</h3>
+        <ul>
+            <li><b>Esc</b>：ビジュアライザ一覧へ戻る</li>
+            <li><b>Ctrl + H</b>：ヘルプを開く</li>
+            <li><b>Ctrl + S</b>：この値で作り直す</li>
+            <li><b>Ctrl + Enter</b>：実行 / 一時停止</li>
+            <li><b>Ctrl + &larr;</b> / <b>&rarr;</b>：戻る / 進む</li>
+            <li><b>Ctrl + &uarr;</b> / <b>&darr;</b>：実行速度の増減</li>
+        </ul>
+    </>
+);
+
 export const TreeHelp: React.FC<{ variant: TreeVariant; maxValues: number }> = ({ variant, maxValues }) =>
-    variant === 'avl' ? <AvlHelp maxValues={maxValues} />
+    variant === 'btree' ? <BTreeHelp maxValues={maxValues} />
+    : variant === 'avl' ? <AvlHelp maxValues={maxValues} />
     : variant === 'huffman' ? <HuffmanHelp maxLeaves={maxValues} />
     : variant === 'trie' ? <TrieHelp maxWords={maxValues} />
     : variant === 'heap' ? <HeapHelp maxValues={maxValues} />

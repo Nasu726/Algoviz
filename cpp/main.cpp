@@ -11,6 +11,7 @@
 #include "include/TrieVisualizer.hpp"
 #include "include/HuffmanVisualizer.hpp"
 #include "include/AvlVisualizer.hpp"
+#include "include/BTreeVisualizer.hpp"
 
 using namespace emscripten;
 
@@ -45,6 +46,8 @@ public:
             currentAlgo = std::make_unique<HuffmanVisualizer>();
         } else if (name == "avl") {
             currentAlgo = std::make_unique<AvlVisualizer>();
+        } else if (name == "btree") {
+            currentAlgo = std::make_unique<BTreeVisualizer>();
         } else {
             std::cerr << "Unknown algorithm: " << name << std::endl;
         }

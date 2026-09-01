@@ -28,6 +28,7 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
 
     const [valueText, setValueText] = useState(defaultValues[variant]);
     const [maxHeap, setMaxHeap] = useState(true);
+    const [order, setOrder] = useState(4);
     const [count, setCount] = useState('10');
     const [state, setState] = useState<GraphState | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
@@ -76,6 +77,15 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [engine, variant]);
 
+    // 次数が変われば出来上がる木も変わるので、C++ 側で作り直す
+    const changeOrder = (v: number) => {
+        setIsPlaying(false);
+        setOrder(v);
+        engine.load('setOrder', String(v));
+        engine.load('setValues', latest.current.valueText);
+        readState();
+    };
+
     // 向きが変われば出来上がる木も変わるので、C++ 側で作り直す
     const changeMaxHeap = (v: boolean) => {
         setIsPlaying(false);
@@ -123,6 +133,8 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
                         variant={variant}
                         maxHeap={maxHeap}
                         setMaxHeap={changeMaxHeap}
+                        order={order}
+                        setOrder={changeOrder}
                         valueText={valueText}
                         setValueText={setValueText}
                         count={count}

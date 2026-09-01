@@ -128,6 +128,7 @@ function App() {
       <Route path="/tree/trie" element={<TreeWrapper engine={engineRef.current!} variant="trie" />} />
       <Route path="/tree/huffman" element={<TreeWrapper engine={engineRef.current!} variant="huffman" />} />
       <Route path="/tree/avl" element={<TreeWrapper engine={engineRef.current!} variant="avl" />} />
+      <Route path="/tree/btree" element={<TreeWrapper engine={engineRef.current!} variant="btree" />} />
 
       {/* 描くだけのページ。メニューには載せないが、レイアウトとパッキングの
           回帰を目視確認する手段としてルートは残す */}

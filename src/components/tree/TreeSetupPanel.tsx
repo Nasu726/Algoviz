@@ -8,6 +8,9 @@ interface Props {
     /** ヒープのときだけ使う。大きい値を上にするか */
     maxHeap: boolean;
     setMaxHeap: (v: boolean) => void;
+    /** B木のときだけ使う。1つの節点が持てる子の数の上限 */
+    order: number;
+    setOrder: (v: number) => void;
     valueText: string;
     setValueText: (v: string) => void;
     count: string;
@@ -20,7 +23,7 @@ interface Props {
 
 // 実行前に決める設定。何を挿入するか。
 export const TreeSetupPanel: React.FC<Props> = ({
-    variant, maxHeap, setMaxHeap,
+    variant, maxHeap, setMaxHeap, order, setOrder,
     valueText, setValueText, count, setCount, maxValues,
     onApply, onGenerateRandom, compact,
 }) => {
@@ -52,6 +55,18 @@ export const TreeSetupPanel: React.FC<Props> = ({
                     <Check checked={maxHeap} onChange={setMaxHeap}>
                         最大ヒープ (大きい値が上)
                     </Check>
+                </Section>
+            )}
+
+            {/* どの次数も正しい B木で、分類では決まらないので選ばせる */}
+            {variant === 'btree' && (
+                <Section title="次数 (1つの節点が持てる子の数)">
+                    <select value={order} onChange={(e) => setOrder(Number(e.target.value))}
+                            style={{ padding: '4px', fontSize }}>
+                        <option value={3}>3</option>
+                        <option value={4}>4</option>
+                        <option value={5}>5</option>
+                    </select>
                 </Section>
             )}
 

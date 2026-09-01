@@ -17,6 +17,7 @@ const GENRES: { name: string; items: { path: string; label: string }[] }[] = [
         items: [
             { path: '/tree/bst', label: '二分探索木の構築' },
             { path: '/tree/avl', label: 'AVL 木の構築' },
+            { path: '/tree/btree', label: 'B木の構築' },
             { path: '/tree/heap', label: 'ヒープの構築' },
             { path: '/tree/trie', label: 'trie (接頭辞木) の構築' },
             { path: '/tree/huffman', label: 'ハフマン木の構築' },

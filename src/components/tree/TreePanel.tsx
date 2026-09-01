@@ -45,6 +45,7 @@ export const TreePanel: React.FC<Props> = ({
     const trie = usesWords(variant);
     const huffman = usesText(variant);
     const avl = variant === 'avl';
+    const btree = variant === 'btree';
     // trie は値の列ではなく単語の列を入れる
     const items: (number | string)[] = huffman
         ? (state?.counts ?? []).map((c) => `${c.ch}:${c.count}`)
@@ -61,8 +62,10 @@ export const TreePanel: React.FC<Props> = ({
         : state?.finished ? 'すべて挿入し終えました'
         : avl && cursor < 0 && (state?.checking ?? -1) >= 0
             ? (ROTATION_LABEL[state?.rotation ?? 0] ?? '偏りを確かめています')
+        : btree && (state?.splitting ?? false) ? 'あふれたので割り、真ん中の値を上へ押し上げました'
         : cursor >= 0 ? (heap ? '親と比べながら上げています'
                         : trie ? '1文字ずつ降りています'
+                        : btree ? '値と比べて降りる子を決めています'
                         : '比べながら降りています')
         : (heap ? '次の値を末尾に置きます'
            : trie ? '次の単語を根から入れます'
@@ -107,13 +110,18 @@ export const TreePanel: React.FC<Props> = ({
             )}
             {!huffman && (
                 <div>
-                    <b>{heap ? '上げている位置' : trie ? '今いる節点' : '比べている節点'}</b>:{' '}
+                    <b>{heap ? '上げている位置' : trie || btree ? '今いる節点' : '比べている節点'}</b>:{' '}
                     {cursor >= 0 ? '光っている節点' : <span style={dim}>なし</span>}
                 </div>
             )}
-            {avl && (
+            {(avl || btree) && (
                 <div>
                     <b>木の高さ</b>: {state?.treeHeight ?? 0}
+                </div>
+            )}
+            {btree && (
+                <div>
+                    <b>1つの節点に入る値</b>: {(state?.order ?? 4) - 1} 個まで
                 </div>
             )}
             <div>
@@ -132,7 +140,16 @@ export const TreePanel: React.FC<Props> = ({
 
     const legend = (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px' }}>
-            {avl ? (
+            {btree ? (
+                <>
+                    <Swatch color={NODE_STROKE[2]} label="今いる節点" />
+                    <Swatch color={NODE_STROKE[1]} label="これから割る節点" />
+                    <Swatch color={NODE_STROKE[3]} label="通った節点" />
+                    <Swatch color={NODE_STROKE[4]} label="今入れた / 押し上げた節点" />
+                    <Swatch color={EDGE_COLOR[2]} label="今つないだ枝" isEdge />
+                    <Swatch color={EDGE_COLOR[3]} label="通った枝" isEdge />
+                </>
+            ) : avl ? (
                 <>
                     <Swatch color={NODE_STROKE[2]} label="比べている節点" />
                     <Swatch color={NODE_STROKE[1]} label="偏りを見ている節点" />
