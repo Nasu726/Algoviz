@@ -16,6 +16,7 @@ const GENRES: { name: string; items: { path: string; label: string }[] }[] = [
         name: '木',
         items: [
             { path: '/tree/bst', label: '二分探索木の構築' },
+            { path: '/tree/heap', label: 'ヒープの構築' },
         ],
     },
     {

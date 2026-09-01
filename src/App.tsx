@@ -7,6 +7,7 @@ import { BrainfuckPage } from './pages/BrainfuckPage';
 import { GraphPage } from './pages/GraphPage';
 import { TreePage } from './pages/TreePage';
 import type { GraphVariant } from './components/graph/types';
+import type { TreeVariant } from './components/tree/types';
 
 function MainMenu() {
   return (
@@ -24,9 +25,9 @@ function BrainfuckWrapper({ engine }: { engine: VisualizerEngine }) {
   );
 }
 
-function TreeWrapper({ engine }: { engine: VisualizerEngine }) {
+function TreeWrapper({ engine, variant }: { engine: VisualizerEngine; variant: TreeVariant }) {
   const navigate = useNavigate();
-  return <TreePage engine={engine} onBack={() => navigate('/')} />;
+  return <TreePage engine={engine} variant={variant} onBack={() => navigate('/')} />;
 }
 
 // グラフ系は1ページ1アルゴリズム。variant がそのままページの中身を決める。
@@ -122,7 +123,8 @@ function App() {
       <Route path="/automaton" element={<GraphWrapper engine={engineRef.current!} variant="automaton" />} />
 
       {/* 木 */}
-      <Route path="/tree/bst" element={<TreeWrapper engine={engineRef.current!} />} />
+      <Route path="/tree/bst" element={<TreeWrapper engine={engineRef.current!} variant="bst" />} />
+      <Route path="/tree/heap" element={<TreeWrapper engine={engineRef.current!} variant="heap" />} />
 
       {/* 描くだけのページ。メニューには載せないが、レイアウトとパッキングの
           回帰を目視確認する手段としてルートは残す */}
