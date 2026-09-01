@@ -2,6 +2,7 @@ import React from 'react';
 import { PlaybackControls } from '../ui/PlaybackControls';
 import { NODE_STROKE, EDGE_COLOR } from '../visualizers/PixiGraphApp';
 import { Section, Swatch } from '../graph/panelParts';
+import { usesWords } from './types';
 import type { TreeVariant } from './types';
 import type { GraphState } from '../../types/engine';
 
@@ -32,21 +33,29 @@ export const TreePanel: React.FC<Props> = ({
     const fontSize = compact ? '12px' : '13px';
     const dim = { color: '#90a4ae' };
 
-    const values = state?.values ?? [];
+    const trie = usesWords(variant);
+    // trie は値の列ではなく単語の列を入れる
+    const items: (number | string)[] = trie ? (state?.words ?? []) : (state?.values ?? []);
     const pending = state?.pending ?? 0;
     const cursor = state?.cursor ?? -1;
     const inserted = state?.insertedCount ?? 0;
 
     const heap = variant === 'heap';
     const statusText = state?.finished ? 'すべて挿入し終えました'
-        : cursor >= 0 ? (heap ? '親と比べながら上げています' : '比べながら降りています')
-        : (heap ? '次の値を末尾に置きます' : '次の値を根から入れます');
+        : cursor >= 0 ? (heap ? '親と比べながら上げています'
+                        : trie ? '1文字ずつ降りています'
+                        : '比べながら降りています')
+        : (heap ? '次の値を末尾に置きます'
+           : trie ? '次の単語を根から入れます'
+           : '次の値を根から入れます');
 
     // 挿入済みと、これから挿入する値を色で分ける
     const queue = (
         <div style={{ fontFamily: 'monospace', fontSize: compact ? '14px' : '16px',
                       wordBreak: 'break-all', lineHeight: 1.7 }}>
-            {values.length === 0 ? <span style={dim}>（値がありません）</span> : values.map((v, i) => (
+            {items.length === 0
+                ? <span style={dim}>{trie ? '（単語がありません）' : '（値がありません）'}</span>
+                : items.map((v, i) => (
                 <span key={i} style={{
                     marginRight: '8px',
                     color: i < pending ? '#90a4ae' : i === pending ? '#e74c3c' : '#000',
@@ -62,16 +71,22 @@ export const TreePanel: React.FC<Props> = ({
         <div style={{ fontSize, lineHeight: 1.7, minWidth: 0 }}>
             {queue}
             <div>
-                <b>今挿入している値</b>:{' '}
-                {pending < values.length ? values[pending] : <span style={dim}>なし</span>}
+                <b>{trie ? '今挿入している単語' : '今挿入している値'}</b>:{' '}
+                {pending < items.length ? items[pending] : <span style={dim}>なし</span>}
             </div>
+            {trie && (
+                <div>
+                    <b>ここまで読んだ接頭辞</b>:{' '}
+                    {state?.prefix ? <code>{state.prefix}</code> : <span style={dim}>なし</span>}
+                </div>
+            )}
             <div>
-                <b>{heap ? '上げている位置' : '比べている節点'}</b>:{' '}
+                <b>{heap ? '上げている位置' : trie ? '今いる節点' : '比べている節点'}</b>:{' '}
                 {cursor >= 0 ? '光っている節点' : <span style={dim}>なし</span>}
             </div>
             <div>
                 <b>節点の数</b>: {inserted}
-                <span style={dim}> / {values.length}</span>
+                {!trie && <span style={dim}> / {items.length}</span>}
             </div>
             {!heap && state?.duplicate && (
                 <div style={{ color: '#e67e22' }}>同じ値が既にあったので入れませんでした</div>
@@ -85,7 +100,15 @@ export const TreePanel: React.FC<Props> = ({
 
     const legend = (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px' }}>
-            {heap ? (
+            {trie ? (
+                <>
+                    <Swatch color={NODE_STROKE[2]} label="今いる節点" />
+                    <Swatch color={NODE_STROKE[3]} label="通った節点" />
+                    <Swatch color={NODE_STROKE[4]} label="今作った節点" />
+                    <Swatch color={EDGE_COLOR[2]} label="直前に降りた枝" isEdge />
+                    <Swatch color={EDGE_COLOR[3]} label="通った枝" isEdge />
+                </>
+            ) : heap ? (
                 <>
                     <Swatch color={NODE_STROKE[2]} label="上げている位置" />
                     <Swatch color={NODE_STROKE[1]} label="比べている親" />

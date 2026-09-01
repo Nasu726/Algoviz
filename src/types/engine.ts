@@ -41,7 +41,9 @@ export interface GraphState {
     isDirected: boolean;
     isAutomaton: boolean;
     /** 頂点に出す表示名。分類ごとに C++ 側が決める */
-    labelMode: 'index' | 'state' | 'value';
+    labelMode: 'index' | 'state' | 'value' | 'none';
+    /** 辺の3列目が重みではなく記号 (1文字) か */
+    edgeSymbols: boolean;
     /** テキスト入力で頂点の重みを受け取ったか */
     hasNodeWeights: boolean;
     /** 重み付きグラフか。重み無しならテキストにも表示にも重みは出ない */
@@ -79,6 +81,12 @@ export interface GraphState {
     nodeValueMode?: 'weight' | 'distance';
     /** ダイクストラの前提を外れる負の重みが混ざっているか */
     hasNegativeEdge?: boolean;
+
+    /** TrieVisualizer のときだけ */
+    words?: string[];
+    /** 今いる節点までに読んだ接頭辞 */
+    prefix?: string;
+    maxWords?: number;
 
     /** BstVisualizer のときだけ */
     values?: number[];

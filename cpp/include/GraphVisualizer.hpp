@@ -415,6 +415,8 @@ public:
         state.set("isDirected", generatedDirected);
         state.set("isAutomaton", false);
         state.set("labelMode", std::string(labelMode()));
+        // 辺の3列目が重みではなく記号か。描画側が文字として出すかを決める
+        state.set("edgeSymbols", usesSymbols());
         state.set("hasNodeWeights", hasNodeWeights);
         state.set("weighted", weighted);
 
