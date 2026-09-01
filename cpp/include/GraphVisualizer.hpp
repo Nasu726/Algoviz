@@ -74,6 +74,12 @@ protected:
     // オートマトンのように、常に有向として扱いたい派生クラスが true を返す
     virtual bool forceDirected() const { return false; }
 
+    // 頂点に出す表示名の決め方。分類ごとに固定し、利用者には選ばせない。
+    //   index … 0, 1, 2      (一般グラフ・探索)
+    //   state … q0, q1, q2   (オートマトン)
+    //   value … 節点の値      (木)
+    virtual const char* labelMode() const { return "index"; }
+
     // 辺の3列目の意味。既定は重み、オートマトンは遷移記号 (1文字)。
     // GraphData の辺は [from, to, weight, colorId] で、オートマトンに重みは
     // 無いので3列目が空いている。記号の文字コードをそこに入れる。
@@ -385,6 +391,7 @@ public:
         state.set("startNodeIndex", graph->startNodeIndex);
         state.set("isDirected", generatedDirected);
         state.set("isAutomaton", false);
+        state.set("labelMode", std::string(labelMode()));
         state.set("hasNodeWeights", hasNodeWeights);
         state.set("weighted", weighted);
 

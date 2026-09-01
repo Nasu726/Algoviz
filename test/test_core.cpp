@@ -12,9 +12,12 @@
 
 #include <cmath>
 #include <set>
+#include <map>
+#include <algorithm>
 
 #include "../cpp/include/Brainfuck.hpp"
 #include "../cpp/include/GraphVisualizer.hpp"
+#include "../cpp/include/TreeLayout.hpp"
 #include "../cpp/include/AutomatonVisualizer.hpp"
 #include "../cpp/include/TraversalVisualizer.hpp"
 
@@ -66,6 +69,18 @@ static void reportFailure(const std::string& detail) {
             failHeader();                                                  \
             std::cerr << "  L" << __LINE__ << ": " << #actual << std::endl \
                       << "    expected: " << (expected) << std::endl       \
+                      << "    actual  : " << (actual) << std::endl;        \
+        }                                                                  \
+    } while (0)
+
+#define CHECK_NEAR(actual, expected, tol)                                  \
+    do {                                                                   \
+        g_checks++;                                                        \
+        if (!(std::fabs((actual) - (expected)) <= (tol))) {                \
+            g_failures++;                                                  \
+            failHeader();                                                  \
+            std::cerr << "  L" << __LINE__ << ": " << #actual << std::endl \
+                      << "    expected: " << (expected) << " (許容 " << (tol) << ")" << std::endl \
                       << "    actual  : " << (actual) << std::endl;        \
         }                                                                  \
     } while (0)
@@ -2373,6 +2388,152 @@ static void testGeneratedDfaIsDeterministicAndTotal() {
     CHECK_EQ(dup.getState(val::object())["alphabet"].as<std::string>(), std::string("ab"));
 }
 
+
+// ==========================================
+// 木の配置 (Reingold-Tilford)
+// ==========================================
+
+// 親子の組から木を作り、配置を確定させる。
+// 節点 i の座標は g.nodeData[i * NODE_STRIDE] / +1 に入る。
+static GraphData makeTree(int n, const std::vector<std::pair<int, int>>& edges) {
+    GraphData g(n, (int)edges.size());
+    for (int i = 0; i < n; i++) g.setNode(i, 0.0f, 0.0f, (float)i, 0);
+    for (const auto& e : edges) g.addEdge((float)e.first, (float)e.second, 0.0f, 0);
+    return g;
+}
+
+static void placeTree(GraphData& g, TreeLayout& layout) {
+    std::vector<std::vector<int>> adj(g.nodeCount());
+    layout.init(&g, adj);
+    layout.finish(&g);
+}
+
+static float nodeX(const GraphData& g, int i) { return g.nodeData[i * GraphData::NODE_STRIDE]; }
+static float nodeY(const GraphData& g, int i) { return g.nodeData[i * GraphData::NODE_STRIDE + 1]; }
+
+static void testTreeDepthBecomesY() {
+    beginTest("深さがそのまま y になる");
+
+    //   0
+    //  / \
+    // 1   2
+    //     |
+    //     3
+    GraphData g = makeTree(4, {{0, 1}, {0, 2}, {2, 3}});
+    TreeLayout layout;
+    placeTree(g, layout);
+
+    CHECK_EQ(nodeY(g, 0), 0.0f);
+    CHECK_EQ(nodeY(g, 1), TreeLayout::LEVEL_GAP);
+    CHECK_EQ(nodeY(g, 2), TreeLayout::LEVEL_GAP);
+    CHECK_EQ(nodeY(g, 3), TreeLayout::LEVEL_GAP * 2.0f);
+}
+
+static void testTreeParentIsCenteredOverChildren() {
+    beginTest("親が子たちの中央に来る");
+
+    GraphData g = makeTree(3, {{0, 1}, {0, 2}});
+    TreeLayout layout;
+    placeTree(g, layout);
+    CHECK_NEAR(nodeX(g, 0), (nodeX(g, 1) + nodeX(g, 2)) / 2.0f, 0.01f);
+
+    // 深い部分木を片側に持つ形でも、端の子2つの中央に来る
+    //       0
+    //     /   \
+    //    1     2
+    //   / \
+    //  3   4
+    GraphData h = makeTree(5, {{0, 1}, {0, 2}, {1, 3}, {1, 4}});
+    TreeLayout layout2;
+    placeTree(h, layout2);
+    CHECK_NEAR(nodeX(h, 0), (nodeX(h, 1) + nodeX(h, 2)) / 2.0f, 0.01f);
+    CHECK_NEAR(nodeX(h, 1), (nodeX(h, 3) + nodeX(h, 4)) / 2.0f, 0.01f);
+}
+
+static void testTreeNodesDoNotOverlap() {
+    beginTest("同じ深さの節点が最小の間隔より近づかない");
+
+    // 両側に部分木がぶら下がる形。輪郭を見ずに置くと、
+    // 1 の右の子と 2 の左の子がぶつかる。
+    //        0
+    //     /     \
+    //    1       2
+    //   / \    / \
+    //  3   4   5   6
+    GraphData g = makeTree(7, {{0, 1}, {0, 2}, {1, 3}, {1, 4}, {2, 5}, {2, 6}});
+    TreeLayout layout;
+    placeTree(g, layout);
+
+    // 深さごとにまとめて、隣り合う節点の間隔を見る
+    std::map<float, std::vector<float>> rows;
+    for (int i = 0; i < g.nodeCount(); i++) rows[nodeY(g, i)].push_back(nodeX(g, i));
+    for (auto& row : rows) {
+        std::sort(row.second.begin(), row.second.end());
+        for (std::size_t i = 1; i < row.second.size(); i++) {
+            CHECK(row.second[i] - row.second[i - 1] >= TreeLayout::SIBLING_GAP - 0.01f);
+        }
+    }
+}
+
+static void testForestIsPlacedSideBySide() {
+    beginTest("森は左右に分かれて重ならない");
+
+    // 木が2つ (0-1-2 と 3-4)
+    GraphData g = makeTree(5, {{0, 1}, {0, 2}, {3, 4}});
+    TreeLayout layout;
+    placeTree(g, layout);
+
+    // 片方の木の右端より、もう片方の木の左端が右にある
+    float leftMax = std::max({nodeX(g, 0), nodeX(g, 1), nodeX(g, 2)});
+    float rightMin = std::min(nodeX(g, 3), nodeX(g, 4));
+    CHECK(rightMin > leftMax);
+}
+
+static void testTreeLayoutHandlesEdgeCases() {
+    beginTest("節点が0個・1個・閉路混じりでも落ちない");
+
+    GraphData empty(0, 0);
+    TreeLayout l0;
+    placeTree(empty, l0);
+    CHECK(l0.isStable());
+
+    GraphData single = makeTree(1, {});
+    TreeLayout l1;
+    placeTree(single, l1);
+    CHECK_EQ(nodeY(single, 0), 0.0f);
+
+    // 閉路だけの入力。根が1つも無いので、無限再帰せずに置き切れること
+    GraphData cyclic = makeTree(3, {{0, 1}, {1, 2}, {2, 0}});
+    TreeLayout l2;
+    placeTree(cyclic, l2);
+    CHECK(l2.isStable());
+    for (int i = 0; i < 3; i++) CHECK(std::isfinite(nodeX(cyclic, i)));
+}
+
+static void testTreeLayoutEasesToTarget() {
+    beginTest("update を繰り返すと finish と同じ座標に落ち着く");
+
+    std::vector<std::pair<int, int>> edges = {{0, 1}, {0, 2}, {1, 3}, {1, 4}};
+
+    GraphData atOnce = makeTree(5, edges);
+    TreeLayout la;
+    placeTree(atOnce, la);
+
+    GraphData eased = makeTree(5, edges);
+    TreeLayout le;
+    std::vector<std::vector<int>> adj(eased.nodeCount());
+    le.init(&eased, adj);
+    int frames = 0;
+    while (!le.update(&eased) && frames < 500) frames++;
+
+    CHECK(le.isStable());
+    CHECK(frames < 500); // 収束せずに打ち切られていない
+    for (int i = 0; i < 5; i++) {
+        CHECK_NEAR(nodeX(eased, i), nodeX(atOnce, i), 0.01f);
+        CHECK_NEAR(nodeY(eased, i), nodeY(atOnce, i), 0.01f);
+    }
+}
+
 // ==========================================
 
 int main(int argc, char** argv) {
@@ -2482,6 +2643,14 @@ int main(int argc, char** argv) {
     testDfaDetectsNondeterminism();
     testDfaTextRoundTrip();
     testGeneratedDfaIsDeterministicAndTotal();
+
+    beginSection("木の配置");
+    testTreeDepthBecomesY();
+    testTreeParentIsCenteredOverChildren();
+    testTreeNodesDoNotOverlap();
+    testForestIsPlacedSideBySide();
+    testTreeLayoutHandlesEdgeCases();
+    testTreeLayoutEasesToTarget();
 
     if (g_failures == 0) {
         std::cout << "core: OK (" << g_checks << " checks)" << std::endl;
