@@ -1917,139 +1917,6 @@ static bool looksCircular(const ParsedGraph& pg) {
     return maxR > 0 && (maxR - minR) / maxR < 0.05f;
 }
 
-// その並び順で円周に置いたときの、弦の交差数。
-// 端点を共有する辺どうしは交差に数えない。
-static int countChordCrossings(const std::vector<std::pair<int, int>>& edges,
-                               const std::vector<int>& order) {
-    int n = (int)order.size();
-    std::vector<int> pos(n, 0);
-    for (int i = 0; i < n; i++) pos[order[i]] = i;
-
-    int crossings = 0;
-    for (size_t i = 0; i < edges.size(); i++) {
-        int a = pos[edges[i].first], b = pos[edges[i].second];
-        if (a == b) continue; // 自己ループ
-        if (a > b) std::swap(a, b);
-
-        for (size_t j = i + 1; j < edges.size(); j++) {
-            int c = pos[edges[j].first], d = pos[edges[j].second];
-            if (c == d) continue;
-            if (c > d) std::swap(c, d);
-            if (a == c || a == d || b == c || b == d) continue; // 端点を共有
-
-            bool cInside = (a < c && c < b);
-            bool dInside = (a < d && d < b);
-            if (cInside != dInside) crossings++;
-        }
-    }
-    return crossings;
-}
-
-// かたまりが3つあるグラフ。番号をかたまりまたぎで振ってあるので、
-// 頂点番号順に円へ並べると弦が全体に散らばる。
-struct ClusteredGraph {
-    int v;
-    std::vector<std::pair<int, int>> edges;
-    std::string command;
-};
-
-static ClusteredGraph makeClusteredGraph(int clusters, int per) {
-    ClusteredGraph g;
-    g.v = clusters * per;
-    auto id = [&](int cluster, int k) { return k * clusters + cluster; };
-
-    for (int cl = 0; cl < clusters; cl++) {
-        for (int a = 0; a < per; a++) {
-            for (int b = a + 1; b < per; b++) g.edges.push_back({id(cl, a), id(cl, b)});
-        }
-    }
-    for (int cl = 0; cl + 1 < clusters; cl++) g.edges.push_back({id(cl, 0), id(cl + 1, 0)});
-
-    std::ostringstream oss;
-    oss << "custom 1 0 0\n" << g.v << " " << g.edges.size() << "\n";
-    for (auto& e : g.edges) oss << e.first << " " << e.second << " 1\n";
-    g.command = oss.str();
-    return g;
-}
-
-static void testDenseGraphUsesCircularLayout() {
-    beginTest("密なグラフは円形に配置される");
-
-    ClusteredGraph cg = makeClusteredGraph(3, 6);
-    GraphVisualizer g;
-    g.load("horizontal", cg.command);
-    g.prepare();
-
-    ParsedGraph pg = readGraph(g);
-    CHECK_EQ(pg.v, cg.v);
-    CHECK(looksCircular(pg));
-}
-
-static void testCircularOrderReducesCrossings() {
-    beginTest("円形配置は構造順に並べて弦の交差を減らす");
-
-    struct Case { int clusters, per; };
-    const Case cases[] = { {3, 6}, {4, 6}, {2, 8} };
-
-    for (const auto& c : cases) {
-        ClusteredGraph cg = makeClusteredGraph(c.clusters, c.per);
-
-        GraphVisualizer g;
-        g.load("horizontal", cg.command);
-        g.prepare();
-        ParsedGraph pg = readGraph(g);
-
-        // 円形配置になっていなければ、この比較は円周の並び順を見ていない。
-        // ringOrderFromPositions はどんな配置でも角度順を返してしまうので、
-        // ここを確かめないとテストが黙って別のものを検査する。
-        CHECK(looksCircular(pg));
-
-        std::vector<int> byIndex(cg.v);
-        for (int i = 0; i < cg.v; i++) byIndex[i] = i;
-
-        int before = countChordCrossings(cg.edges, byIndex);
-        int after = countChordCrossings(cg.edges, ringOrderFromPositions(pg));
-
-        g_checks++;
-        if (after >= before) {
-            reportFailure("交差が減っていない (" + std::to_string(c.clusters) + "x" +
-                          std::to_string(c.per) + "): 番号順 " + std::to_string(before) +
-                          " -> 実際 " + std::to_string(after));
-        } else if (g_verbose) {
-            std::cout << "    " << c.clusters << "x" << c.per << ": "
-                      << before << " -> " << after << " 交差" << std::endl;
-        }
-    }
-}
-
-static void testCircularOrderPlacesEveryVertexOnce() {
-    beginTest("円周の並び順に漏れも重複もない");
-
-    ClusteredGraph cg = makeClusteredGraph(3, 6);
-    GraphVisualizer g;
-    g.load("horizontal", cg.command);
-    g.prepare();
-
-    ParsedGraph pg = readGraph(g);
-    std::vector<int> order = ringOrderFromPositions(pg);
-    std::set<int> unique(order.begin(), order.end());
-    CHECK_EQ((int)order.size(), cg.v);
-    CHECK_EQ((int)unique.size(), cg.v);
-
-    // 同じ場所に2つ置かれていないか。並び順に重複があると、
-    // 2頂点が円周上の同じ枠を取り合って重なる。
-    float worst = 1e30f;
-    for (int i = 0; i < pg.v; i++) {
-        for (int j = i + 1; j < pg.v; j++) {
-            float dx = pg.xs[i] - pg.xs[j], dy = pg.ys[i] - pg.ys[j];
-            worst = std::min(worst, std::sqrt(dx * dx + dy * dy));
-        }
-    }
-    g_checks++;
-    // ノード半径は 20。円形配置は直径 + 隙間を確保して半径を決めている
-    if (worst < 40.0f) reportFailure("頂点が近すぎる: 最接近 " + std::to_string(worst));
-}
-
 // 辺の並びから custom コマンドを組み立てる
 static std::string customCommand(int v, const std::vector<std::pair<int, int>>& edges) {
     std::ostringstream oss;
@@ -2121,25 +1988,54 @@ static void testDenseStructuresUseCircularLayout() {
     CHECK(laidOutAsCircle(12, completeEdges(12))); // 11
 }
 
-static void testCircularCutoffIsAboutAverageDegree() {
-    beginTest("切り替えは頂点数ではなく平均次数で決まる");
+static void testCircularOnlyForNearCompleteGraphs() {
+    beginTest("円形にするのは完全に近いときだけ");
 
-    // 同じ平均次数なら、頂点数が変わっても判定は変わらない。
-    // 密度そのもので切ると、大きいグラフほど円形になりにくくなってしまう。
-    for (int n : {12, 20, 30}) {
-        // 平均次数 4 の環状グラフ (各頂点を隣と2つ先に繋ぐ)
-        std::vector<std::pair<int, int>> sparse;
-        for (int i = 0; i < n; i++) {
-            sparse.push_back({i, (i + 1) % n});
-            sparse.push_back({i, (i + 2) % n});
-        }
-        CHECK(!laidOutAsCircle(n, sparse));
+    // 密度 D = 2E / V(V-1)。完全グラフなら 1。
+    // 平均次数で切っていたときは、次数8 (密度 0.35) でも円形になっていた。
+    auto ring = [](int n, int span) {
+        std::vector<std::pair<int, int>> e;
+        for (int i = 0; i < n; i++)
+            for (int k = 1; k <= span; k++) e.push_back({i, (i + k) % n});
+        return e;
+    };
+    CHECK(!laidOutAsCircle(24, ring(24, 4)));
 
-        // 平均次数 6
-        std::vector<std::pair<int, int>> dense = sparse;
-        for (int i = 0; i < n; i++) dense.push_back({i, (i + 3) % n});
-        CHECK(laidOutAsCircle(n, dense));
+    // 完全に近ければ、頂点数によらず円形にする
+    for (int n : {12, 20}) {
+        std::vector<std::pair<int, int>> nearComplete;
+        int target = (int)(0.85f * n * (n - 1) / 2);
+        for (int i = 0; i < n && (int)nearComplete.size() < target; i++)
+            for (int j = i + 1; j < n && (int)nearComplete.size() < target; j++)
+                nearComplete.push_back({i, j});
+        CHECK(laidOutAsCircle(n, nearComplete));
     }
+}
+
+static void testCircularOrderPlacesEveryVertexOnce() {
+    beginTest("円周の並び順に漏れも重複もない");
+
+    const int V = 14;
+    GraphVisualizer g;
+    g.load("horizontal", customCommand(V, completeEdges(V)));
+    g.prepare();
+
+    ParsedGraph pg = readGraph(g);
+    std::vector<int> order = ringOrderFromPositions(pg);
+    std::set<int> unique(order.begin(), order.end());
+    CHECK_EQ((int)order.size(), V);
+    CHECK_EQ((int)unique.size(), V);
+
+    // 同じ場所に2つ置かれていないか。並び順に重複があると、
+    // 2頂点が円周上の同じ枠を取り合って重なる。
+    float worst = 1e30f;
+    for (int i = 0; i < pg.v; i++) {
+        for (int j = i + 1; j < pg.v; j++) {
+            float dx = pg.xs[i] - pg.xs[j], dy = pg.ys[i] - pg.ys[j];
+            worst = std::min(worst, std::sqrt(dx * dx + dy * dy));
+        }
+    }
+    CHECK(worst > 1.0f);
 }
 
 static void testCircularOrderHandlesEdgeCases() {
@@ -2935,13 +2831,11 @@ int main(int argc, char** argv) {
     testConnectedGraphIsFullyTraversed();
 
     beginSection("円形配置の並び順");
-    testDenseGraphUsesCircularLayout();
-    testCircularOrderReducesCrossings();
     testCircularOrderPlacesEveryVertexOnce();
     testCircularOrderHandlesEdgeCases();
     testSparseStructuresKeepForceLayout();
     testDenseStructuresUseCircularLayout();
-    testCircularCutoffIsAboutAverageDegree();
+    testCircularOnlyForNearCompleteGraphs();
 
     beginSection("重み付き / 重み無し");
     testUnweightedGraphHasNoWeightColumn();

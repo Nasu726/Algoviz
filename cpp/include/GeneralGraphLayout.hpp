@@ -414,21 +414,11 @@ private:
     // ==========================================
     // 密度に基づくハイブリッド初期配置
     // ==========================================
-    // 円形配置に切り替える平均次数。
+    // 円形配置に切り替える密度。密度 D = 2E / V(V-1) で、完全グラフなら 1。
     //
-    // 密度 D = 2E / V(V-1)、平均次数 K = 2E / V なので D = K / (V-1)。
-    // つまり「D >= C/(V-1)」は「平均次数が C 以上」と同じで、頂点数に依らない。
-    //
-    // 5 にしているのは、平均次数4までなら力学モデルが構造を見せられるから。
-    // 格子 (3.2)、車輪 (3.8)、木 (2) はどれも力学モデルの方がきれいに出る。
-    // 完全グラフ (K8 なら 7) のように、どう配置しても辺が交わる密度になって
-    // 初めて円形の方が読める。
-    static constexpr float CIRCULAR_MIN_DEGREE = 5.0f;
-
-    float getDensityThreshold(float V) {
-        if (V <= 1) return 1.0f;
-        return std::min(1.0f, CIRCULAR_MIN_DEGREE / (V - 1));
-    }
+    // 実験の結果、力学モデルが円形に負けるのは「完全に近い」ときだけだった。
+    // 平均次数で切ると、頂点数が増えるほど疎なグラフまで円形に落ちてしまう。
+    static constexpr float CIRCULAR_MIN_DENSITY = 0.7f;
 
     void applySmartInitialLayout(GraphData* graph, const std::vector<std::vector<int>>& adj) {
         float center_x = 400.0f; // キャンバスの中心X
@@ -464,7 +454,7 @@ private:
             // ==================================================
             // 高密度グラフ -> 円状配置 (Circular Layout)
             // ==================================================
-            if (density >= getDensityThreshold(n)) {
+            if (density >= CIRCULAR_MIN_DENSITY) {
                 is_circular_layout[c] = true;
                 // ★ PixiJS側の nodeRadius (20.0) を基準に、重ならない半径を計算
                 float nodeRadius = 20.0f;
