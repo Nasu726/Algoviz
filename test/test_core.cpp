@@ -2357,25 +2357,41 @@ static void testDfaTextRoundTrip() {
     CHECK(!acceptsDfa(again, "ab"));   // a が1個
 }
 
-static void testGeneratedDfaIsDeterministicAndTotal() {
-    beginTest("ランダム生成した DFA は決定性かつ全域");
+static void testGeneratedDfaIsDeterministicAndPartial() {
+    beginTest("ランダム生成した DFA は決定性で、遷移に空きがある");
 
-    AutomatonVisualizer a;
-    a.load("genRandom", "6 abc");
+    for (int trial = 0; trial < 20; trial++) {
+        AutomatonVisualizer a;
+        a.load("genRandom", "8 abc");
 
-    int v = 0;
-    std::vector<DfaEdge> edges = readDfaEdges(a, &v);
-    CHECK_EQ(v, 6);
-    CHECK_EQ((int)edges.size(), 18); // 6 状態 x 3 記号
+        int v = 0;
+        std::vector<DfaEdge> edges = readDfaEdges(a, &v);
+        CHECK_EQ(v, 8);
 
-    // (状態, 記号) の組がちょうど1回ずつ現れる
-    std::set<std::pair<int, char>> seen;
-    for (const DfaEdge& e : edges) {
-        CHECK(seen.insert({e.from, e.sym}).second);
-        CHECK(e.to >= 0 && e.to < v);
+        // (状態, 記号) の組は高々1回。決定性は構成から保証される
+        std::set<std::pair<int, char>> seen;
+        for (const DfaEdge& e : edges) {
+            CHECK(seen.insert({e.from, e.sym}).second);
+            CHECK(e.to >= 0 && e.to < v);
+        }
+
+        // 完全ではない。状態数 x 記号数だけ辺を張ると図がすぐ絡まるうえ、
+        // 「遷移が無くて拒否される」様子が一度も見られなくなる
+        CHECK((int)edges.size() < 8 * 3);
+
+        // 初期状態からすべての状態へ届く。届かない状態は入力をどう与えても
+        // 光らないので、置いても読めない
+        std::vector<std::vector<int>> next(v);
+        for (const DfaEdge& e : edges) next[e.from].push_back(e.to);
+        std::vector<char> visited(v, 0);
+        std::vector<int> stack{0};
+        visited[0] = 1;
+        while (!stack.empty()) {
+            int u = stack.back(); stack.pop_back();
+            for (int w : next[u]) if (!visited[w]) { visited[w] = 1; stack.push_back(w); }
+        }
+        CHECK_EQ((int)std::count(visited.begin(), visited.end(), (char)1), v);
     }
-    CHECK_EQ((int)seen.size(), 18);
-    CHECK(!a.getState(val::object())["hasNondeterminism"].as<bool>());
 
     // 記号が重複していても、アルファベットとしては1つにまとまる
     AutomatonVisualizer dup;
@@ -2383,13 +2399,22 @@ static void testGeneratedDfaIsDeterministicAndTotal() {
     CHECK_EQ(dup.getState(val::object())["alphabet"].as<std::string>(), std::string("ab"));
 }
 
+static void testUndefinedTransitionIsARejection() {
+    beginTest("遷移が無い記号を読んだら、その時点で拒否になる");
 
-// ==========================================
-// 木の配置 (Reingold-Tilford)
-// ==========================================
+    // 状態 1 から a の遷移が無い。1 は受理状態だが、a を読んだ時点で拒否になる。
+    AutomatonVisualizer a;
+    loadDfa(a, "2 3\n0 1 a\n0 0 b\n1 1 b\n", "0", "1");
 
-// 親子の組から木を作り、配置を確定させる。
-// 節点 i の座標は g.nodeData[i * NODE_STRIDE] / +1 に入る。
+    a.load("setInput", "aa");
+    a.runToEnd();
+    val s = a.getState(val::object());
+    CHECK(s["stuck"].as<bool>());
+    CHECK(s["finished"].as<bool>());
+    CHECK_EQ(s["currentState"].as<int>(), 1);
+    CHECK(!s["accepted"].as<bool>());
+}
+
 static GraphData makeTree(int n, const std::vector<std::pair<int, int>>& edges) {
     GraphData g(n, (int)edges.size());
     for (int i = 0; i < n; i++) g.setNode(i, 0.0f, 0.0f, (float)i, 0);
@@ -2850,7 +2875,8 @@ int main(int argc, char** argv) {
     testDfaStopsWhenTransitionIsMissing();
     testDfaDetectsNondeterminism();
     testDfaTextRoundTrip();
-    testGeneratedDfaIsDeterministicAndTotal();
+    testGeneratedDfaIsDeterministicAndPartial();
+    testUndefinedTransitionIsARejection();
 
     beginSection("木の配置");
     testTreeDepthBecomesY();

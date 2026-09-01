@@ -126,7 +126,14 @@ private:
         paintNode(st.current, st.finished && st.accepted ? NODE_PATH : NODE_VISITING);
     }
 
-    // 各状態から各記号へ遷移を1本ずつ張る。決定性と全域性が構成から保証される。
+    // 空いている遷移をどれくらい埋めるか (百分率)。
+    //
+    // 全部埋めると完全な DFA になる。決定性は保てるが、状態数 x 記号数だけ
+    // 辺が張られるので図が絡まるうえ、どの入力でも止まらないので
+    // 「遷移が無くて拒否される」様子が一度も見られない。
+    static constexpr int EXTRA_TRANSITION_PERCENT = 35;
+
+    // 決定性を保ったまま、部分的な遷移関数を作る。
     void generateDfa(int v, const std::string& alpha) {
         v = std::clamp(v, 1, MAX_NODES);
 
@@ -138,16 +145,44 @@ private:
         }
         if (a.empty()) a = "ab";
         while (v * (int)a.size() > MAX_EDGES) a.pop_back();
+        int k = (int)a.size();
+
+        // 遷移表を先に作る。-1 は遷移が無い。
+        // (状態, 記号) の枠は高々1本しか埋めないので、決定性が構成から保証される。
+        std::vector<std::vector<int>> table(v, std::vector<int>(k, -1));
+
+        // 1. 初期状態から全部の状態へ届くようにする。
+        //    届かない状態は入力をどう与えても光らないので、置いても読めない。
+        std::vector<int> reached{0};
+        for (int i = 1; i < v; i++) {
+            std::vector<std::pair<int, int>> slots;
+            for (int p : reached)
+                for (int s = 0; s < k; s++)
+                    if (table[p][s] < 0) slots.push_back({p, s});
+            if (slots.empty()) break; // 記号が足りず、これ以上伸ばせない
+
+            const auto& slot = slots[randInt((int)slots.size())];
+            table[slot.first][slot.second] = i;
+            reached.push_back(i);
+        }
+
+        // 2. 残りの枠は一部だけ埋める。埋め残しがそのまま
+        //    「その記号では遷移できない = 拒否」になる。
+        for (int p = 0; p < v; p++)
+            for (int s = 0; s < k; s++)
+                if (table[p][s] < 0 && randInt(100) < EXTRA_TRANSITION_PERCENT)
+                    table[p][s] = randInt(v);
 
         weighted = false;
         hasNodeWeights = false;
         generatedDirected = true;
-        graph = std::make_unique<GraphData>(v, v * (int)a.size());
+        graph = std::make_unique<GraphData>(v, v * k);
 
         for (int i = 0; i < v; i++) scatterNode(i);
-        for (int i = 0; i < v; i++)
-            for (char c : a)
-                graph->addEdge((float)i, (float)randInt(v), (float)(unsigned char)c, 0);
+        for (int p = 0; p < v; p++)
+            for (int s = 0; s < k; s++)
+                if (table[p][s] >= 0)
+                    graph->addEdge((float)p, (float)table[p][s], (float)(unsigned char)a[s], 0);
 
         graph->startNodeIndex = 0;
     }
