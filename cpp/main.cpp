@@ -9,6 +9,7 @@
 #include "include/BstVisualizer.hpp"
 #include "include/HeapVisualizer.hpp"
 #include "include/TrieVisualizer.hpp"
+#include "include/HuffmanVisualizer.hpp"
 
 using namespace emscripten;
 
@@ -39,6 +40,8 @@ public:
             currentAlgo = std::make_unique<HeapVisualizer>();
         } else if (name == "trie") {
             currentAlgo = std::make_unique<TrieVisualizer>();
+        } else if (name == "huffman") {
+            currentAlgo = std::make_unique<HuffmanVisualizer>();
         } else {
             std::cerr << "Unknown algorithm: " << name << std::endl;
         }

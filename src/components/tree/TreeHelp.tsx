@@ -147,7 +147,53 @@ const TrieHelp: React.FC<{ maxWords: number }> = ({ maxWords }) => (
     </>
 );
 
+
+const HuffmanHelp: React.FC<{ maxLeaves: number }> = ({ maxLeaves }) => (
+    <>
+        <h3>1. 画面の見方</h3>
+        <ul>
+            <li><b>葉の丸の中</b>がその文字。内部の節点には文字が無い</li>
+            <li>丸の脇の数字が<b>重み</b>。葉なら出現回数、内部の節点なら下にある葉の合計</li>
+            <li><b>枝の 0 と 1</b> がそのまま符号のビット。根から葉までをつなげたものがその文字の符号になる</li>
+            <li>途中は木が複数ある状態 (森) になり、横に並んで表示される</li>
+        </ul>
+
+        <h3>2. 1ステップの単位</h3>
+        <p><b>「重みが最小の2つを選ぶ」</b>と<b>「その2つを繋ぐ」</b>の2手で1回の併合です。</p>
+        <ul>
+            <li>選んだ2つを子にする新しい節点ができ、その重みは2つの合計になる</li>
+            <li>木が1本になったら完成</li>
+            <li>重みが同じときは先にできた方から選ぶので、同じ入力なら必ず同じ木になる</li>
+        </ul>
+
+        <h3>3. 入力</h3>
+        <p>文章を入れると、出てくる文字を数えて葉にします。空白は数えません。</p>
+        <pre style={codeBlock}>abracadabra</pre>
+        <ul>
+            <li>文字の種類の上限は {maxLeaves}</li>
+            <li>出現回数が多い文字ほど根に近くなり、符号が短くなる</li>
+        </ul>
+
+        <h3>4. 画面の操作</h3>
+        <ul>
+            <li><b>ドラッグ</b>：表示位置を動かす</li>
+            <li><b>ホイール / 2本指のピンチ</b>：拡大・縮小</li>
+        </ul>
+
+        <h3>5. ショートカットキー</h3>
+        <ul>
+            <li><b>Esc</b>：ビジュアライザ一覧へ戻る</li>
+            <li><b>Ctrl + H</b>：ヘルプを開く</li>
+            <li><b>Ctrl + S</b>：この文章で作り直す</li>
+            <li><b>Ctrl + Enter</b>：実行 / 一時停止</li>
+            <li><b>Ctrl + &larr;</b> / <b>&rarr;</b>：戻る / 進む</li>
+            <li><b>Ctrl + &uarr;</b> / <b>&darr;</b>：実行速度の増減</li>
+        </ul>
+    </>
+);
+
 export const TreeHelp: React.FC<{ variant: TreeVariant; maxValues: number }> = ({ variant, maxValues }) =>
-    variant === 'trie' ? <TrieHelp maxWords={maxValues} />
+    variant === 'huffman' ? <HuffmanHelp maxLeaves={maxValues} />
+    : variant === 'trie' ? <TrieHelp maxWords={maxValues} />
     : variant === 'heap' ? <HeapHelp maxValues={maxValues} />
     : <BstHelp maxValues={maxValues} />;

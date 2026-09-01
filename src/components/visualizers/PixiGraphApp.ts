@@ -51,6 +51,7 @@ export class PixiGraphApp {
     private isDirected: boolean = false;
     private isAutomaton: boolean = false;
     private edgeSymbols: boolean = false;
+    private nodeLabels: string[] = [];
     private labelMode: GraphState['labelMode'] = 'index';
     private showWeights: boolean = false;
     
@@ -420,6 +421,7 @@ export class PixiGraphApp {
         this.isAutomaton = !!state.isAutomaton;
         this.labelMode = state.labelMode ?? 'index';
         this.edgeSymbols = !!state.edgeSymbols;
+        this.nodeLabels = state.nodeLabels ?? [];
         const startIdx: number = state.startNodeIndex ?? -1;
         const accepting: Set<number> = new Set(state.acceptingStates ?? []);
 
@@ -662,6 +664,8 @@ export class PixiGraphApp {
                     labelText.text =
                         this.labelMode === 'state' ? `q${this.toSubscript(nodeIndex)}`
                         : this.labelMode === 'value' ? formatNodeValue(nodeArray[i + 2])
+                        // ハフマン木の葉は文字、内部の節点は空
+                        : this.labelMode === 'text' ? (this.nodeLabels[nodeIndex] ?? '')
                         // trie の節点には名前が無い。根からの道がその接頭辞を表す
                         : this.labelMode === 'none' ? ''
                         : `${nodeIndex}`;
