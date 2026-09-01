@@ -50,6 +50,20 @@ export interface GraphState {
 
     /** AutomatonVisualizer のときだけ */
     acceptingStates?: number[];
+    /** アルファベットと入力の長さの上限。C++ 側が唯一の情報源 */
+    maxAlphabet?: number;
+    maxInput?: number;
+    /** 実際に使われている遷移記号を並べたもの */
+    alphabet?: string;
+    inputString?: string;
+    /** 入力を何文字目まで消費したか */
+    inputPos?: number;
+    currentState?: number;
+    accepted?: boolean;
+    /** 遷移が定義されていなくて止まった */
+    stuck?: boolean;
+    /** 同じ状態・同じ記号の遷移が2本以上ある。DFA の前提を外れる */
+    hasNondeterminism?: boolean;
 
     /** TraversalVisualizer のときだけ */
     algorithm?: 'bfs' | 'dfs' | 'dijkstra';

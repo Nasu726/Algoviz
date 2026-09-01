@@ -4,6 +4,8 @@ import { VisualizerShell } from '../components/ui/VisualizerShell';
 import { SidebarLayout } from '../components/ui/SidebarLayout';
 import { GraphSetupPanel } from '../components/graph/GraphSetupPanel';
 import { TraversalPanel } from '../components/graph/TraversalPanel';
+import { AutomatonSetupPanel } from '../components/graph/AutomatonSetupPanel';
+import { AutomatonPanel } from '../components/graph/AutomatonPanel';
 import { GraphHelp } from '../components/graph/GraphHelp';
 import { defaultSettings, engineAlgorithm, isTraversal, VARIANT_TITLE } from '../components/graph/types';
 import type { GraphSettings, GraphVariant } from '../components/graph/types';
@@ -22,6 +24,8 @@ interface Props {
 export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     const tier = useLayoutTier();
     const traversal = isTraversal(variant);
+    // 1手ずつ動かせるページか。描くだけの遊び場だけが動かない
+    const runnable = traversal || variant === 'automaton';
 
     const [settings, setSettings] = useState<GraphSettings>(() => defaultSettings(variant));
     const update = (patch: Partial<GraphSettings>) => setSettings((s) => ({ ...s, ...patch }));
@@ -30,7 +34,8 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     const [startNode, setStartNode] = useState('0');
     const [goalNode, setGoalNode] = useState('');
     const [automatonStart, setAutomatonStart] = useState('0');
-    const [acceptingNodes, setAcceptingNodes] = useState('1, 2');
+    const [acceptingNodes, setAcceptingNodes] = useState('1');
+    const [inputString, setInputString] = useState('abba');
 
     const [state, setState] = useState<GraphState | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
@@ -46,8 +51,8 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
 
     // 生成コマンドを組み立てるときに常に最新の設定を読めるようにしておく。
     // useEffect の依存配列に全部並べると、設定を変えるたびにグラフが作り直されてしまう。
-    const latest = useRef({ settings, startNode, goalNode, automatonStart, acceptingNodes });
-    latest.current = { settings, startNode, goalNode, automatonStart, acceptingNodes };
+    const latest = useRef({ settings, startNode, goalNode, automatonStart, acceptingNodes, inputString });
+    latest.current = { settings, startNode, goalNode, automatonStart, acceptingNodes, inputString };
 
     // 常に横長。木 / DAG のビジュアライザを作るときは、木は縦長に描くのが普通なので
     // そこで明示的に分ける (AGENTS.md の「先送りにしている判断」を参照)
@@ -74,6 +79,7 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         } else if (variant === 'automaton') {
             engine.load('setStartNode', l.automatonStart);
             engine.load('setAccepting', l.acceptingNodes);
+            engine.load('setInput', l.inputString);
         }
     };
 
@@ -91,24 +97,21 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         });
     };
 
-    const generate = (command: string) => {
+    // source はレイアウトの指向性、または派生クラス向けのコマンド名
+    const generateWith = (source: string, command: string) => {
         setIsPlaying(false);
-        engine.load(orientation(), command);
+        engine.load(source, command);
         applyVariantSettings();
         readStateAndSync();
     };
+    const generate = (command: string) => generateWith(orientation(), command);
 
     // ページを開いたとき。variant ごとに C++ 側のクラスが決まる。
     useEffect(() => {
         if (!engine) return;
         setIsPlaying(false);
         engine.setAlgorithm(engineAlgorithm(variant));
-        const f = flags();
-        const s = latest.current.settings;
-        engine.load(orientation(),
-            `random ${s.nodeCount} ${s.edgeCount} ${f.skip} ${f.selfLoop} ${f.sameEdge} ${f.dir} ${f.conn} ${f.wt}`);
-        applyVariantSettings();
-        readStateAndSync();
+        handleGenerateRandom();
         setIsLoaded(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [engine, variant]);
@@ -120,16 +123,25 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         applyVariantSettings();
         readState();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [startNode, goalNode, automatonStart, acceptingNodes]);
+    }, [startNode, goalNode, automatonStart, acceptingNodes, inputString]);
 
-    const handleReset = () => { setIsPlaying(false); engine.load('resetTraversal', ''); readState(); };
+    const handleReset = () => {
+        setIsPlaying(false);
+        engine.load(variant === 'automaton' ? 'resetRun' : 'resetTraversal', '');
+        readState();
+    };
     const handleStep = () => { setIsPlaying(false); engine.step(); readState(); };
     const handleStepBack = () => { setIsPlaying(false); engine.stepBack(); readState(); };
     const handleRunToEnd = () => { setIsPlaying(false); engine.runToEnd(); readState(); };
 
     const handleGenerateRandom = () => {
-        const f = flags();
         const s = latest.current.settings;
+        if (variant === 'automaton') {
+            // 状態ごとに各記号の遷移を1本ずつ張る。引数が一般グラフとまるで違う
+            generateWith('genRandom', `${s.nodeCount} ${s.alphabet}`);
+            return;
+        }
+        const f = flags();
         generate(`random ${s.nodeCount} ${s.edgeCount} ${f.skip} ${f.selfLoop} ${f.sameEdge} ${f.dir} ${f.conn} ${f.wt}`);
     };
     const handleGenerateComplete = () => {
@@ -138,16 +150,18 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     };
     const handleGenerateFromText = () => {
         const f = flags();
-        generate(`custom ${f.skip} ${f.dir} ${f.nodeW} ${f.wt}\n${latest.current.settings.inputBuffer}`);
+        // オートマトンは常に有向で、3列目は重みではなく遷移記号
+        const dir = variant === 'automaton' ? 1 : f.dir;
+        generate(`custom ${f.skip} ${dir} ${f.nodeW} ${f.wt}\n${latest.current.settings.inputBuffer}`);
     };
 
     useKeyboardShortcuts({
         onEsc: !isHelpOpen ? onBack : undefined,
         onHelp: () => setIsHelpOpen(!isHelpOpen),
         onSave: !isHelpOpen ? handleGenerateFromText : undefined,
-        onPlayPause: !isHelpOpen && traversal ? toggle : undefined,
-        onStepNext: !isHelpOpen && traversal ? handleStep : undefined,
-        onStepBack: !isHelpOpen && traversal ? handleStepBack : undefined,
+        onPlayPause: !isHelpOpen && runnable ? toggle : undefined,
+        onStepNext: !isHelpOpen && runnable ? handleStep : undefined,
+        onStepBack: !isHelpOpen && runnable ? handleStepBack : undefined,
         onSpeedUp: () => { if (!isHelpOpen) onSpeedUp(); },
         onSpeedDown: () => { if (!isHelpOpen) onSpeedDown(); },
     });
@@ -155,7 +169,21 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     const maxNodes = state?.maxNodes ?? 50;
     const compact = tier === 'narrow';
 
-    const setupPanel = (
+    const setupPanel = variant === 'automaton' ? (
+        <AutomatonSetupPanel
+            settings={settings}
+            update={update}
+            maxNodes={maxNodes}
+            maxAlphabet={state?.maxAlphabet ?? 8}
+            onGenerateRandom={handleGenerateRandom}
+            onGenerateFromText={handleGenerateFromText}
+            startState={automatonStart}
+            setStartState={setAutomatonStart}
+            acceptingStates={acceptingNodes}
+            setAcceptingStates={setAcceptingNodes}
+            compact={compact}
+        />
+    ) : (
         <GraphSetupPanel
             variant={variant}
             settings={settings}
@@ -164,15 +192,25 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
             onGenerateRandom={handleGenerateRandom}
             onGenerateComplete={handleGenerateComplete}
             onGenerateFromText={handleGenerateFromText}
-            automatonStart={automatonStart}
-            setAutomatonStart={setAutomatonStart}
-            acceptingNodes={acceptingNodes}
-            setAcceptingNodes={setAcceptingNodes}
             compact={compact}
         />
     );
 
-    const traversalPanel = traversal ? (
+    const controlPanel = variant === 'automaton' ? (
+        <AutomatonPanel
+            state={state}
+            inputString={inputString}
+            setInputString={setInputString}
+            isPlaying={isPlaying} delay={delay} setDelay={setDelay}
+            onReset={handleReset}
+            onPlayPause={toggle}
+            onStepBack={handleStepBack}
+            onStepNext={handleStep}
+            onRunToEnd={handleRunToEnd}
+            horizontal={tier !== 'wide'}
+            compact={compact}
+        />
+    ) : traversal ? (
         <TraversalPanel
             variant={variant}
             state={state}
@@ -208,7 +246,7 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
                 tier={tier}
                 setupPanel={setupPanel}
                 canvas={canvas}
-                controlPanel={traversalPanel}
+                controlPanel={controlPanel}
             />
         </VisualizerShell>
     );

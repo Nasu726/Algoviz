@@ -410,7 +410,10 @@ export class PixiGraphApp {
         // 何が「重み」として意味を持つかはグラフ側の性質で決まる。
         // 重み無しグラフに辺の重みは無いし、頂点の脇の数字はダイクストラの
         // 暫定距離か、入力された頂点の重みのどちらかがあるときだけ意味を持つ。
-        const showEdgeWeight = this.showWeights && readable && !!state.weighted;
+        // オートマトンの辺に載っているのは重みではなく遷移記号。
+        // 記号が無いと遷移が読めないので、表示の好みでは消さない。
+        const showEdgeWeight = readable &&
+            (this.isAutomaton || (this.showWeights && !!state.weighted));
         const hasNodeValue = state.nodeValueMode === 'distance' || !!state.hasNodeWeights;
         const showNodeValue = this.showWeights && readable && hasNodeValue;
 
@@ -482,7 +485,10 @@ export class PixiGraphApp {
                 const totalEdges = edgeTotalCounts[edgeKey]; // ★そのペア間に何本の辺があるか
 
                 const actualRadius = this.nodeRadius + 2;
-                textObj.text = weight.toString();
+                // 3列目の意味はグラフの種類で変わる (C++ 側 usesSymbols)
+                textObj.text = this.isAutomaton
+                    ? String.fromCharCode(weight)
+                    : weight.toString();
 
                 if (fromIdx === toIdx) {
                     // ----------------------------------------

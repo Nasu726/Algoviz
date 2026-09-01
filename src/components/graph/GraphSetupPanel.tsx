@@ -11,11 +11,6 @@ interface Props {
     onGenerateRandom: () => void;
     onGenerateComplete: () => void;
     onGenerateFromText: () => void;
-    /** オートマトン用。variant が automaton のときだけ使う */
-    automatonStart: string;
-    setAutomatonStart: (v: string) => void;
-    acceptingNodes: string;
-    setAcceptingNodes: (v: string) => void;
     compact?: boolean;
 }
 
@@ -23,7 +18,6 @@ interface Props {
 export const GraphSetupPanel: React.FC<Props> = ({
     variant, settings, update, maxNodes,
     onGenerateRandom, onGenerateComplete, onGenerateFromText,
-    automatonStart, setAutomatonStart, acceptingNodes, setAcceptingNodes,
     compact,
 }) => {
     const s = settings;
@@ -44,12 +38,8 @@ export const GraphSetupPanel: React.FC<Props> = ({
                     </span>
                 </div>
 
-                <Check
-                    checked={s.isDirected}
-                    disabled={variant === 'automaton'}
-                    onChange={(v) => update({ isDirected: v })}
-                >
-                    有向グラフ{variant === 'automaton' && '（オートマトンは常に有向）'}
+                <Check checked={s.isDirected} onChange={(v) => update({ isDirected: v })}>
+                    有向グラフ
                 </Check>
                 <Check checked={s.connected} onChange={(v) => update({ connected: v })}>
                     連結なグラフにする
@@ -88,22 +78,6 @@ export const GraphSetupPanel: React.FC<Props> = ({
                 />
                 <button onClick={onGenerateFromText} style={button}>📝 テキストから生成</button>
             </Section>
-
-            {variant === 'automaton' && (
-                <Section title="オートマトン">
-                    <div>
-                        初期状態: <NumberInput value={automatonStart} max={maxNodes - 1} onChange={setAutomatonStart} />
-                    </div>
-                    <div>
-                        受理状態 (カンマ区切り):
-                        <input
-                            type="text" value={acceptingNodes} placeholder="例: 1, 2"
-                            onChange={(e) => setAcceptingNodes(e.target.value)}
-                            style={{ width: '100%', marginTop: '4px' }}
-                        />
-                    </div>
-                </Section>
-            )}
 
             {(s.weighted || variant === 'plain') && (
                 <Section title="表示">
