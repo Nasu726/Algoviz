@@ -1,7 +1,12 @@
 import React from 'react';
-import { Section, NumberInput } from '../graph/panelParts';
+import { Section, NumberInput, Check } from '../graph/panelParts';
+import type { TreeVariant } from './types';
 
 interface Props {
+    variant: TreeVariant;
+    /** ヒープのときだけ使う。大きい値を上にするか */
+    maxHeap: boolean;
+    setMaxHeap: (v: boolean) => void;
     valueText: string;
     setValueText: (v: string) => void;
     count: string;
@@ -14,6 +19,7 @@ interface Props {
 
 // 実行前に決める設定。何を挿入するか。
 export const TreeSetupPanel: React.FC<Props> = ({
+    variant, maxHeap, setMaxHeap,
     valueText, setValueText, count, setCount, maxValues,
     onApply, onGenerateRandom, compact,
 }) => {
@@ -34,6 +40,15 @@ export const TreeSetupPanel: React.FC<Props> = ({
                 />
                 <button onClick={onApply} style={button}>📝 この値で作り直す</button>
             </Section>
+
+            {/* どちらも正しいヒープで、分類では決まらないので選ばせる */}
+            {variant === 'heap' && (
+                <Section title="ヒープの向き">
+                    <Check checked={maxHeap} onChange={setMaxHeap}>
+                        最大ヒープ (大きい値が上)
+                    </Check>
+                </Section>
+            )}
 
             <Section title="ランダム生成">
                 <div>

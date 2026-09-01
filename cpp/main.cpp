@@ -7,6 +7,7 @@
 #include "include/AutomatonVisualizer.hpp"
 #include "include/TraversalVisualizer.hpp"
 #include "include/BstVisualizer.hpp"
+#include "include/HeapVisualizer.hpp"
 
 using namespace emscripten;
 
@@ -33,6 +34,8 @@ public:
             currentAlgo = std::make_unique<TraversalVisualizer>();
         } else if (name == "bst") {
             currentAlgo = std::make_unique<BstVisualizer>();
+        } else if (name == "heap") {
+            currentAlgo = std::make_unique<HeapVisualizer>();
         } else {
             std::cerr << "Unknown algorithm: " << name << std::endl;
         }

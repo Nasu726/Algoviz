@@ -8,21 +8,26 @@ import { TreeHelp } from '../components/tree/TreeHelp';
 import { useKeyboardShortcuts } from '../hooks/keyboardShortcut';
 import { useLayoutTier } from '../hooks/useLayoutTier';
 import { usePlayback } from '../hooks/usePlayback';
+import { TREE_TITLE, treeAlgorithm, defaultValues } from '../components/tree/types';
+import type { TreeVariant } from '../components/tree/types';
 import type { VisualizerEngine, GraphState } from '../types/engine';
 
 interface Props {
     engine: VisualizerEngine;
     onBack: () => void;
+    /** このページが見せるものを1つに固定する */
+    variant: TreeVariant;
 }
-
-const TITLE = '二分探索木の構築';
 
 // 木のビジュアライザのページ。GraphPage とは決めることが重ならないので分けている。
 // 枠 / 並べ替え / 再生は共通の部品をそのまま使う。
-export const TreePage: React.FC<Props> = ({ engine, onBack }) => {
+//
+// variant ごとの違いはパネルの中に閉じ込め、ここは題とコマンド名だけを変える。
+export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
     const tier = useLayoutTier();
 
-    const [valueText, setValueText] = useState('50 30 70 20 40 60 80');
+    const [valueText, setValueText] = useState(defaultValues[variant]);
+    const [maxHeap, setMaxHeap] = useState(true);
     const [count, setCount] = useState('10');
     const [state, setState] = useState<GraphState | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
@@ -59,12 +64,21 @@ export const TreePage: React.FC<Props> = ({ engine, onBack }) => {
     useEffect(() => {
         if (!engine) return;
         setIsPlaying(false);
-        engine.setAlgorithm('bst');
+        engine.setAlgorithm(treeAlgorithm(variant));
         engine.load('setValues', latest.current.valueText);
         readState();
         setIsLoaded(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [engine]);
+    }, [engine, variant]);
+
+    // 向きが変われば出来上がる木も変わるので、C++ 側で作り直す
+    const changeMaxHeap = (v: boolean) => {
+        setIsPlaying(false);
+        setMaxHeap(v);
+        engine.load('setMaxHeap', v ? '1' : '0');
+        engine.load('setValues', latest.current.valueText);
+        readState();
+    };
 
     const handleReset = () => { setIsPlaying(false); engine.load('resetRun', ''); readState(); };
     const handleStep = () => { setIsPlaying(false); engine.step(); readState(); };
@@ -87,18 +101,21 @@ export const TreePage: React.FC<Props> = ({ engine, onBack }) => {
 
     return (
         <VisualizerShell
-            title={TITLE}
+            title={TREE_TITLE[variant]}
             compact={compact}
             onBack={onBack}
             backConfirm="ビジュアライザ一覧へ戻りますか？"
             isHelpOpen={isHelpOpen}
             setIsHelpOpen={setIsHelpOpen}
-            help={<TreeHelp maxValues={maxValues} />}
+            help={<TreeHelp variant={variant} maxValues={maxValues} />}
         >
             <SidebarLayout
                 tier={tier}
                 setupPanel={
                     <TreeSetupPanel
+                        variant={variant}
+                        maxHeap={maxHeap}
+                        setMaxHeap={changeMaxHeap}
                         valueText={valueText}
                         setValueText={setValueText}
                         count={count}
@@ -112,6 +129,7 @@ export const TreePage: React.FC<Props> = ({ engine, onBack }) => {
                 canvas={isLoaded ? <GraphRenderer engine={engine} showWeights={false} /> : null}
                 controlPanel={
                     <TreePanel
+                        variant={variant}
                         state={state}
                         isPlaying={isPlaying}
                         delay={delay}

@@ -71,6 +71,29 @@ protected:
         graph->setNode(i, (float)(randInt(600) + 100), (float)(randInt(400) + 100), 0, 0);
     }
 
+    // 2つの節点の「今いる座標」だけを入れ替える。目標の座標は動かさない。
+    //
+    // 値が別の節点へ移る動きを見せるために使う。値だけを差し替えると
+    // 数字が瞬間的に入れ替わって何が起きたか分からないが、今いる座標を
+    // 相手側にしておくと、レイアウトのイージングが元の位置まで戻す間に
+    // 「値が移動した」ように見える。
+    //
+    // 木の形そのものが変わるとき (回転など) は目標の座標が変わるので、
+    // これを呼ばなくてもイージングが働く。
+    void swapNodePositions(int a, int b) {
+        if (!graph) return;
+        int n = graph->nodeCount();
+        if (a < 0 || b < 0 || a >= n || b >= n || a == b) return;
+
+        std::size_t oa = (std::size_t)a * GraphData::NODE_STRIDE;
+        std::size_t ob = (std::size_t)b * GraphData::NODE_STRIDE;
+        std::swap(graph->nodeData[oa],     graph->nodeData[ob]);
+        std::swap(graph->nodeData[oa + 1], graph->nodeData[ob + 1]);
+
+        // 目標へ寄せ直させる
+        layout->invalidate();
+    }
+
     // オートマトンのように、常に有向として扱いたい派生クラスが true を返す
     virtual bool forceDirected() const { return false; }
 

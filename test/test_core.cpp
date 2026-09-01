@@ -22,6 +22,7 @@
 #include "../cpp/include/AutomatonVisualizer.hpp"
 #include "../cpp/include/TraversalVisualizer.hpp"
 #include "../cpp/include/BstVisualizer.hpp"
+#include "../cpp/include/HeapVisualizer.hpp"
 
 using emscripten::val;
 
@@ -2766,6 +2767,198 @@ static void testGeneratedValuesHaveNoDuplicates() {
     CHECK_EQ(s["nodeCount"].as<int>(), 20);
 }
 
+
+// ==========================================
+// ヒープの構築
+// ==========================================
+
+struct ParsedHeap {
+    int n = 0;
+    std::vector<float> values;                 // 節点の添字ごとの値
+    std::vector<std::pair<int, int>> edges;    // (親, 子)
+    std::vector<float> xs, ys;
+};
+
+static ParsedHeap readHeap(HeapVisualizer& h) {
+    val s = h.getState(val::object());
+    ParsedHeap ph;
+    ph.n = s["nodeCount"].as<int>();
+
+    val nodes = s["nodes"];
+    for (int i = 0; i < ph.n; i++) {
+        ph.values.push_back(nodes[i * GraphData::NODE_STRIDE + 2].as<float>());
+        ph.xs.push_back(nodes[i * GraphData::NODE_STRIDE].as<float>());
+        ph.ys.push_back(nodes[i * GraphData::NODE_STRIDE + 1].as<float>());
+    }
+
+    val edges = s["edges"];
+    int m = s["edgeCount"].as<int>();
+    for (int i = 0; i < m; i++) {
+        ph.edges.push_back({ (int)edges[i * GraphData::EDGE_STRIDE].as<float>(),
+                             (int)edges[i * GraphData::EDGE_STRIDE + 1].as<float>() });
+    }
+    return ph;
+}
+
+static ParsedHeap buildHeap(const std::string& values, bool maxHeap = true) {
+    HeapVisualizer h;
+    if (!maxHeap) h.load("setMaxHeap", "0");
+    h.load("setValues", values);
+    h.runToEnd();
+    return readHeap(h);
+}
+
+static void testHeapConditionHolds() {
+    beginTest("挿入し終えた木がヒープ条件を満たす");
+
+    const char* inputs[] = { "50 30 70 20 40 60 80", "1 2 3 4 5 6 7 8 9", "9 8 7 6 5", "42" };
+    for (const char* in : inputs) {
+        ParsedHeap ph = buildHeap(in);
+        for (int i = 1; i < ph.n; i++) {
+            g_checks++;
+            if (ph.values[i] > ph.values[(i - 1) / 2]) {
+                reportFailure(std::string(in) + ": 節点 " + std::to_string(i) +
+                              " (" + std::to_string((int)ph.values[i]) + ") が親 (" +
+                              std::to_string((int)ph.values[(i - 1) / 2]) + ") より大きい");
+            }
+        }
+        // 値の集合は入れたものと一致する
+        std::vector<float> expected;
+        std::istringstream iss(in);
+        float v;
+        while (iss >> v) expected.push_back(v);
+        std::vector<float> got = ph.values;
+        std::sort(expected.begin(), expected.end());
+        std::sort(got.begin(), got.end());
+        CHECK(got == expected);
+    }
+}
+
+static void testMinHeapReversesTheOrder() {
+    beginTest("最小ヒープに切り替えると親が子以下になる");
+
+    ParsedHeap ph = buildHeap("50 30 70 20 40 60 80", false);
+    CHECK_EQ(ph.n, 7);
+    for (int i = 1; i < ph.n; i++) {
+        g_checks++;
+        if (ph.values[i] < ph.values[(i - 1) / 2]) {
+            reportFailure("節点 " + std::to_string(i) + " が親より小さい");
+        }
+    }
+    if (ph.n > 0) CHECK_EQ(ph.values[0], 20.0f); // 根は最小値
+}
+
+static void testHeapShapeIsCompleteBinaryTree() {
+    beginTest("形が完全二分木になっている");
+
+    ParsedHeap ph = buildHeap("50 30 70 20 40 60 80 10 90");
+    CHECK_EQ(ph.n, 9);
+    CHECK_EQ((int)ph.edges.size(), 8); // 根以外はちょうど1本の親を持つ
+
+    // 辺は必ず ((i-1)/2, i) の形
+    std::set<int> hasParent;
+    for (const auto& e : ph.edges) {
+        CHECK_EQ(e.first, (e.second - 1) / 2);
+        CHECK(hasParent.insert(e.second).second); // 親は1つだけ
+    }
+    for (int i = 1; i < ph.n; i++) CHECK(hasParent.count(i) == 1);
+}
+
+static void testSwapMovesNodesInsteadOfJumping() {
+    beginTest("値の入れ替えは座標も入れ替えて動きで見せる");
+
+    // 10 を置く / 根なので止まる / 20 を置く、まで進めてから配置を落ち着かせる
+    HeapVisualizer h;
+    h.load("setValues", "10 20");
+    for (int i = 0; i < 3; i++) h.step();
+    for (int i = 0; i < 500; i++) h.prepare();
+
+    ParsedHeap before = readHeap(h);
+    CHECK_EQ(before.n, 2);
+    CHECK(before.ys[0] != before.ys[1]); // 根と子で高さが違う
+
+    h.step(); // ここで 20 が親と入れ替わる
+    ParsedHeap after = readHeap(h);
+
+    // 値は入れ替わっている
+    CHECK_EQ(after.values[0], 20.0f);
+    CHECK_EQ(after.values[1], 10.0f);
+
+    // 今いる座標も入れ替わっている。ここから目標へ戻る間に
+    // 「値が上がっていった」ように見える。
+    CHECK_NEAR(after.ys[0], before.ys[1], 0.01f);
+    CHECK_NEAR(after.ys[1], before.ys[0], 0.01f);
+
+    // 落ち着けば元の高さに戻る (目標の座標は動かしていない)
+    for (int i = 0; i < 500; i++) h.prepare();
+    ParsedHeap settled = readHeap(h);
+    CHECK_NEAR(settled.ys[0], before.ys[0], 0.01f);
+    CHECK_NEAR(settled.ys[1], before.ys[1], 0.01f);
+}
+
+static void testHeapStepMatchesRunToEnd() {
+    beginTest("step を繰り返した結果と runToEnd の結果が一致する");
+
+    const char* inputs[] = { "50 30 70 20 40", "1 2 3", "" };
+    for (const char* in : inputs) {
+        HeapVisualizer stepwise;
+        stepwise.load("setValues", in);
+        int guard = 0;
+        while (stepwise.step() && guard++ < 2000) {}
+
+        HeapVisualizer atOnce;
+        atOnce.load("setValues", in);
+        atOnce.runToEnd();
+
+        ParsedHeap a = readHeap(stepwise), b = readHeap(atOnce);
+        CHECK_EQ(a.n, b.n);
+        CHECK(a.values == b.values);
+        CHECK(a.edges == b.edges);
+    }
+}
+
+static void testHeapStepBackReturnsToPreviousState() {
+    beginTest("stepBack で1手前の状態に戻る");
+
+    HeapVisualizer h;
+    h.load("setValues", "50 30 70 20");
+
+    auto snapshot = [&]() {
+        val s = h.getState(val::object());
+        ParsedHeap ph = readHeap(h);
+        return std::make_pair(std::make_pair(s["nodeCount"].as<int>(), s["cursor"].as<int>()),
+                              ph.values);
+    };
+
+    std::vector<decltype(snapshot())> seen;
+    seen.push_back(snapshot());
+    CHECK(!h.getState(val::object())["canStepBack"].as<bool>());
+
+    int guard = 0;
+    while (h.step() && guard++ < 2000) seen.push_back(snapshot());
+
+    for (int i = (int)seen.size() - 1; i >= 1; i--) {
+        h.stepBack();
+        CHECK(snapshot() == seen[i - 1]);
+    }
+    CHECK(!h.getState(val::object())["canStepBack"].as<bool>());
+}
+
+static void testHeapHandlesEmptyInput() {
+    beginTest("値が1つも無くても落ちない");
+
+    HeapVisualizer h;
+    h.load("setValues", "");
+    h.runToEnd();
+    val s = h.getState(val::object());
+    CHECK_EQ(s["nodeCount"].as<int>(), 0);
+    CHECK(s["finished"].as<bool>());
+    CHECK(!s["canStepBack"].as<bool>());
+
+    h.stepBack(); // 戻せないときに何も壊さない
+    CHECK_EQ(h.getState(val::object())["nodeCount"].as<int>(), 0);
+}
+
 // ==========================================
 
 int main(int argc, char** argv) {
@@ -2894,6 +3087,15 @@ int main(int argc, char** argv) {
     testBstStepBackReturnsToPreviousState();
     testBstHandlesEmptyInput();
     testGeneratedValuesHaveNoDuplicates();
+
+    beginSection("ヒープの構築");
+    testHeapConditionHolds();
+    testMinHeapReversesTheOrder();
+    testHeapShapeIsCompleteBinaryTree();
+    testSwapMovesNodesInsteadOfJumping();
+    testHeapStepMatchesRunToEnd();
+    testHeapStepBackReturnsToPreviousState();
+    testHeapHandlesEmptyInput();
 
     if (g_failures == 0) {
         std::cout << "core: OK (" << g_checks << " checks)" << std::endl;
