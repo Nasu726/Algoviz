@@ -110,6 +110,9 @@ export interface GraphState {
     order?: number;
     /** 直前の手があふれた節点の分割だった */
     splitting?: boolean;
+    /** 上へ動く値を持つ節点と、その節点の何番目の値か。無いときは -1 */
+    risingNode?: number;
+    risingSlot?: number;
 
     /** BstVisualizer のときだけ */
     values?: number[];

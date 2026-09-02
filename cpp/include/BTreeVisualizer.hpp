@@ -44,6 +44,9 @@ private:
         std::vector<int> route; // 根から今の節点まで。分割で上へ戻るのに使う
         int splitDepth = -1;    // route のこの深さの節点があふれている。-1 なら無い
         int lastTouched = -1;   // 直前に値を入れた / 押し上げた節点
+        // 上へ動く値。節点ごと色を変えても、どの値が上がるのかは分からない
+        int risingNode = -1;
+        int risingSlot = -1;
         bool splitting = false; // 直前の手が分割だった
         bool duplicate = false;
         bool finished = false;
@@ -125,6 +128,8 @@ private:
             children[newRoot] = {n, right};
             root = newRoot;
             st.lastTouched = newRoot;
+            st.risingNode = newRoot;
+            st.risingSlot = 0;
             st.route.clear();
             st.splitDepth = -1;
         } else {
@@ -133,9 +138,19 @@ private:
             keys[parent].insert(keys[parent].begin() + slot, midKey);
             children[parent].insert(children[parent].begin() + slot + 1, right);
             st.lastTouched = parent;
+            st.risingNode = parent;
+            st.risingSlot = (int)slot;
             st.route.resize(depth); // 割った節点から下は、もう辿る道ではない
             st.splitDepth = overflows(parent) ? (int)st.route.size() - 1 : -1;
         }
+    }
+
+    // 次に上がる値は、これから割る節点の真ん中の値。
+    void markRising() {
+        if (st.splitDepth < 0) return;
+        int n = st.route[st.splitDepth];
+        st.risingNode = n;
+        st.risingSlot = (int)keys[n].size() / 2;
     }
 
     // この値の挿入を終える。次の手は次の値から始まる。
@@ -168,10 +183,6 @@ private:
             for (int c : children[st.lastTouched]) {
                 graph->setEdgeColor(findEdge(st.lastTouched, c), EDGE_ACTIVE);
             }
-        }
-        // これから割る節点。次の手で何が起きるかが分かる
-        if (st.splitDepth >= 0 && st.splitDepth < (int)st.route.size()) {
-            graph->setNodeColor(st.route[st.splitDepth], NODE_FRONTIER);
         }
         if (st.cursor >= 0) graph->setNodeColor(st.cursor, NODE_VISITING);
     }
@@ -256,11 +267,13 @@ public:
         if (st.finished) return false;
         st.duplicate = false;
         st.splitting = false;
+        if (st.splitDepth < 0) { st.risingNode = -1; st.risingSlot = -1; }
 
         // --- あふれた節点を割る ---
         if (st.splitDepth >= 0) {
             stepCount++;
             splitAt(st.splitDepth);
+            markRising(); // まだあふれていれば、次に上がる値へ移す
             st.splitting = true;
             if (st.splitDepth < 0) finishValue(); // これ以上あふれていない
             rebuildEdges();
@@ -320,7 +333,7 @@ public:
             keys[leaf].insert(keys[leaf].begin() + slot, v);
             st.lastTouched = leaf;
             st.cursor = -1;
-            if (overflows(leaf)) st.splitDepth = (int)st.route.size() - 1;
+            if (overflows(leaf)) { st.splitDepth = (int)st.route.size() - 1; markRising(); }
             else finishValue();
             rebuildEdges();
             relayout();
@@ -366,6 +379,8 @@ public:
         state.set("cursor", st.cursor);
         state.set("order", order);
         state.set("splitting", st.splitting);
+        state.set("risingNode", st.risingNode);
+        state.set("risingSlot", st.risingSlot);
         state.set("duplicate", st.duplicate);
         state.set("finished", st.finished);
         state.set("canStepBack", stepCount > 0);

@@ -16,6 +16,9 @@ const NODE_FILL   = [0xffffff, 0xfff3e0, 0xffebee, 0xeceff1, 0xe8f5e9, 0xe3f2fd,
 export const EDGE_COLOR  = [0x999999, 0x3498db, 0xe74c3c, 0xcfd8dc, 0x27ae60];
 const EDGE_WIDTH  = [2, 3, 4, 2, 4];
 
+// 上へ動く値を塗る色。節点ごと色を変えても、値のどれが上がるのかは分からない。
+const RISING_FILL = 0xffcc80;
+
 // この縮尺より小さいと文字が数ピクセルにしか描かれず読めない。
 // 描いても情報にならないうえに、辺の多いグラフでは描画コストの主因になる。
 const TEXT_MIN_SCALE = 0.4;
@@ -53,6 +56,11 @@ export class PixiGraphApp {
     private edgeSymbols: boolean = false;
     private nodeLabels: string[] = [];
     private halfWidths: Float32Array = new Float32Array(0);
+    // 上へ動く値 (B木の分割)。節点の番号と、その節点の何番目の値か
+    private risingNode: number = -1;
+    private risingSlot: number = -1;
+    // 値の区切りの位置。文字の幅を測って決めるので、表示名ごとに覚えておく
+    private cellCache = new Map<string, number[]>();
     private labelMode: GraphState['labelMode'] = 'index';
     private showWeights: boolean = false;
     
@@ -78,6 +86,25 @@ export class PixiGraphApp {
 
     // 数字を下付き文字（Unicode）に変換する関数
     // 節点の半幅。指定が無ければ半径と同じ (今までどおりの円)
+    // 値と値の境目を、節点の中心から見た x で返す。
+    // 空白の真ん中で区切る。文字の幅は分類ではなく書体で決まるので測る。
+    private cellBoundaries(label: string, style: PIXI.TextStyle): number[] {
+        const hit = this.cellCache.get(label);
+        if (hit) return hit;
+
+        const parts = label.split(' ');
+        const width = (t: string) => PIXI.CanvasTextMetrics.measureText(t, style).width;
+        const total = width(label);
+        const out: number[] = [];
+        for (let k = 0; k < parts.length - 1; k++) {
+            const left  = width(parts.slice(0, k + 1).join(' '));       // k 番目の値の右端
+            const right = total - width(parts.slice(k + 1).join(' '));  // k+1 番目の値の左端
+            out.push((left + right) / 2 - total / 2);
+        }
+        this.cellCache.set(label, out);
+        return out;
+    }
+
     private halfWidthOf(i: number): number {
         const w = this.halfWidths[i];
         return Number.isFinite(w) && w > 0 ? w : this.nodeRadius;
@@ -191,6 +218,11 @@ export class PixiGraphApp {
         const acceptRing = new PIXI.Graphics();
         acceptRing.label = "acceptRing";
         nodeGroup.addChild(acceptRing);
+
+        // 値を並べる節点 (B木) の区切り線と、上へ動く値の塗り
+        const cells = new PIXI.Graphics();
+        cells.label = "cells";
+        nodeGroup.addChild(cells);
 
         // 3. "start ->" の矢印
         const startArrow = new PIXI.Graphics();
@@ -446,6 +478,8 @@ export class PixiGraphApp {
         this.edgeSymbols = !!state.edgeSymbols;
         this.nodeLabels = state.nodeLabels ?? [];
         this.halfWidths = state.nodeHalfWidths ?? new Float32Array(0);
+        this.risingNode = state.risingNode ?? -1;
+        this.risingSlot = state.risingSlot ?? -1;
         const startIdx: number = state.startNodeIndex ?? -1;
         const accepting: Set<number> = new Set(state.acceptingStates ?? []);
 
@@ -705,6 +739,31 @@ export class PixiGraphApp {
                         // trie の節点には名前が無い。根からの道がその接頭辞を表す
                         : this.labelMode === 'none' ? ''
                         : `${nodeIndex}`;
+                }
+
+                // 値を並べる節点は、値の間に線を入れてセルに区切る
+                const cells = group.getChildByLabel("cells") as PIXI.Graphics;
+                if (cells) {
+                    cells.clear();
+                    const label = labelText ? labelText.text : '';
+                    cells.visible = readable && label.includes(' ');
+                    if (cells.visible && labelText) {
+                        const bounds = this.cellBoundaries(label, labelText.style);
+                        const edges = [-halfWidth, ...bounds, halfWidth];
+
+                        // 上へ動く値。節点ごと塗るとどの値が上がるのか分からない
+                        if (nodeIndex === this.risingNode &&
+                            this.risingSlot >= 0 && this.risingSlot < edges.length - 1) {
+                            const l = edges[this.risingSlot], r = edges[this.risingSlot + 1];
+                            cells.roundRect(l + 3, -this.nodeRadius + 4,
+                                            r - l - 6, this.nodeRadius * 2 - 8, 6)
+                                 .fill(RISING_FILL).stroke({ width: 2, color: nodeStroke(1) });
+                        }
+                        for (const b of bounds) {
+                            cells.moveTo(b, -this.nodeRadius + 4).lineTo(b, this.nodeRadius - 4);
+                        }
+                        cells.stroke({ width: 1.5, color: borderColor });
+                    }
                 }
 
                 const acceptRing = group.getChildByLabel("acceptRing") as PIXI.Graphics;

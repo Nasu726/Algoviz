@@ -143,7 +143,7 @@ export const TreePanel: React.FC<Props> = ({
             {btree ? (
                 <>
                     <Swatch color={NODE_STROKE[2]} label="今いる節点" />
-                    <Swatch color={NODE_STROKE[1]} label="これから割る節点" />
+                    <Swatch color={NODE_STROKE[1]} label="上へ動く値" />
                     <Swatch color={NODE_STROKE[3]} label="通った節点" />
                     <Swatch color={NODE_STROKE[4]} label="今入れた / 押し上げた節点" />
                     <Swatch color={EDGE_COLOR[2]} label="今つないだ枝" isEdge />
