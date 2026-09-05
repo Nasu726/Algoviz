@@ -92,13 +92,14 @@ export class PixiGraphApp {
         const hit = this.cellCache.get(label);
         if (hit) return hit;
 
-        const parts = label.split(' ');
         const width = (t: string) => PIXI.CanvasTextMetrics.measureText(t, style).width;
         const total = width(label);
         const out: number[] = [];
-        for (let k = 0; k < parts.length - 1; k++) {
-            const left  = width(parts.slice(0, k + 1).join(' '));       // k 番目の値の右端
-            const right = total - width(parts.slice(k + 1).join(' '));  // k+1 番目の値の左端
+        // 空白の幅は測らない。端が空白の文字列は幅が信用できないので、
+        // 「値の右端まで」と「値の左端から」の2つを測って真ん中を取る
+        for (const gap of label.matchAll(/ +/g)) {
+            const left  = width(label.slice(0, gap.index));                 // 値の右端
+            const right = total - width(label.slice(gap.index + gap[0].length)); // 次の値の左端
             out.push((left + right) / 2 - total / 2);
         }
         this.cellCache.set(label, out);

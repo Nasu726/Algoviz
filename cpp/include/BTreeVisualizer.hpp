@@ -69,7 +69,9 @@ private:
     std::string labelOf(int n) const {
         std::string label;
         for (std::size_t i = 0; i < keys[n].size(); i++) {
-            if (i) label += " ";
+            // 区切り線と数字の間を空ける。線は空白の真ん中に引かれるので、
+            // 空白を広げた分の半分ずつが両側の余白になる
+            if (i) label += "   ";
             label += std::to_string(keys[n][i]);
         }
         return label;

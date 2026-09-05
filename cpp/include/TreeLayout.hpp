@@ -26,8 +26,9 @@ public:
 private:
     // 目標へ寄せる割合。指数的に減衰するので、所要フレームは
     // log(1/(1-EASE)) に反比例する。
-    // 0.3 -> 0.277 で 1.1 倍、0.277 -> 0.221 でさらに 1.3 倍かかる。
-    static constexpr float EASE    = 0.221f;
+    // 0.3 -> 0.277 で 1.1 倍、0.277 -> 0.221 でさらに 1.3 倍、
+    // 0.221 -> 0.203 でさらに 1.1 倍かかる。
+    static constexpr float EASE    = 0.203f;
     static constexpr float EPSILON = 0.5f;
 
     bool stable = false;
