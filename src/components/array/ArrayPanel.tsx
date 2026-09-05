@@ -32,7 +32,10 @@ const statusOf = (variant: ArrayVariant, state: GraphState | null): string => {
         return state?.swapping ? '探し終えたので先頭と入れ替えます' : '最小の値を探しています';
     }
     if (variant === 'insertion') {
-        return state?.swapped ? '左隣より小さいので、左へ送りました' : '左隣と比べています';
+        if ((state?.droppedAt ?? -1) >= 0) return '入る場所が見つかったので差し込みました';
+        if (state?.swapped) return '左隣の方が大きいので、右へずらしました';
+        if ((state?.heldValue ?? -1) >= 0) return '次の値を取り出しました';
+        return '左隣と比べています';
     }
     if (variant === 'shaker') {
         const dir = state?.movingRight === false ? '左へ' : '右へ';
@@ -73,6 +76,11 @@ export const ArrayPanel: React.FC<Props> = ({
                     <Swatch color={NODE_STROKE[2]} label="今見ている値" />
                     <Swatch color={NODE_STROKE[1]} label="今のところ最小" />
                     <Swatch color={NODE_STROKE[4]} label="入れ替えた2つ" />
+                </>
+            ) : variant === 'insertion' ? (
+                <>
+                    <Swatch color={NODE_STROKE[2]} label="取り出して空いたマス" />
+                    <Swatch color={NODE_STROKE[4]} label="動かした値" />
                 </>
             ) : (
                 <>

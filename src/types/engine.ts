@@ -131,6 +131,11 @@ export interface GraphState {
     swapping?: boolean;
     /** 挿入ソート: これから入れる値の位置 */
     insertingAt?: number;
+    /** 挿入ソート: 取り出して持ち上げている値と、その値が空けているマス */
+    heldValue?: number;
+    holeIndex?: number;
+    /** 挿入ソート: この手で差し込んだ場所。-1 なら差し込んでいない */
+    droppedAt?: number;
     /** シェーカーソート: 今どちら向きに走査しているか */
     movingRight?: boolean;
 

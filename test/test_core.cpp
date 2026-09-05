@@ -4220,6 +4220,47 @@ static void testSelectionSwapsOncePerRound() {
     CHECK(swaps <= 7); // n-1 周ぶん。バブルなら 28 回入れ替わる並び
 }
 
+static void testInsertionHoldsTheValueInTheHole() {
+    beginTest("挿入ソートは取り出した値を空いたマスに残す");
+
+    // 描画側は「空いたマス」を空に見せ、取り出した値を配列の外に描く。
+    // 中身が入力の並べ替えでなくなると、値が消えたり増えたりして見える。
+    InsertionSortVisualizer b;
+    const char* in = "5 2 9 1 7 3 8 4";
+    b.load("setValues", in);
+
+    std::vector<int> expected;
+    std::istringstream iss(in);
+    int v;
+    while (iss >> v) expected.push_back(v);
+    std::sort(expected.begin(), expected.end());
+
+    for (int i = 0; i < 500 && b.step(); i++) {
+        val s = b.getState(val::object());
+        int held = s["heldValue"].as<int>();
+        int hole = s["holeIndex"].as<int>();
+
+        // 持ち上げているかどうかは、空いたマスがあるかどうかと一致する
+        CHECK_EQ(held >= 0, hole >= 0);
+
+        std::vector<int> now = readArray(b);
+        if (hole >= 0 && hole < (int)now.size()) {
+            CHECK_EQ(now[hole], held); // 空いたマスには取り出した値が残っている
+        }
+
+        // 途中でも中身は入力の並べ替えのまま
+        std::vector<int> sorted = now;
+        std::sort(sorted.begin(), sorted.end());
+        CHECK_EQ((int)sorted.size(), (int)expected.size());
+        for (std::size_t k = 0; k < sorted.size() && k < expected.size(); k++) {
+            CHECK_EQ(sorted[k], expected[k]);
+        }
+
+        // 差し込んだ手では、もう持ち上げていない
+        if (s["droppedAt"].as<int>() >= 0) CHECK_EQ(held, -1);
+    }
+}
+
 static void testShakerCarriesASmallValueLeftInOneScan() {
     beginTest("シェーカーは右端の小さい値を1回の左向き走査で左端まで運ぶ");
 
@@ -4445,6 +4486,7 @@ int main(int argc, char** argv) {
     testSortsStepBackReturnsToPreviousState();
     testSortsHandleTinyInput();
     testSelectionSwapsOncePerRound();
+    testInsertionHoldsTheValueInTheHole();
     testShakerCarriesASmallValueLeftInOneScan();
 
     if (g_failures == 0) {
