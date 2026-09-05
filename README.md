@@ -29,6 +29,7 @@
 - [選択ソート](https://algoviz.nasu.uk/array/selection)
 - [挿入ソート](https://algoviz.nasu.uk/array/insertion)
 - [シェーカーソート](https://algoviz.nasu.uk/array/shaker)
+- [クイックソート](https://algoviz.nasu.uk/array/quick)
 
 **オートマトン**
 
@@ -108,7 +109,8 @@ cpp/
     BubbleSortVisualizer.hpp   ├ バブルソート
     SelectionSortVisualizer.hpp├ 選択ソート
     InsertionSortVisualizer.hpp├ 挿入ソート
-    ShakerSortVisualizer.hpp   └ シェーカーソート
+    ShakerSortVisualizer.hpp   ├ シェーカーソート
+    QuickSortVisualizer.hpp    └ クイックソート
 src/
   types/engine.ts              WASM 境界の型定義。C++ を変えたらここも揃える
   pages/                       ページ

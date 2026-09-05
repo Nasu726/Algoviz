@@ -76,20 +76,29 @@ protected:
     // 派生クラスの実行状態を初期化する
     virtual void resetAlgorithm() {}
 
-    // 色を状態から塗り直す。差分で塗ると戻したときに前の色が残る。
-    // 確定した位置と、今見ている2つ。それ以外の色が要るものは上書きする。
-    virtual void syncVisuals() {
-        if (!graph) return;
-        graph->resetColors();
+    void paintSettled() {
         for (int i = 0; i < (int)settled.size(); i++) {
             if (settled[i]) graph->setNodeColor(i, NODE_VISITED);
         }
-        // 並び終えたら全部が確定した色になる。比べている2つが残ると
-        // 「まだ何かしている」ように見える
+    }
+
+    // 並び終えたら全部が確定した色になる。比べている2つが残ると
+    // 「まだ何かしている」ように見える
+    void paintFocus() {
         if (finished) return;
         int color = justSwapped ? NODE_PATH : NODE_VISITING;
         graph->setNodeColor(focusA, color);
         graph->setNodeColor(focusB, color);
+    }
+
+    // 色を状態から塗り直す。差分で塗ると戻したときに前の色が残る。
+    // 確定した位置と、今見ている2つ。ほかに色が要るものは、下地を塗ってから
+    // paintSettled / paintFocus を呼ぶ形で組み立て直す。
+    virtual void syncVisuals() {
+        if (!graph) return;
+        graph->resetColors();
+        paintSettled();
+        paintFocus();
     }
 
     void buildArray() {

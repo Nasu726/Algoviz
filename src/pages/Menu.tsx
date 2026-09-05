@@ -30,6 +30,7 @@ const GENRES: { name: string; items: { path: string; label: string }[] }[] = [
             { path: '/array/selection', label: '選択ソート' },
             { path: '/array/insertion', label: '挿入ソート' },
             { path: '/array/shaker', label: 'シェーカーソート' },
+            { path: '/array/quick', label: 'クイックソート' },
         ],
     },
     {

@@ -17,6 +17,11 @@ enum NodeColor : int {
     NODE_COLOR_COUNT
 };
 
+// 配列のビジュアライザでの読み替え。色は同じで、意味だけが分類ごとに変わる。
+// (探索の「始点 / 終点」に当たるものが配列には無い)
+constexpr int NODE_RANGE   = NODE_GOAL;  // 今処理している範囲
+constexpr int NODE_SMALLER = NODE_START; // その範囲のうち、基準より小さいと分かった部分
+
 enum EdgeColor : int {
     EDGE_DEFAULT = 0, // 通常
     EDGE_TREE    = 1, // 探索木の辺

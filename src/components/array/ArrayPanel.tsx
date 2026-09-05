@@ -37,6 +37,15 @@ const statusOf = (variant: ArrayVariant, state: GraphState | null): string => {
         if ((state?.heldValue ?? -1) >= 0) return '次の値を取り出しました';
         return '左隣と比べています';
     }
+    if (variant === 'quick') {
+        if (state?.skippedRange) {
+            return '取り出した範囲に並べるものがありませんでした';
+        }
+        if (state?.placingPivot) return '見終わったので、基準の値を境目へ動かします';
+        if ((state?.rangeLo ?? -1) < 0) return '次に並べる範囲を取り出します';
+        if (state?.swapped) return '基準より小さいので、左の並びへ入れました';
+        return '基準の値と比べています';
+    }
     if (variant === 'shaker') {
         const dir = state?.movingRight === false ? '左へ' : '右へ';
         return state?.swapped ? `大小が逆だったので入れ替えました (${dir}走査中)`
@@ -55,6 +64,7 @@ export const ArrayPanel: React.FC<Props> = ({
 
     const total = (state?.values ?? []).length;
     const settled = state?.settledCount ?? 0;
+    const pending = state?.pendingRanges ?? 0;
 
     const progress = (
         <div style={{ fontSize, lineHeight: 1.7, minWidth: 0 }}>
@@ -62,6 +72,11 @@ export const ArrayPanel: React.FC<Props> = ({
                 <b>{settledCountLabel(variant)}</b>: {settled}
                 <span style={{ color: '#90a4ae' }}> / {total}</span>
             </div>
+            {variant === 'quick' && !state?.finished && (
+                <div>
+                    <b>まだ並べていない範囲</b>: {pending}
+                </div>
+            )}
             <div style={{ marginTop: '6px', fontWeight: 'bold',
                           color: state?.finished ? '#27ae60' : '#78909c' }}>
                 {statusOf(variant, state)}
@@ -75,6 +90,14 @@ export const ArrayPanel: React.FC<Props> = ({
                 <>
                     <Swatch color={NODE_STROKE[2]} label="今見ている値" />
                     <Swatch color={NODE_STROKE[1]} label="今のところ最小" />
+                    <Swatch color={NODE_STROKE[4]} label="入れ替えた2つ" />
+                </>
+            ) : variant === 'quick' ? (
+                <>
+                    <Swatch color={NODE_STROKE[6]} label="今並べている範囲" />
+                    <Swatch color={NODE_STROKE[1]} label="基準の値" />
+                    <Swatch color={NODE_STROKE[2]} label="今比べている値" />
+                    <Swatch color={NODE_STROKE[5]} label="基準より小さいと分かった部分" />
                     <Swatch color={NODE_STROKE[4]} label="入れ替えた2つ" />
                 </>
             ) : variant === 'insertion' ? (
