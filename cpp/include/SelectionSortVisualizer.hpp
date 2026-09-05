@@ -10,6 +10,12 @@
 // 入れ替えは1周につき1回しか起きないので、分けても手数はほとんど増えない。
 // むしろ「探すのに何回も比べるのに、入れ替えは1回だけ」がこのソートの見どころで、
 // 同じ手にすると見えなくなる。
+//
+// 最小の値が既に先頭にあっても入れ替えの手は踏むし、**残りが1つになった最後の周も
+// 飛ばさない。** どの位置も同じ手順で決まる形にしてある。
+//
+// 確定した範囲を走査から外すのは速さの工夫ではない。そこを見に行くと既に置いた
+// 小さい値を拾い直してしまうので、外せない。
 class SelectionSortVisualizer : public ArrayVisualizer {
 private:
     int head = 0;      // ここから右が未確定。ここに最小の値を入れる
@@ -17,14 +23,19 @@ private:
     int minIndex = 0;  // 今のところ最小の値がある位置
     bool swapping = false; // 次の手で入れ替える
 
+    // 1周の始め。見る先が無い最後の周は、入れ替えの手だけになる
+    void beginRound() {
+        minIndex = head;
+        cursor = head + 1;
+        swapping = cursor >= graph->nodeCount();
+    }
+
 protected:
     void resetAlgorithm() override {
         head = 0;
-        minIndex = 0;
-        cursor = 1;
-        swapping = false;
         focusA = focusB = -1;
-        if (graph->nodeCount() <= 1) { settleAll(); finished = true; }
+        beginRound();
+        if (graph->nodeCount() <= 0) finished = true;
     }
 
     // 今のところ最小の値は、比べている値とは別の色で示す
@@ -45,15 +56,8 @@ protected:
             markSettled(head, head);
             head++;
 
-            // 残りが1つになったら、それも自動的に確定する
-            if (head >= graph->nodeCount() - 1) {
-                settleAll();
-                finished = true;
-            } else {
-                minIndex = head;
-                cursor = head + 1;
-                swapping = false;
-            }
+            if (head >= graph->nodeCount()) finished = true;
+            else beginRound();
             return true;
         }
 

@@ -4118,28 +4118,25 @@ static void testSortsKeepTheSameValues() {
 }
 
 static void testScanSortsDoNotStopEarly() {
-    beginTest("走査するソートは並んでいても最後まで走る");
+    beginTest("走査するソートは毎回、端から端まで見る");
 
-    // 入れ替えが起きなくなったら打ち切る工夫はしていない。速くはなるが、
-    // 「隣どうしを何度も比べて少しずつ運ぶ」仕組みが見えにくくなる。
+    // 速さの工夫を入れていない。入れ替えが起きなくなっても打ち切らず、
+    // 確定した範囲も走査から外さないので、手数は並びによらず (n-1)^2 になる。
     auto steps = [](ArrayVisualizer& b, const char* in) {
         b.load("setValues", in);
         int n = 0;
         while (n < 2000 && b.step()) n++;
         return n;
     };
+    const int EXPECTED = 7 * 7; // 8個の入力
 
     BubbleSortVisualizer bubbleSorted, bubbleReversed;
-    int a = steps(bubbleSorted, "1 2 3 4 5 6 7 8");
-    int c = steps(bubbleReversed, "8 7 6 5 4 3 2 1");
-    CHECK(a > 0);
-    CHECK_EQ(a, c); // 手数が入力によらない
+    CHECK_EQ(steps(bubbleSorted, "1 2 3 4 5 6 7 8"), EXPECTED);
+    CHECK_EQ(steps(bubbleReversed, "8 7 6 5 4 3 2 1"), EXPECTED);
 
     ShakerSortVisualizer shakerSorted, shakerReversed;
-    int d = steps(shakerSorted, "1 2 3 4 5 6 7 8");
-    int e = steps(shakerReversed, "8 7 6 5 4 3 2 1");
-    CHECK(d > 0);
-    CHECK_EQ(d, e);
+    CHECK_EQ(steps(shakerSorted, "1 2 3 4 5 6 7 8"), EXPECTED);
+    CHECK_EQ(steps(shakerReversed, "8 7 6 5 4 3 2 1"), EXPECTED);
 }
 
 static void testSortsStepMatchesRunToEnd() {
@@ -4201,23 +4198,52 @@ static void testSortsHandleTinyInput() {
             CHECK(s["finished"].as<bool>());
             CHECK_EQ(s["nodeCount"].as<int>(), in.second);
 
-            b->stepBack(); // 戻せないときに何も壊さない
-            CHECK(b->getState(val::object())["finished"].as<bool>());
+            b->stepBack(); // 戻せるところまで戻しても壊れない
+            CHECK_EQ((int)readArray(*b).size(), in.second);
         }
     }
 }
 
 static void testSelectionSwapsOncePerRound() {
-    beginTest("選択ソートは1周に1回しか入れ替えない");
+    beginTest("選択ソートは1周に1回だけ入れ替える");
 
-    // 入れ替えの少なさがこのソートの見どころ。同じ手にまとめると見えなくなる
+    // 入れ替えの少なさがこのソートの見どころ。同じ手にまとめると見えなくなる。
+    // 最小が既に先頭にある周も、残りが1つの最後の周も飛ばさないので、
+    // 入れ替えの数は位置の数と同じになる。
     SelectionSortVisualizer b;
     b.load("setValues", "8 7 6 5 4 3 2 1");
-    int swaps = 0;
-    for (int i = 0; i < 2000 && b.step(); i++) {
+    int swaps = 0, steps = 0;
+    while (steps < 2000 && b.step()) {
+        steps++;
         if (b.getState(val::object())["swapped"].as<bool>()) swaps++;
     }
-    CHECK(swaps <= 7); // n-1 周ぶん。バブルなら 28 回入れ替わる並び
+    CHECK_EQ(swaps, 8);   // 8個ぶんの周
+    CHECK_EQ(steps, 36);  // 探す手 28 + 入れ替えの手 8
+}
+
+static void testEveryPositionTakesTheSameSteps() {
+    beginTest("端の位置も決め打ちにせず同じ手順で決める");
+
+    // 挿入ソートは先頭の1つも取り出して差し込む
+    InsertionSortVisualizer ins;
+    ins.load("setValues", "5 2 9 1");
+    ins.step();
+    val a = ins.getState(val::object());
+    CHECK_EQ(a["heldValue"].as<int>(), 5);
+    CHECK_EQ(a["holeIndex"].as<int>(), 0);
+    CHECK_EQ(a["settledCount"].as<int>(), 0); // まだ何も決まっていない
+
+    // 選択ソートは残りが1つになった最後の周も踏む
+    SelectionSortVisualizer sel;
+    sel.load("setValues", "1 2 3");
+    int settledBeforeLast = -1;
+    for (int i = 0; i < 100 && sel.step(); i++) {
+        val s = sel.getState(val::object());
+        if (s["finished"].as<bool>()) break;
+        settledBeforeLast = s["settledCount"].as<int>();
+    }
+    // 最後の周に入る手前で、まだ1つ残っている
+    CHECK_EQ(settledBeforeLast, 2);
 }
 
 static void testInsertionHoldsTheValueInTheHole() {
@@ -4486,6 +4512,7 @@ int main(int argc, char** argv) {
     testSortsStepBackReturnsToPreviousState();
     testSortsHandleTinyInput();
     testSelectionSwapsOncePerRound();
+    testEveryPositionTakesTheSameSteps();
     testInsertionHoldsTheValueInTheHole();
     testShakerCarriesASmallValueLeftInOneScan();
 

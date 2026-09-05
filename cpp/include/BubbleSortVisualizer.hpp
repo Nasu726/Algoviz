@@ -9,25 +9,30 @@
 //
 // 1回の走査で最大の値が右端まで運ばれるので、右から順に位置が確定していく。
 //
-// **入れ替えが起きなくなった時点で打ち切る工夫はしていない。** 速くはなるが、
-// 「隣どうしを何度も比べて、少しずつ運ぶ」という仕組みが見えにくくなる。
-// 既に並んでいる入力でも最後まで走査する。
+// **速さの工夫はしていない。**
+//   - 入れ替えが起きなくなっても打ち切らない
+//   - 確定した範囲も走査から外さず、毎回、左端から右端まで見る
+// どちらも速くはなるが、「隣どうしを何度も比べて少しずつ運ぶ」という仕組み
+// そのものが見えにくくなる。手数は並びによらず (n-1)^2 で一定になる。
 class BubbleSortVisualizer : public ArrayVisualizer {
 private:
-    int scanEnd = 0;   // この位置までを走査する。ここより右は確定済み
-    int cursor  = 0;   // 次に比べる位置
+    int pass = 0;     // 何周目か
+    int cursor = 0;   // 次に比べる位置
+
+    int lastPair() const { return graph->nodeCount() - 2; } // 比べる位置の右端
 
 protected:
     void resetAlgorithm() override {
-        scanEnd = graph->nodeCount() - 1;
+        pass = 0;
         cursor = 0;
         focusA = 0;
         focusB = graph->nodeCount() > 1 ? 1 : -1;
-        if (scanEnd <= 0) { settleAll(); finished = true; } // 0個か1個なら並んでいる
+        // 0個か1個なら並んでいる
+        if (graph->nodeCount() <= 1) { settleAll(); finished = true; }
     }
 
     bool advance() override {
-        if (finished || scanEnd <= 0) { finished = true; return false; }
+        if (finished) return false;
 
         focusA = cursor;
         focusB = cursor + 1;
@@ -35,11 +40,12 @@ protected:
         cursor++;
 
         // 走査の終わり。右端に最大の値が来たので、その位置が確定する
-        if (cursor >= scanEnd) {
-            markSettled(scanEnd, scanEnd);
-            scanEnd--;
+        if (cursor > lastPair()) {
+            markSettled(lastPair() + 1 - pass, lastPair() + 1 - pass);
+            pass++;
             cursor = 0;
-            if (scanEnd <= 0) { settleAll(); finished = true; }
+            // 周の数は n-1。残った左端はほかが確定した時点で決まっている
+            if (pass > lastPair()) { settleAll(); finished = true; }
         }
         return true;
     }
@@ -47,5 +53,11 @@ protected:
 public:
     BubbleSortVisualizer() {
         setValuesFrom("5 2 9 1 7 3 8 4");
+    }
+
+    emscripten::val getState(emscripten::val params) override {
+        emscripten::val state = ArrayVisualizer::getState(params);
+        state.set("pass", pass);
+        return state;
     }
 };

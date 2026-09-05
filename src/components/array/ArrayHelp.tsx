@@ -64,12 +64,20 @@ const BubbleHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
         <h3>3. 右から確定していく</h3>
         <ul>
             <li>1回の走査で、その範囲の最大の値が右端まで運ばれる</li>
-            <li>運ばれた位置はもう動かないので、走査する範囲が1つずつ狭くなる</li>
-            <li>走査は範囲が無くなるまで続く。<b>途中で並び終わっても打ち切らない</b>ので、
-                既に並んでいる入力でも手数は変わらない</li>
+            <li>運ばれた位置はもう動かない (灰色になる)</li>
         </ul>
 
-        <Common maxValues={maxValues} sample="5 2 9 1 7 3 8 4" heading={4} />
+        <h3>4. 速さの工夫はしていない</h3>
+        <ul>
+            <li><b>途中で並び終わっても打ち切らない</b></li>
+            <li><b>確定した範囲も走査から外さず、毎回、左端から右端まで見る</b></li>
+        </ul>
+        <p>
+            どちらも速くはなりますが、隣どうしを何度も比べて少しずつ運ぶという仕組み
+            そのものが見えにくくなります。手数は並びによらず一定です。
+        </p>
+
+        <Common maxValues={maxValues} sample="5 2 9 1 7 3 8 4" heading={5} />
     </>
 );
 
@@ -96,12 +104,19 @@ const SelectionHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
             入れ替えは1周に1回です。バブルソートと違って比べるのと入れ替えるのを
             別のステップにしてあるのは、この違いを見えるようにするためです。
         </p>
+
+        <h3>4. どの位置も同じ手順で決める</h3>
+        <ul>
+            <li>見つけた最小の値が既に先頭にあっても、入れ替えのステップは踏む</li>
+            <li>残りが1つになった最後の周も飛ばさない (探す先が無いので、
+                入れ替えのステップだけになる)</li>
+        </ul>
         <p>
-            見つけた最小の値が既に先頭にあっても、入れ替えのステップは踏みます。
-            そこだけ飛ばすと1周の形が揃わなくなるためです。
+            なお、確定した範囲を探しに行かないのは速さの工夫ではありません。そこを
+            見ると、既に置いた小さい値を拾い直してしまいます。
         </p>
 
-        <Common maxValues={maxValues} sample="5 2 9 1 7 3 8 4" heading={4} />
+        <Common maxValues={maxValues} sample="5 2 9 1 7 3 8 4" heading={5} />
     </>
 );
 
@@ -136,7 +151,13 @@ const InsertionHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
             <li>既に並んでいる入力なら、1つにつき取り出して差し込むだけで済む</li>
         </ul>
 
-        <Common maxValues={maxValues} sample="5 2 9 1 7 3 8 4" heading={4} />
+        <h3>4. どの位置も同じ手順で決める</h3>
+        <p>
+            先頭の1つも「並んでいる」と決め打ちにせず、同じ手順を踏みます。取り出して、
+            左に何も無いのでその場に差し込みます。
+        </p>
+
+        <Common maxValues={maxValues} sample="5 2 9 1 7 3 8 4" heading={5} />
     </>
 );
 
@@ -161,11 +182,12 @@ const ShakerHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
         </p>
         <pre style={codeBlock}>2 3 4 5 6 7 8 1</pre>
         <p>
-            バブルソートと同じく、<b>途中で並び終わっても打ち切りません</b>。
-            手数そのものは変わらないので、運ばれ方の違いを見てください。
+            バブルソートと同じく<b>速さの工夫はしていません</b>。途中で並び終わっても
+            打ち切らず、確定した範囲も走査から外しません。手数は同じになるので、
+            違いは手数ではなく運ばれ方に出ます。
         </p>
 
-        <Common maxValues={maxValues} sample="2 3 4 5 6 7 8 1" heading={4} />
+        <Common maxValues={maxValues} sample="2 3 4 5 6 7 8 1" heading={5} />
     </>
 );
 

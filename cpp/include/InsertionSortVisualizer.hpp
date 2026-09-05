@@ -17,22 +17,24 @@
 //
 // 空いた場所には持ち上げた値をそのまま残してある。配列の中身は常に入力の
 // 並べ替えになっていて、描画側がその1マスを空に見せている。
+//
+// **先頭の1つも「並んでいる」と決め打ちにせず、同じ手順を踏む。** 取り出して、
+// 左に何も無いのでその場に差し込む。どの位置も同じ手順で決まる形にしてある。
 class InsertionSortVisualizer : public ArrayVisualizer {
 private:
-    int next = 1;       // これから取り出す値の位置。ここより左は並んでいる
+    int next = 0;       // これから取り出す値の位置。ここより左は並んでいる
     int hole = -1;      // 取り出した値が空けている場所。-1 なら取り出していない
     int held = -1;      // 取り出した値
     int droppedAt = -1; // この手で差し込んだ場所。-1 なら差し込んでいない
 
 protected:
     void resetAlgorithm() override {
-        next = 1;
+        next = 0;
         hole = -1;
         held = -1;
         droppedAt = -1;
         focusA = focusB = -1;
-        markSettled(0, 0); // 1つだけなら並んでいる
-        if (graph->nodeCount() <= 1) { settleAll(); finished = true; }
+        if (graph->nodeCount() <= 0) finished = true;
     }
 
     // 空いているマスと、直前に差し込んだ場所を足して塗る
