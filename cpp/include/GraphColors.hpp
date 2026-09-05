@@ -20,7 +20,8 @@ enum NodeColor : int {
 // 配列のビジュアライザでの読み替え。色は同じで、意味だけが分類ごとに変わる。
 // (探索の「始点 / 終点」に当たるものが配列には無い)
 constexpr int NODE_RANGE   = NODE_GOAL;  // 今処理している範囲
-constexpr int NODE_SMALLER = NODE_START; // その範囲のうち、基準より小さいと分かった部分
+// クイックは「基準より小さいと分かった部分」、マージは「左の並びの残り」
+constexpr int NODE_SMALLER = NODE_START; // その範囲のうち、片側に分かれた部分
 
 enum EdgeColor : int {
     EDGE_DEFAULT = 0, // 通常

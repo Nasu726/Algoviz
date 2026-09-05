@@ -18,6 +18,9 @@
 //
 // 派生クラスが書くのは advance() (1手進める) だけ。値の並べ直し・作り直し・
 // 「1手少なく流し直す」stepBack は共通なのでここに置く。
+//
+// マージソートのように作業用の場所が要るものは extraSlots で節点を足す。
+// 足したぶんは下の段に並び、値の入っていないマスは emptySlots で空に見せる。
 class ArrayVisualizer : public GraphVisualizer {
 public:
     // 上限が 20 なのは、隣どうしを n 回ずつ比べるソートで n が大きいと
@@ -42,6 +45,16 @@ protected:
     // 直前の手で入れ替えたか。swapValues が立て、次の手の頭で下ろす
     bool justSwapped = false;
 
+    // まだ値の入っていないマス。描画側が空の箱として描く
+    std::vector<char> emptySlot;
+
+    LineLayout* line = nullptr; // layout の実体。段の設定に使う
+
+    // 1段に並べる数。配列そのものの長さ
+    int rowSize() const { return (int)values.size(); }
+    // 元の配列の後ろに足す作業用のマスの数
+    virtual int extraSlots() const { return 0; }
+
     int valueAt(int i) const {
         return (int)graph->nodeData[(std::size_t)i * GraphData::NODE_STRIDE + 2];
     }
@@ -58,6 +71,14 @@ protected:
         setValueAt(b, va);
         swapNodePositions(a, b);
         justSwapped = true;
+    }
+
+    // 値を別のマスへ移す。移した先が埋まり、元のマスが空になる。
+    // 入れ替えとして書くので、配列の中身は全体では入力の並べ替えのまま。
+    void moveValue(int from, int to) {
+        swapValues(from, to);
+        if (from >= 0 && from < (int)emptySlot.size()) emptySlot[from] = 1;
+        if (to >= 0 && to < (int)emptySlot.size()) emptySlot[to] = 0;
     }
 
     void markSettled(int from, int to) {
@@ -102,12 +123,19 @@ protected:
     }
 
     void buildArray() {
-        graph = std::make_unique<GraphData>(MAX_VALUES, 0);
+        int total = rowSize() + extraSlots();
+        graph = std::make_unique<GraphData>(MAX_VALUES * 2, 0);
         graph->startNodeIndex = -1;
-        for (int i = 0; i < (int)values.size(); i++) {
-            graph->setNode(i, 0.0f, 0.0f, (float)values[i], 0);
+        for (int i = 0; i < total; i++) {
+            float v = i < rowSize() ? (float)values[i] : 0.0f;
+            graph->setNode(i, 0.0f, 0.0f, v, 0);
             graph->setHalfWidth(i, CELL_HALF_WIDTH);
         }
+        // 足したぶんは下の段。最初は空
+        emptySlot.assign(total, 0);
+        for (int i = rowSize(); i < total; i++) emptySlot[i] = 1;
+
+        if (line) line->setPerRow(rowSize());
         rebuildLayout();
         // 作り直した直後は動かさない。左から流れ込んでくる必要は無い
         layout->finish(graph.get());
@@ -159,7 +187,9 @@ protected:
 public:
     ArrayVisualizer() {
         // 基底のコンストラクタが一般グラフを作っているので、配列用に置き換える
-        layout = std::make_unique<LineLayout>();
+        auto lineLayout = std::make_unique<LineLayout>();
+        line = lineLayout.get();
+        layout = std::move(lineLayout);
         weighted = false;
         hasNodeWeights = false;
         generatedDirected = false;
@@ -190,10 +220,20 @@ public:
     emscripten::val getState(emscripten::val params) override {
         emscripten::val state = GraphVisualizer::getState(params);
 
-        // 今の並び。入力の並びではなく、途中まで動いた結果
+        // 今の並び。入力の並びではなく、途中まで動いた結果。
+        // 作業用のマスは配列そのものではないので出さない
         emscripten::val vs = emscripten::val::array();
-        for (int i = 0; i < graph->nodeCount(); i++) vs.call<void>("push", valueAt(i));
+        for (int i = 0; i < rowSize() && i < graph->nodeCount(); i++) {
+            vs.call<void>("push", valueAt(i));
+        }
         state.set("values", vs);
+
+        emscripten::val empties = emscripten::val::array();
+        for (int i = 0; i < (int)emptySlot.size(); i++) {
+            if (emptySlot[i]) empties.call<void>("push", i);
+        }
+        state.set("emptySlots", empties);
+        state.set("rowSize", rowSize());
 
         state.set("finished", finished);
         state.set("canStepBack", stepCount > 0);

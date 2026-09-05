@@ -46,6 +46,14 @@ const statusOf = (variant: ArrayVariant, state: GraphState | null): string => {
         if (state?.swapped) return '基準より小さいので、左の並びへ入れました';
         return '基準の値と比べています';
     }
+    if (variant === 'merge') {
+        if (state?.leafRange) return '1つ以下になったので、この範囲は並んでいます';
+        if (state?.dividing) return '半分に分けました';
+        if (state?.copyingBack) return '併合が終わりました。次に下の段から書き戻します';
+        if (state?.swapped) return '2つの先頭を比べ、小さい方を下の段へ移しました';
+        if ((state?.rangeLo ?? -1) >= 0) return '分けた2つが並んだので、併合します';
+        return '次の範囲を取り出します';
+    }
     if (variant === 'shaker') {
         const dir = state?.movingRight === false ? '左へ' : '右へ';
         return state?.swapped ? `大小が逆だったので入れ替えました (${dir}走査中)`
@@ -77,6 +85,11 @@ export const ArrayPanel: React.FC<Props> = ({
                     <b>まだ並べていない範囲</b>: {pending}
                 </div>
             )}
+            {variant === 'merge' && !state?.finished && (
+                <div>
+                    <b>まだ片付けていない範囲</b>: {state?.pendingTasks ?? 0}
+                </div>
+            )}
             <div style={{ marginTop: '6px', fontWeight: 'bold',
                           color: state?.finished ? '#27ae60' : '#78909c' }}>
                 {statusOf(variant, state)}
@@ -99,6 +112,12 @@ export const ArrayPanel: React.FC<Props> = ({
                     <Swatch color={NODE_STROKE[2]} label="今比べている値" />
                     <Swatch color={NODE_STROKE[5]} label="基準より小さいと分かった部分" />
                     <Swatch color={NODE_STROKE[4]} label="入れ替えた2つ" />
+                </>
+            ) : variant === 'merge' ? (
+                <>
+                    <Swatch color={NODE_STROKE[5]} label="今の範囲の左半分" />
+                    <Swatch color={NODE_STROKE[6]} label="今の範囲の右半分" />
+                    <Swatch color={NODE_STROKE[4]} label="下の段へ移した値" />
                 </>
             ) : variant === 'insertion' ? (
                 <>
