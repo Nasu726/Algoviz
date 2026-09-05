@@ -3835,6 +3835,54 @@ static void testBTreeWidensNodesThatHoldSeveralValues() {
     CHECK(sawWide);
 }
 
+static void testBTreeReportsWhereTheRisingValueLanded() {
+    beginTest("上がった値がどの節点のどのセルに入ったかを返す");
+
+    // 描画側はこの3つを見て、値が元の節点から入った先のセルまで動く様子を
+    // 描く。ずれると関係のない値が動いて見える。
+    for (int order = BTreeVisualizer::MIN_ORDER; order <= BTreeVisualizer::MAX_ORDER; order++) {
+        BTreeVisualizer b;
+        b.load("setOrder", std::to_string(order));
+        b.load("setValues", "50 30 70 20 40 60 80 10 90 25 35 45");
+
+        int splits = 0;
+        for (int i = 0; i < 500 && b.step(); i++) {
+            val s = b.getState(val::object());
+            if (!s["splitting"].as<bool>()) continue;
+            splits++;
+
+            int from = s["landedFrom"].as<int>();
+            int node = s["landedNode"].as<int>();
+            int slot = s["landedSlot"].as<int>();
+            ParsedBTree pb = readBTree(b);
+
+            CHECK(from >= 0 && from < pb.n);
+            CHECK(node >= 0 && node < pb.n);
+            if (from < 0 || node < 0 || from >= pb.n || node >= pb.n) continue;
+
+            g_checks++;
+            if (slot < 0 || slot >= (int)pb.keys[node].size()) {
+                reportFailure("入った先のセル " + std::to_string(slot) +
+                              " が節点 " + std::to_string(node) + " の値の数を外れている");
+                continue;
+            }
+
+            // 上がったのは真ん中の値。割られて残った左半分はどれもそれより小さい
+            int landed = pb.keys[node][slot];
+            for (int k : pb.keys[from]) {
+                g_checks++;
+                if (k >= landed) {
+                    reportFailure("上がった値 " + std::to_string(landed) +
+                                  " より小さくない値 " + std::to_string(k) +
+                                  " が元の節点に残っている");
+                    break;
+                }
+            }
+        }
+        CHECK(splits > 0);
+    }
+}
+
 static void testBTreeStepMatchesRunToEnd() {
     beginTest("1手ずつ進めた結果と一気に実行した結果が一致する");
 
@@ -4085,6 +4133,7 @@ int main(int argc, char** argv) {
     testBTreeOrderChangesTheShape();
     testBTreeIgnoresDuplicates();
     testBTreeWidensNodesThatHoldSeveralValues();
+    testBTreeReportsWhereTheRisingValueLanded();
     testBTreeStepMatchesRunToEnd();
     testBTreeStepBackReturnsToPreviousState();
     testBTreeHandlesEmptyInput();

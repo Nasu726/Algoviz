@@ -113,6 +113,10 @@ export interface GraphState {
     /** 上へ動く値を持つ節点と、その節点の何番目の値か。無いときは -1 */
     risingNode?: number;
     risingSlot?: number;
+    /** 直前の手で親へ移った値。元いた節点と、入った先の節点・セル */
+    landedFrom?: number;
+    landedNode?: number;
+    landedSlot?: number;
 
     /** BstVisualizer のときだけ */
     values?: number[];

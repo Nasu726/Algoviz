@@ -29,6 +29,18 @@ public:
     static constexpr int MAX_ORDER  = 5;
     static constexpr int DEFAULT_ORDER = 4;
 
+    // 節点の幅。描画側が同じ式でセルを並べるので、C++ と JS で揃えてある。
+    // 文字を測れないので数字1文字の幅は決め打ち (16px 太字でおよそ 9px)。
+    static constexpr float DIGIT_W  = 9.0f;
+    static constexpr float CELL_PAD = 7.0f; // 区切り線と数字の間
+    static constexpr float EDGE_PAD = 4.0f; // 外枠といちばん外の区切りの間
+
+    static float halfWidthFor(const std::vector<int>& ks) {
+        float total = 0.0f;
+        for (int k : ks) total += (float)std::to_string(k).size() * DIGIT_W + CELL_PAD * 2.0f;
+        return std::max(GraphData::DEFAULT_HALF_WIDTH, total / 2.0f + EDGE_PAD);
+    }
+
 private:
     std::vector<int> values;
     int order = DEFAULT_ORDER; // 1つの節点が持てる子の数の上限
@@ -47,6 +59,10 @@ private:
         // 上へ動く値。節点ごと色を変えても、どの値が上がるのかは分からない
         int risingNode = -1;
         int risingSlot = -1;
+        // 直前の手で親へ移った値。どこから来てどこへ入ったかを描画側が動かす
+        int landedFrom = -1;
+        int landedNode = -1;
+        int landedSlot = -1;
         bool splitting = false; // 直前の手が分割だった
         bool duplicate = false;
         bool finished = false;
@@ -69,9 +85,7 @@ private:
     std::string labelOf(int n) const {
         std::string label;
         for (std::size_t i = 0; i < keys[n].size(); i++) {
-            // 区切り線と数字の間を空ける。線は空白の真ん中に引かれるので、
-            // 空白を広げた分の半分ずつが両側の余白になる
-            if (i) label += "   ";
+            if (i) label += " ";
             label += std::to_string(keys[n][i]);
         }
         return label;
@@ -101,9 +115,7 @@ private:
                 // 辺の3列目は子の並び順。TreeLayout がこの順に左から並べる
                 graph->addEdge((float)u, (float)children[u][i], (float)i, 0);
             }
-            // 16px 太字の数字がおよそ 9px、空白がおよそ 4.5px。両端に余白を足す
-            float half = (float)labelOf(u).size() * 4.5f + 10.0f;
-            graph->setHalfWidth(u, std::max(GraphData::DEFAULT_HALF_WIDTH, half));
+            graph->setHalfWidth(u, halfWidthFor(keys[u]));
         }
         graph->startNodeIndex = root;
     }
@@ -132,6 +144,9 @@ private:
             st.lastTouched = newRoot;
             st.risingNode = newRoot;
             st.risingSlot = 0;
+            st.landedFrom = n;
+            st.landedNode = newRoot;
+            st.landedSlot = 0;
             st.route.clear();
             st.splitDepth = -1;
         } else {
@@ -142,6 +157,9 @@ private:
             st.lastTouched = parent;
             st.risingNode = parent;
             st.risingSlot = (int)slot;
+            st.landedFrom = n;
+            st.landedNode = parent;
+            st.landedSlot = (int)slot;
             st.route.resize(depth); // 割った節点から下は、もう辿る道ではない
             st.splitDepth = overflows(parent) ? (int)st.route.size() - 1 : -1;
         }
@@ -270,6 +288,7 @@ public:
         st.duplicate = false;
         st.splitting = false;
         if (st.splitDepth < 0) { st.risingNode = -1; st.risingSlot = -1; }
+        st.landedFrom = st.landedNode = st.landedSlot = -1;
 
         // --- あふれた節点を割る ---
         if (st.splitDepth >= 0) {
@@ -383,6 +402,9 @@ public:
         state.set("splitting", st.splitting);
         state.set("risingNode", st.risingNode);
         state.set("risingSlot", st.risingSlot);
+        state.set("landedFrom", st.landedFrom);
+        state.set("landedNode", st.landedNode);
+        state.set("landedSlot", st.landedSlot);
         state.set("duplicate", st.duplicate);
         state.set("finished", st.finished);
         state.set("canStepBack", stepCount > 0);
