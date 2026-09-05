@@ -228,9 +228,49 @@ const QuickHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
     </>
 );
 
+const MergeHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
+    <>
+        <Screen>
+            <li><b>下の段が作業用の場所</b>。併合した結果をいったんここへ書く</li>
+            <li>紫色が今併合している2つの並び。青色はそのうち<b>左の並びの残り</b></li>
+            <li>値を移すと元のマスは空になる</li>
+            <li>灰色は今の段で併合が終わった範囲</li>
+        </Screen>
+
+        <h3>2. 1ステップの単位</h3>
+        <p>3種類の手を踏みます。</p>
+        <ul>
+            <li><b>組を取り出す</b>：次に併合する2つの並びを決める</li>
+            <li><b>小さい方を移す</b>：2つの先頭を比べ、小さい方を下の段へ移す</li>
+            <li><b>書き戻す</b>：併合が終わったら、下の段の並びを上の段へまとめて戻す</li>
+        </ul>
+
+        <h3>3. 別の場所が要る</h3>
+        <p>
+            ほかのソートは配列の中だけで入れ替えますが、マージソートは<b>併合の結果を
+            置く別の場所</b>が要ります。その場で入れ替えるように書くと、この特徴が
+            見えなくなるので、下の段を使う形にしてあります。
+        </p>
+
+        <h3>4. 幅を倍にしていく</h3>
+        <ul>
+            <li>長さ1の並びを2つずつ併合すると、長さ2の並んだ並びになる</li>
+            <li>その2つを併合すると長さ4。全体が1つになるまで倍にしていく</li>
+            <li>個数が半端なとき、相方のいない並びはその段では何もしない</li>
+        </ul>
+        <p>
+            分けてから併合する再帰の形でも同じ結果になりますが、「分ける」段階では
+            何も起きないので、幅を倍にしていく形にしてあります。
+        </p>
+
+        <Common maxValues={maxValues} sample="5 2 9 1 7 3 8 4" heading={5} />
+    </>
+);
+
 export const ArrayHelp: React.FC<{ variant: ArrayVariant; maxValues: number }> =
     ({ variant, maxValues }) =>
-        variant === 'quick' ? <QuickHelp maxValues={maxValues} />
+        variant === 'merge' ? <MergeHelp maxValues={maxValues} />
+        : variant === 'quick' ? <QuickHelp maxValues={maxValues} />
         : variant === 'selection' ? <SelectionHelp maxValues={maxValues} />
         : variant === 'insertion' ? <InsertionHelp maxValues={maxValues} />
         : variant === 'shaker' ? <ShakerHelp maxValues={maxValues} />

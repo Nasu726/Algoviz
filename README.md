@@ -30,6 +30,7 @@
 - [挿入ソート](https://algoviz.nasu.uk/array/insertion)
 - [シェーカーソート](https://algoviz.nasu.uk/array/shaker)
 - [クイックソート](https://algoviz.nasu.uk/array/quick)
+- [マージソート](https://algoviz.nasu.uk/array/merge)
 
 **オートマトン**
 
@@ -95,7 +96,7 @@ cpp/
     GeneralGraphLayout.hpp     ├ 一般グラフ (MDS → Stress Majorization → 凸包パッキング)
     EasedLayout.hpp            └ 目標へイージングで寄せる配置の共通部分
     TreeLayout.hpp                ├ 木 (Reingold-Tilford)。常に上から下
-    LineLayout.hpp                └ 配列 (番号順に左から一列)
+    LineLayout.hpp                └ 配列 (番号順に左から一列。段にも分けられる)
     GraphVisualizer.hpp        グラフの生成・レイアウト・描画データ供給の基底クラス
     TraversalVisualizer.hpp    ├ BFS / DFS / ダイクストラ法
     AutomatonVisualizer.hpp    ├ DFA (常に有向 + 初期状態 + 受理状態 + 遷移記号)
@@ -110,7 +111,8 @@ cpp/
     SelectionSortVisualizer.hpp├ 選択ソート
     InsertionSortVisualizer.hpp├ 挿入ソート
     ShakerSortVisualizer.hpp   ├ シェーカーソート
-    QuickSortVisualizer.hpp    └ クイックソート
+    QuickSortVisualizer.hpp    ├ クイックソート
+    MergeSortVisualizer.hpp    └ マージソート (下の段を作業用に使う)
 src/
   types/engine.ts              WASM 境界の型定義。C++ を変えたらここも揃える
   pages/                       ページ

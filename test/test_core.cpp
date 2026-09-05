@@ -36,6 +36,7 @@
 #include "../cpp/include/InsertionSortVisualizer.hpp"
 #include "../cpp/include/ShakerSortVisualizer.hpp"
 #include "../cpp/include/QuickSortVisualizer.hpp"
+#include "../cpp/include/MergeSortVisualizer.hpp"
 
 using emscripten::val;
 
@@ -4042,6 +4043,7 @@ static std::vector<std::pair<const char*, MakeSort>> allSorts() {
         {"挿入",       [] { return std::unique_ptr<ArrayVisualizer>(new InsertionSortVisualizer()); }},
         {"シェーカー", [] { return std::unique_ptr<ArrayVisualizer>(new ShakerSortVisualizer()); }},
         {"クイック",   [] { return std::unique_ptr<ArrayVisualizer>(new QuickSortVisualizer()); }},
+        {"マージ",     [] { return std::unique_ptr<ArrayVisualizer>(new MergeSortVisualizer()); }},
     };
 }
 
@@ -4198,7 +4200,7 @@ static void testSortsHandleTinyInput() {
             b->runToEnd();
             val s = b->getState(val::object());
             CHECK(s["finished"].as<bool>());
-            CHECK_EQ(s["nodeCount"].as<int>(), in.second);
+            CHECK_EQ((int)readArray(*b).size(), in.second);
 
             b->stepBack(); // 戻せるところまで戻しても壊れない
             CHECK_EQ((int)readArray(*b).size(), in.second);
@@ -4306,6 +4308,82 @@ static void testQuickTakesEmptyRangesToo() {
         if (b.getState(val::object())["skippedRange"].as<bool>()) skipped++;
     }
     CHECK_EQ(skipped, 8); // 空が7つと、いちばん左の1つだけの範囲
+}
+
+static void testMergeProducesSortedRuns() {
+    beginTest("併合した組は並んでいる");
+
+    // 併合が正しく働いていれば、書き戻した範囲はその中で昇順になっている。
+    MergeSortVisualizer b;
+    b.load("setValues", "5 2 9 1 7 3 8 4");
+    int merges = 0;
+
+    for (int i = 0; i < 500; i++) {
+        val s = b.getState(val::object());
+        bool copying = s["copyingBack"].as<bool>();
+        int lo = s["rangeLo"].as<int>(), hi = s["rangeHi"].as<int>();
+
+        if (!b.step()) break;
+        if (!copying || lo < 0) continue;
+
+        merges++;
+        std::vector<int> a = readArray(b);
+        for (int k = lo + 1; k < hi && k < (int)a.size(); k++) {
+            g_checks++;
+            if (a[k - 1] > a[k]) {
+                reportFailure("併合した [" + std::to_string(lo) + ", " + std::to_string(hi) +
+                              ") が並んでいない: " + std::to_string(a[k - 1]) + " の後に " +
+                              std::to_string(a[k]));
+                break;
+            }
+        }
+    }
+    CHECK_EQ(merges, 7); // 長さ1が4組、長さ2が2組、長さ4が1組
+}
+
+static void testMergeUsesTheWorkRow() {
+    beginTest("下の段を作業用に使い、書き戻すと空になる");
+
+    // 別の場所が要るのがマージソートの特徴。その場で入れ替えていると
+    // 下の段がずっと空のままになる。
+    MergeSortVisualizer b;
+    b.load("setValues", "5 2 9 1 7 3 8 4");
+
+    val first = b.getState(val::object());
+    CHECK_EQ(first["nodeCount"].as<int>(), 16); // 上下2段
+    CHECK_EQ(first["rowSize"].as<int>(), 8);
+    CHECK_EQ((int)readArray(b).size(), 8);      // 配列そのものは8個
+
+    bool sawFilled = false;
+    std::set<int> widths;
+
+    for (int i = 0; i < 500 && b.step(); i++) {
+        val s = b.getState(val::object());
+        widths.insert(s["runWidth"].as<int>());
+
+        val empties = s["emptySlots"];
+        std::set<int> empty;
+        int n = empties["length"].as<int>();
+        for (int k = 0; k < n; k++) empty.insert(empties[k].as<int>());
+
+        int filled = 0;
+        for (int k = 8; k < 16; k++) if (!empty.count(k)) filled++;
+        if (filled > 0) sawFilled = true;
+
+        // 組を持っていないときは、下の段に何も残っていない
+        if (s["rangeLo"].as<int>() < 0) {
+            g_checks++;
+            if (filled != 0) {
+                reportFailure("組を持っていないのに下の段に " + std::to_string(filled) +
+                              " 個残っている");
+            }
+        }
+    }
+    CHECK(sawFilled);
+
+    // 幅が倍になっていく
+    CHECK_EQ((int)widths.size(), 3);
+    CHECK(widths.count(1) && widths.count(2) && widths.count(4));
 }
 
 static void testInsertionHoldsTheValueInTheHole() {
@@ -4577,6 +4655,8 @@ int main(int argc, char** argv) {
     testEveryPositionTakesTheSameSteps();
     testQuickSplitsAroundThePivot();
     testQuickTakesEmptyRangesToo();
+    testMergeProducesSortedRuns();
+    testMergeUsesTheWorkRow();
     testInsertionHoldsTheValueInTheHole();
     testShakerCarriesASmallValueLeftInOneScan();
 

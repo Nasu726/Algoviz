@@ -17,6 +17,7 @@
 #include "include/InsertionSortVisualizer.hpp"
 #include "include/ShakerSortVisualizer.hpp"
 #include "include/QuickSortVisualizer.hpp"
+#include "include/MergeSortVisualizer.hpp"
 
 using namespace emscripten;
 
@@ -63,6 +64,8 @@ public:
             currentAlgo = std::make_unique<ShakerSortVisualizer>();
         } else if (name == "quick") {
             currentAlgo = std::make_unique<QuickSortVisualizer>();
+        } else if (name == "merge") {
+            currentAlgo = std::make_unique<MergeSortVisualizer>();
         } else {
             std::cerr << "Unknown algorithm: " << name << std::endl;
         }

@@ -126,6 +126,10 @@ export interface GraphState {
     swapped?: boolean;
     /** 位置が確定した (挿入ソートでは並んでいる) 個数 */
     settledCount?: number;
+    /** まだ値の入っていないマス。描画側が空の箱にする */
+    emptySlots?: number[];
+    /** 配列そのものの長さ。作業用のマスはこの後ろに並ぶ */
+    rowSize?: number;
     /** 選択ソート: 今のところ最小の値がある位置 / 次の手で入れ替えるか */
     minIndex?: number;
     swapping?: boolean;
@@ -148,6 +152,12 @@ export interface GraphState {
     skippedRange?: boolean;
     /** クイックソート: まだ並べていない範囲の数 */
     pendingRanges?: number;
+    /** マージソート: 今併合している組の真ん中。[rangeLo, rangeMid) と [rangeMid, rangeHi) */
+    rangeMid?: number;
+    /** マージソート: 今の段で併合する並びの長さ / 書き戻す手か / 相方がいない組か */
+    runWidth?: number;
+    copyingBack?: boolean;
+    lonelyRun?: boolean;
 
     /** BstVisualizer のときだけ */
     values?: number[];

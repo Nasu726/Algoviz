@@ -83,6 +83,8 @@ export class PixiGraphApp {
     // 配列から取り出して持ち上げている値 (挿入ソート)。空になるマスと、
     // 差し込むときに上から落ちる動き
     private holeIndex: number = -1;
+    // 値の入っていないマス。空の箱として描く (マージソートの作業用の段など)
+    private emptySlots: Set<number> = new Set();
     private helding: boolean = false;
     private dropFrames: number = 0;
     private dropIndex: number = -1;
@@ -642,6 +644,7 @@ export class PixiGraphApp {
         this.halfWidths = state.nodeHalfWidths ?? new Float32Array(0);
         this.risingNode = state.risingNode ?? -1;
         this.risingSlot = state.risingSlot ?? -1;
+        this.emptySlots = new Set(state.emptySlots ?? []);
 
         // 節点を描く前に進める。飛んでいる値のマスは節点側で描かない
         if (!this.updateHeldValue(state, nodeArray)) {
@@ -900,9 +903,11 @@ export class PixiGraphApp {
                     // グラフの頂点は 0,1,2、オートマトンの状態は q₀,q₁,q₂、木は節点の値。
                     labelText.text =
                         this.labelMode === 'state' ? `q${this.toSubscript(nodeIndex)}`
-                        // 取り出して持ち上げている値のマスは空にする (挿入ソート)
+                        // 値の入っていないマスは空にする。持ち上げている値
+                        // (挿入ソート) と、作業用の空き (マージソート)
                         : this.labelMode === 'value'
                             ? (nodeIndex === this.holeIndex ||
+                               this.emptySlots.has(nodeIndex) ||
                                (this.dropFrames > 0 && nodeIndex === this.dropIndex)
                                 ? '' : formatNodeValue(nodeArray[i + 2]))
                         // ハフマン木の葉は文字、内部の節点は空
