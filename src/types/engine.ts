@@ -138,6 +138,16 @@ export interface GraphState {
     droppedAt?: number;
     /** シェーカーソート: 今どちら向きに走査しているか */
     movingRight?: boolean;
+    /** クイックソート: 今並べている範囲。無ければ -1 */
+    rangeLo?: number;
+    rangeHi?: number;
+    /** クイックソート: 基準の値の位置 / 次の手で基準を置くか */
+    pivotIndex?: number;
+    placingPivot?: boolean;
+    /** クイックソート: 取り出した範囲が空か1つだけだった */
+    skippedRange?: boolean;
+    /** クイックソート: まだ並べていない範囲の数 */
+    pendingRanges?: number;
 
     /** BstVisualizer のときだけ */
     values?: number[];

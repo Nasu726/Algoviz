@@ -35,6 +35,7 @@
 #include "../cpp/include/SelectionSortVisualizer.hpp"
 #include "../cpp/include/InsertionSortVisualizer.hpp"
 #include "../cpp/include/ShakerSortVisualizer.hpp"
+#include "../cpp/include/QuickSortVisualizer.hpp"
 
 using emscripten::val;
 
@@ -4040,6 +4041,7 @@ static std::vector<std::pair<const char*, MakeSort>> allSorts() {
         {"選択",       [] { return std::unique_ptr<ArrayVisualizer>(new SelectionSortVisualizer()); }},
         {"挿入",       [] { return std::unique_ptr<ArrayVisualizer>(new InsertionSortVisualizer()); }},
         {"シェーカー", [] { return std::unique_ptr<ArrayVisualizer>(new ShakerSortVisualizer()); }},
+        {"クイック",   [] { return std::unique_ptr<ArrayVisualizer>(new QuickSortVisualizer()); }},
     };
 }
 
@@ -4244,6 +4246,66 @@ static void testEveryPositionTakesTheSameSteps() {
     }
     // 最後の周に入る手前で、まだ1つ残っている
     CHECK_EQ(settledBeforeLast, 2);
+}
+
+static void testQuickSplitsAroundThePivot() {
+    beginTest("基準を置いた位置で範囲が左右に分かれる");
+
+    // ここがクイックソートの肝。分け方が崩れると、後で並べ直す範囲が
+    // 間違ったまま確定してしまう。
+    QuickSortVisualizer b;
+    b.load("setValues", "5 2 9 1 7 3 8 4"); // 値は全部違う
+    int placements = 0;
+
+    for (int step = 0; step < 500; step++) {
+        val s = b.getState(val::object());
+        bool placing = s["placingPivot"].as<bool>();
+        int lo = s["rangeLo"].as<int>(), hi = s["rangeHi"].as<int>();
+        int pivotAt = s["pivotIndex"].as<int>();
+        int pivotValue = (placing && pivotAt >= 0) ? readArray(b)[pivotAt] : -1;
+
+        if (!b.step()) break;
+        if (!placing || lo < 0 || pivotValue < 0) continue;
+
+        placements++;
+        std::vector<int> a = readArray(b);
+        int at = -1;
+        for (int i = lo; i <= hi; i++) if (a[i] == pivotValue) at = i;
+        g_checks++;
+        if (at < 0) { reportFailure("置いた基準が範囲の中に無い"); continue; }
+
+        for (int i = lo; i < at; i++) {
+            g_checks++;
+            if (a[i] >= pivotValue) {
+                reportFailure("基準 " + std::to_string(pivotValue) + " の左に " +
+                              std::to_string(a[i]) + " が残っている");
+                break;
+            }
+        }
+        for (int i = at + 1; i <= hi; i++) {
+            g_checks++;
+            if (a[i] <= pivotValue) {
+                reportFailure("基準 " + std::to_string(pivotValue) + " の右に " +
+                              std::to_string(a[i]) + " が来ている");
+                break;
+            }
+        }
+    }
+    CHECK(placements >= 3);
+}
+
+static void testQuickTakesEmptyRangesToo() {
+    beginTest("空や1つだけの範囲も取り出す手を踏む");
+
+    // 既に並んでいる入力だと基準が毎回いちばん大きい値になり、右側が必ず空になる。
+    // 積まずに飛ばしていると、その手が現れない。
+    QuickSortVisualizer b;
+    b.load("setValues", "1 2 3 4 5 6 7 8");
+    int skipped = 0;
+    for (int i = 0; i < 500 && b.step(); i++) {
+        if (b.getState(val::object())["skippedRange"].as<bool>()) skipped++;
+    }
+    CHECK_EQ(skipped, 8); // 空が7つと、いちばん左の1つだけの範囲
 }
 
 static void testInsertionHoldsTheValueInTheHole() {
@@ -4513,6 +4575,8 @@ int main(int argc, char** argv) {
     testSortsHandleTinyInput();
     testSelectionSwapsOncePerRound();
     testEveryPositionTakesTheSameSteps();
+    testQuickSplitsAroundThePivot();
+    testQuickTakesEmptyRangesToo();
     testInsertionHoldsTheValueInTheHole();
     testShakerCarriesASmallValueLeftInOneScan();
 

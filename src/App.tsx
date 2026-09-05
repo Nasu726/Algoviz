@@ -142,6 +142,7 @@ function App() {
       <Route path="/array/selection" element={<ArrayWrapper engine={engineRef.current!} variant="selection" />} />
       <Route path="/array/insertion" element={<ArrayWrapper engine={engineRef.current!} variant="insertion" />} />
       <Route path="/array/shaker" element={<ArrayWrapper engine={engineRef.current!} variant="shaker" />} />
+      <Route path="/array/quick" element={<ArrayWrapper engine={engineRef.current!} variant="quick" />} />
 
       {/* 描くだけのページ。メニューには載せないが、レイアウトとパッキングの
           回帰を目視確認する手段としてルートは残す */}

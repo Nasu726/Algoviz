@@ -1,13 +1,14 @@
 // 配列のビジュアライザで共有する型。1ページ1アルゴリズムなので、
 // variant がそのままページの中身を決める。
 
-export type ArrayVariant = 'bubble' | 'selection' | 'insertion' | 'shaker';
+export type ArrayVariant = 'bubble' | 'selection' | 'insertion' | 'shaker' | 'quick';
 
 export const ARRAY_TITLE: Record<ArrayVariant, string> = {
     bubble: 'バブルソート',
     selection: '選択ソート',
     insertion: '挿入ソート',
     shaker: 'シェーカーソート',
+    quick: 'クイックソート',
 };
 
 /** C++ 側の setAlgorithm へ渡す名前 */
@@ -30,4 +31,5 @@ export const defaultValues: Record<ArrayVariant, string> = {
     insertion: '5 2 9 1 7 3 8 4',
     // 小さい値が右端にある並び。左向きの走査の効きどころ
     shaker: '2 3 4 5 6 7 8 1',
+    quick: '5 2 9 1 7 3 8 4',
 };

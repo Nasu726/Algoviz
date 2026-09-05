@@ -191,9 +191,47 @@ const ShakerHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
     </>
 );
 
+const QuickHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
+    <>
+        <Screen>
+            <li>紫色の箱が<b>今並べている範囲</b>。橙色がその範囲の<b>基準の値</b></li>
+            <li>青色は、基準より小さいと分かって左に集めた部分</li>
+            <li>灰色の箱はもう動かない</li>
+        </Screen>
+
+        <h3>2. 1ステップの単位</h3>
+        <p>4種類の手を踏みます。</p>
+        <ul>
+            <li><b>範囲を取り出す</b>：次に並べる範囲を1つ取り出し、右端を基準に決める</li>
+            <li><b>比べる</b>：1つ見て、基準より小さければ左の並びへ入れ替える</li>
+            <li><b>基準を置く</b>：見終わったら基準を境目へ動かす。その位置が確定する</li>
+            <li><b>何もしない</b>：取り出した範囲が空か1つだけだったとき</li>
+        </ul>
+
+        <h3>3. 分けて、それぞれをまた並べる</h3>
+        <ul>
+            <li>基準を置いた位置は、左が全部小さく右が全部大きいので、そこで確定する</li>
+            <li>その左右がそれぞれ次に並べる範囲になる。積んでおいて順に取り出す</li>
+            <li><b>空の範囲も1つだけの範囲も積んで、取り出す手を踏む。</b>
+                飛ばすと、分け方が端に寄ったときに何が起きたのか見えない</li>
+        </ul>
+
+        <h3>4. 分け方が偏る並び</h3>
+        <p>
+            基準に選ぶのは範囲の右端です。既に並んでいる入力だと基準が毎回いちばん
+            大きい値になり、左右に分かれず片側だけが残ります。範囲が1つずつしか
+            減らないので、手数がいちばん多くなります。
+        </p>
+        <pre style={codeBlock}>1 2 3 4 5 6 7 8</pre>
+
+        <Common maxValues={maxValues} sample="5 2 9 1 7 3 8 4" heading={5} />
+    </>
+);
+
 export const ArrayHelp: React.FC<{ variant: ArrayVariant; maxValues: number }> =
     ({ variant, maxValues }) =>
-        variant === 'selection' ? <SelectionHelp maxValues={maxValues} />
+        variant === 'quick' ? <QuickHelp maxValues={maxValues} />
+        : variant === 'selection' ? <SelectionHelp maxValues={maxValues} />
         : variant === 'insertion' ? <InsertionHelp maxValues={maxValues} />
         : variant === 'shaker' ? <ShakerHelp maxValues={maxValues} />
         : <BubbleHelp maxValues={maxValues} />;
