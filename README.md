@@ -26,6 +26,9 @@
 **配列**
 
 - [バブルソート](https://algoviz.nasu.uk/array/bubble)
+- [選択ソート](https://algoviz.nasu.uk/array/selection)
+- [挿入ソート](https://algoviz.nasu.uk/array/insertion)
+- [シェーカーソート](https://algoviz.nasu.uk/array/shaker)
 
 **オートマトン**
 
@@ -102,7 +105,10 @@ cpp/
     TrieVisualizer.hpp         ├ trie の構築
     HuffmanVisualizer.hpp      └ ハフマン木の構築
     ArrayVisualizer.hpp        配列を一列に並べるものの基底 (節点の番号 = 添字)
-    BubbleSortVisualizer.hpp   └ バブルソート
+    BubbleSortVisualizer.hpp   ├ バブルソート
+    SelectionSortVisualizer.hpp├ 選択ソート
+    InsertionSortVisualizer.hpp├ 挿入ソート
+    ShakerSortVisualizer.hpp   └ シェーカーソート
 src/
   types/engine.ts              WASM 境界の型定義。C++ を変えたらここも揃える
   pages/                       ページ

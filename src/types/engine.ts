@@ -119,12 +119,20 @@ export interface GraphState {
     landedSlot?: number;
 
     /** ソートのビジュアライザのときだけ */
-    /** 比べている2つのうち左。-1 なら比べていない */
-    compareLeft?: number;
+    /** その手で見ている位置。無ければ -1 */
+    focusA?: number;
+    focusB?: number;
     /** 直前の手で入れ替えたか */
     swapped?: boolean;
-    /** ここより右は位置が確定している */
-    sortedFrom?: number;
+    /** 位置が確定した (挿入ソートでは並んでいる) 個数 */
+    settledCount?: number;
+    /** 選択ソート: 今のところ最小の値がある位置 / 次の手で入れ替えるか */
+    minIndex?: number;
+    swapping?: boolean;
+    /** 挿入ソート: これから入れる値の位置 */
+    insertingAt?: number;
+    /** シェーカーソート: 今どちら向きに走査しているか */
+    movingRight?: boolean;
 
     /** BstVisualizer のときだけ */
     values?: number[];

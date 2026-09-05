@@ -13,6 +13,9 @@
 #include "include/AvlVisualizer.hpp"
 #include "include/BTreeVisualizer.hpp"
 #include "include/BubbleSortVisualizer.hpp"
+#include "include/SelectionSortVisualizer.hpp"
+#include "include/InsertionSortVisualizer.hpp"
+#include "include/ShakerSortVisualizer.hpp"
 
 using namespace emscripten;
 
@@ -51,6 +54,12 @@ public:
             currentAlgo = std::make_unique<BTreeVisualizer>();
         } else if (name == "bubble") {
             currentAlgo = std::make_unique<BubbleSortVisualizer>();
+        } else if (name == "selection") {
+            currentAlgo = std::make_unique<SelectionSortVisualizer>();
+        } else if (name == "insertion") {
+            currentAlgo = std::make_unique<InsertionSortVisualizer>();
+        } else if (name == "shaker") {
+            currentAlgo = std::make_unique<ShakerSortVisualizer>();
         } else {
             std::cerr << "Unknown algorithm: " << name << std::endl;
         }

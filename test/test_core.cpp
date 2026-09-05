@@ -16,6 +16,8 @@
 #include <tuple>
 #include <array>
 #include <algorithm>
+#include <functional>
+#include <memory>
 
 #include "../cpp/include/Brainfuck.hpp"
 #include "../cpp/include/GraphVisualizer.hpp"
@@ -30,6 +32,9 @@
 #include "../cpp/include/BTreeVisualizer.hpp"
 #include "../cpp/include/LineLayout.hpp"
 #include "../cpp/include/BubbleSortVisualizer.hpp"
+#include "../cpp/include/SelectionSortVisualizer.hpp"
+#include "../cpp/include/InsertionSortVisualizer.hpp"
+#include "../cpp/include/ShakerSortVisualizer.hpp"
 
 using emscripten::val;
 
@@ -4010,7 +4015,7 @@ static void testLineBoxesDoNotOverlap() {
 // バブルソート
 // ==========================================
 
-static std::vector<int> readArray(BubbleSortVisualizer& b) {
+static std::vector<int> readArray(ArrayVisualizer& b) {
     val s = b.getState(val::object());
     val vs = s["values"];
     int n = vs["length"].as<int>();
@@ -4019,13 +4024,26 @@ static std::vector<int> readArray(BubbleSortVisualizer& b) {
     return out;
 }
 
-static std::vector<int> sortWith(BubbleSortVisualizer& b, const std::string& values) {
+static std::vector<int> sortWith(ArrayVisualizer& b, const std::string& values) {
     b.load("setValues", values);
     b.runToEnd();
     return readArray(b);
 }
 
-static void testBubbleSortsAscending() {
+// ソートは4つとも「並べ終えたら昇順」「値が変わらない」を満たす。
+// 中身は違うので、同じ検査を4つに当てられるよう作る側だけ差し替える。
+using MakeSort = std::function<std::unique_ptr<ArrayVisualizer>()>;
+
+static std::vector<std::pair<const char*, MakeSort>> allSorts() {
+    return {
+        {"バブル",     [] { return std::unique_ptr<ArrayVisualizer>(new BubbleSortVisualizer()); }},
+        {"選択",       [] { return std::unique_ptr<ArrayVisualizer>(new SelectionSortVisualizer()); }},
+        {"挿入",       [] { return std::unique_ptr<ArrayVisualizer>(new InsertionSortVisualizer()); }},
+        {"シェーカー", [] { return std::unique_ptr<ArrayVisualizer>(new ShakerSortVisualizer()); }},
+    };
+}
+
+static void testSortsAscending() {
     beginTest("並べ終えた結果が昇順になる");
 
     const char* inputs[] = {
@@ -4033,40 +4051,69 @@ static void testBubbleSortsAscending() {
         "1 2 3 4 5 6 7 8",   // 既に並んでいる
         "8 7 6 5 4 3 2 1",   // 逆順
         "4 4 2 2 9 9",       // 同じ値が混ざる
+        "2 3 4 5 6 7 8 1",   // 小さい値が右端にある (シェーカーが得意な形)
         "42",
     };
-    for (const char* in : inputs) {
-        BubbleSortVisualizer b;
-        std::vector<int> out = sortWith(b, in);
-        CHECK(b.getState(val::object())["finished"].as<bool>());
-        for (std::size_t i = 1; i < out.size(); i++) {
-            g_checks++;
-            if (out[i - 1] > out[i]) {
-                reportFailure(std::string("\"") + in + "\" が昇順になっていない: " +
-                              std::to_string(out[i - 1]) + " の後に " + std::to_string(out[i]));
-                break;
+    for (const auto& kind : allSorts()) {
+        for (const char* in : inputs) {
+            auto b = kind.second();
+            std::vector<int> out = sortWith(*b, in);
+            CHECK(b->getState(val::object())["finished"].as<bool>());
+            for (std::size_t i = 1; i < out.size(); i++) {
+                g_checks++;
+                if (out[i - 1] > out[i]) {
+                    reportFailure(std::string(kind.first) + "ソートの \"" + in +
+                                  "\" が昇順になっていない: " + std::to_string(out[i - 1]) +
+                                  " の後に " + std::to_string(out[i]));
+                    break;
+                }
             }
         }
     }
 }
 
-static void testBubbleKeepsTheSameValues() {
+static void testSortsSettleEveryPosition() {
+    beginTest("並べ終えたときに全部の位置が確定した色になる");
+
+    // 比べている2つの色が残ると「まだ何かしている」ように見える
+    for (const auto& kind : allSorts()) {
+        auto b = kind.second();
+        b->load("setValues", "5 2 9 1 7 3 8 4");
+        b->runToEnd();
+        val s = b->getState(val::object());
+        CHECK_EQ(s["settledCount"].as<int>(), 8);
+
+        val nodes = s["nodes"];
+        for (int i = 0; i < 8; i++) {
+            g_checks++;
+            int color = (int)nodes[i * GraphData::NODE_STRIDE + 3].as<float>();
+            if (color != NODE_VISITED) {
+                reportFailure(std::string(kind.first) + "ソートの位置 " + std::to_string(i) +
+                              " が確定した色になっていない (colorId " +
+                              std::to_string(color) + ")");
+            }
+        }
+    }
+}
+
+static void testSortsKeepTheSameValues() {
     beginTest("値が消えたり増えたりしない");
 
     // 入れ替えの向きを間違えると、片方の値が上書きされて消える
     const char* in = "5 2 9 1 7 3 8 4 4 2";
-    BubbleSortVisualizer b;
-    std::vector<int> out = sortWith(b, in);
-
     std::vector<int> expected;
     std::istringstream iss(in);
     int v;
     while (iss >> v) expected.push_back(v);
     std::sort(expected.begin(), expected.end());
 
-    CHECK_EQ((int)out.size(), (int)expected.size());
-    for (std::size_t i = 0; i < out.size() && i < expected.size(); i++) {
-        CHECK_EQ(out[i], expected[i]);
+    for (const auto& kind : allSorts()) {
+        auto b = kind.second();
+        std::vector<int> out = sortWith(*b, in);
+        CHECK_EQ((int)out.size(), (int)expected.size());
+        for (std::size_t i = 0; i < out.size() && i < expected.size(); i++) {
+            CHECK_EQ(out[i], expected[i]);
+        }
     }
 }
 
@@ -4081,64 +4128,100 @@ static void testBubbleStopsWhenNothingSwaps() {
     CHECK_EQ(steps, 7);
 }
 
-static void testBubbleStepMatchesRunToEnd() {
+static void testSortsStepMatchesRunToEnd() {
     beginTest("1手ずつ進めた結果と一気に実行した結果が一致する");
 
     const char* inputs[] = {"5 2 9 1 7 3 8 4", "8 7 6 5 4 3 2 1"};
-    for (const char* in : inputs) {
-        BubbleSortVisualizer stepwise;
-        stepwise.load("setValues", in);
-        for (int i = 0; i < 500 && stepwise.step(); i++) {}
+    for (const auto& kind : allSorts()) {
+        for (const char* in : inputs) {
+            auto stepwise = kind.second();
+            stepwise->load("setValues", in);
+            for (int i = 0; i < 2000 && stepwise->step(); i++) {}
 
-        BubbleSortVisualizer atOnce;
-        std::vector<int> b2 = sortWith(atOnce, in);
-        std::vector<int> b1 = readArray(stepwise);
+            auto atOnce = kind.second();
+            std::vector<int> b2 = sortWith(*atOnce, in);
+            std::vector<int> b1 = readArray(*stepwise);
 
-        CHECK_EQ((int)b1.size(), (int)b2.size());
-        for (std::size_t i = 0; i < b1.size() && i < b2.size(); i++) CHECK_EQ(b1[i], b2[i]);
+            CHECK_EQ((int)b1.size(), (int)b2.size());
+            for (std::size_t i = 0; i < b1.size() && i < b2.size(); i++) CHECK_EQ(b1[i], b2[i]);
+        }
     }
 }
 
-static void testBubbleStepBackReturnsToPreviousState() {
+static void testSortsStepBackReturnsToPreviousState() {
     beginTest("1手進めて戻すと元の状態になる");
 
-    for (int stop = 1; stop <= 12; stop++) {
-        BubbleSortVisualizer before;
-        before.load("setValues", "5 2 9 1 7 3 8 4");
-        for (int i = 0; i < stop; i++) before.step();
+    for (const auto& kind : allSorts()) {
+        for (int stop = 1; stop <= 12; stop++) {
+            auto before = kind.second();
+            before->load("setValues", "5 2 9 1 7 3 8 4");
+            for (int i = 0; i < stop; i++) before->step();
 
-        BubbleSortVisualizer after;
-        after.load("setValues", "5 2 9 1 7 3 8 4");
-        for (int i = 0; i < stop + 1; i++) after.step();
-        after.stepBack();
+            auto after = kind.second();
+            after->load("setValues", "5 2 9 1 7 3 8 4");
+            for (int i = 0; i < stop + 1; i++) after->step();
+            after->stepBack();
 
-        std::vector<int> a = readArray(before), c = readArray(after);
-        CHECK_EQ((int)a.size(), (int)c.size());
-        for (std::size_t i = 0; i < a.size() && i < c.size(); i++) CHECK_EQ(a[i], c[i]);
+            std::vector<int> a = readArray(*before), c = readArray(*after);
+            CHECK_EQ((int)a.size(), (int)c.size());
+            for (std::size_t i = 0; i < a.size() && i < c.size(); i++) CHECK_EQ(a[i], c[i]);
 
-        val sa = before.getState(val::object());
-        val sc = after.getState(val::object());
-        CHECK_EQ(sa["compareLeft"].as<int>(), sc["compareLeft"].as<int>());
-        CHECK_EQ(sa["sortedFrom"].as<int>(), sc["sortedFrom"].as<int>());
+            val sa = before->getState(val::object());
+            val sc = after->getState(val::object());
+            CHECK_EQ(sa["focusA"].as<int>(), sc["focusA"].as<int>());
+            CHECK_EQ(sa["settledCount"].as<int>(), sc["settledCount"].as<int>());
+        }
     }
 }
 
-static void testBubbleHandlesTinyInput() {
+static void testSortsHandleTinyInput() {
     beginTest("値が無くても1つでも落ちない");
 
     const std::pair<const char*, int> inputs[] = {{"", 0}, {"7", 1}};
-    for (const auto& in : inputs) {
-        BubbleSortVisualizer b;
-        b.load("setValues", in.first);
-        b.runToEnd();
-        val s = b.getState(val::object());
-        CHECK(s["finished"].as<bool>());
-        CHECK_EQ(s["nodeCount"].as<int>(), in.second);
+    for (const auto& kind : allSorts()) {
+        for (const auto& in : inputs) {
+            auto b = kind.second();
+            b->load("setValues", in.first);
+            b->runToEnd();
+            val s = b->getState(val::object());
+            CHECK(s["finished"].as<bool>());
+            CHECK_EQ(s["nodeCount"].as<int>(), in.second);
 
-        b.stepBack(); // 戻せないときに何も壊さない
-        CHECK(b.getState(val::object())["finished"].as<bool>());
+            b->stepBack(); // 戻せないときに何も壊さない
+            CHECK(b->getState(val::object())["finished"].as<bool>());
+        }
     }
 }
+
+static void testSelectionSwapsOncePerRound() {
+    beginTest("選択ソートは1周に1回しか入れ替えない");
+
+    // 入れ替えの少なさがこのソートの見どころ。同じ手にまとめると見えなくなる
+    SelectionSortVisualizer b;
+    b.load("setValues", "8 7 6 5 4 3 2 1");
+    int swaps = 0;
+    for (int i = 0; i < 2000 && b.step(); i++) {
+        if (b.getState(val::object())["swapped"].as<bool>()) swaps++;
+    }
+    CHECK(swaps <= 7); // n-1 周ぶん。バブルなら 28 回入れ替わる並び
+}
+
+static void testShakerBeatsBubbleWhenSmallValueIsAtTheRight() {
+    beginTest("小さい値が右端にあるとシェーカーの方が手数が少ない");
+
+    // 左向きの走査があるので、右端の 1 を一気に左へ運べる
+    const char* in = "2 3 4 5 6 7 8 1";
+    auto count = [&](ArrayVisualizer& b) {
+        b.load("setValues", in);
+        int steps = 0;
+        while (steps < 2000 && b.step()) steps++;
+        return steps;
+    };
+    BubbleSortVisualizer bubble;
+    ShakerSortVisualizer shaker;
+    CHECK(count(shaker) < count(bubble));
+}
+
 
 // ==========================================
 
@@ -4323,13 +4406,16 @@ int main(int argc, char** argv) {
     testLineKeepsIndexOrder();
     testLineBoxesDoNotOverlap();
 
-    beginSection("バブルソート");
-    testBubbleSortsAscending();
-    testBubbleKeepsTheSameValues();
+    beginSection("ソート");
+    testSortsAscending();
+    testSortsSettleEveryPosition();
+    testSortsKeepTheSameValues();
     testBubbleStopsWhenNothingSwaps();
-    testBubbleStepMatchesRunToEnd();
-    testBubbleStepBackReturnsToPreviousState();
-    testBubbleHandlesTinyInput();
+    testSortsStepMatchesRunToEnd();
+    testSortsStepBackReturnsToPreviousState();
+    testSortsHandleTinyInput();
+    testSelectionSwapsOncePerRound();
+    testShakerBeatsBubbleWhenSmallValueIsAtTheRight();
 
     if (g_failures == 0) {
         std::cout << "core: OK (" << g_checks << " checks)" << std::endl;

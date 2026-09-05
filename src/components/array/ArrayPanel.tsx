@@ -2,6 +2,7 @@ import React from 'react';
 import { PlaybackControls } from '../ui/PlaybackControls';
 import { NODE_STROKE } from '../visualizers/PixiGraphApp';
 import { Section, Swatch } from '../graph/panelParts';
+import { settledLabel, settledCountLabel } from './types';
 import type { ArrayVariant } from './types';
 import type { GraphState } from '../../types/engine';
 
@@ -23,40 +24,63 @@ interface Props {
     compact?: boolean;
 }
 
+// 今どの手を打ったか。ソートごとに見どころが違うので言葉を変える。
+const statusOf = (variant: ArrayVariant, state: GraphState | null): string => {
+    if (state?.finished) return '並び終えました';
+    if (variant === 'selection') {
+        if (state?.swapped) return '見つけた最小の値を先頭と入れ替えました';
+        return state?.swapping ? '探し終えたので先頭と入れ替えます' : '最小の値を探しています';
+    }
+    if (variant === 'insertion') {
+        return state?.swapped ? '左隣より小さいので、左へ送りました' : '左隣と比べています';
+    }
+    if (variant === 'shaker') {
+        const dir = state?.movingRight === false ? '左へ' : '右へ';
+        return state?.swapped ? `大小が逆だったので入れ替えました (${dir}走査中)`
+                              : `${dir}向かって隣どうしを比べています`;
+    }
+    return state?.swapped ? '大小が逆だったので入れ替えました' : '隣どうしを比べています';
+};
+
 // 見ながら操作するもの。再生コントロールと進行状況。
 export const ArrayPanel: React.FC<Props> = ({
-    state, isPlaying, delay, setDelay,
+    variant, state, isPlaying, delay, setDelay,
     onReset, onPlayPause, onStepBack, onStepNext, onRunToEnd,
     horizontal, compact,
 }) => {
     const fontSize = compact ? '12px' : '13px';
 
     const total = (state?.values ?? []).length;
-    const sortedFrom = state?.sortedFrom ?? total;
-    const settled = state?.finished ? total : total - sortedFrom;
-
-    const statusText = state?.finished ? '並び終えました'
-        : state?.swapped ? '大小が逆だったので入れ替えました'
-        : '隣どうしを比べています';
+    const settled = state?.settledCount ?? 0;
 
     const progress = (
         <div style={{ fontSize, lineHeight: 1.7, minWidth: 0 }}>
             <div>
-                <b>位置が確定した個数</b>: {settled}
+                <b>{settledCountLabel(variant)}</b>: {settled}
                 <span style={{ color: '#90a4ae' }}> / {total}</span>
             </div>
             <div style={{ marginTop: '6px', fontWeight: 'bold',
                           color: state?.finished ? '#27ae60' : '#78909c' }}>
-                {statusText}
+                {statusOf(variant, state)}
             </div>
         </div>
     );
 
     const legend = (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px' }}>
-            <Swatch color={NODE_STROKE[2]} label="比べている2つ" />
-            <Swatch color={NODE_STROKE[4]} label="入れ替えた2つ" />
-            <Swatch color={NODE_STROKE[3]} label="位置が確定した値" />
+            {variant === 'selection' ? (
+                <>
+                    <Swatch color={NODE_STROKE[2]} label="今見ている値" />
+                    <Swatch color={NODE_STROKE[1]} label="今のところ最小" />
+                    <Swatch color={NODE_STROKE[4]} label="入れ替えた2つ" />
+                </>
+            ) : (
+                <>
+                    <Swatch color={NODE_STROKE[2]} label="比べている2つ" />
+                    <Swatch color={NODE_STROKE[4]} label="入れ替えた2つ" />
+                </>
+            )}
+            <Swatch color={NODE_STROKE[3]} label={settledLabel(variant)} />
         </div>
     );
 
