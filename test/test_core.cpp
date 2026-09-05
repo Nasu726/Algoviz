@@ -28,6 +28,8 @@
 #include "../cpp/include/HuffmanVisualizer.hpp"
 #include "../cpp/include/AvlVisualizer.hpp"
 #include "../cpp/include/BTreeVisualizer.hpp"
+#include "../cpp/include/LineLayout.hpp"
+#include "../cpp/include/BubbleSortVisualizer.hpp"
 
 using emscripten::val;
 
@@ -3959,6 +3961,185 @@ static void testBTreeHandlesEmptyInput() {
     CHECK_EQ(b.getState(val::object())["nodeCount"].as<int>(), 0);
 }
 
+
+// ==========================================
+// 配列を一列に並べる配置
+// ==========================================
+
+static void placeLine(GraphData& g, LineLayout& layout) {
+    std::vector<std::vector<int>> adj(g.nodeCount());
+    layout.init(&g, adj);
+    layout.finish(&g);
+}
+
+static void testLineKeepsIndexOrder() {
+    beginTest("節点が番号順に左から並ぶ");
+
+    GraphData g = makeTree(6, {});
+    LineLayout layout;
+    placeLine(g, layout);
+
+    for (int i = 1; i < 6; i++) {
+        CHECK(nodeX(g, i) > nodeX(g, i - 1));
+        CHECK_NEAR(nodeY(g, i), nodeY(g, 0), 0.01f); // 一列なので y は揃う
+    }
+}
+
+static void testLineBoxesDoNotOverlap() {
+    beginTest("隣り合う箱が重ならない");
+
+    // 幅がまちまちでも縁どうしが CELL_GAP 以上あくか
+    GraphData g = makeTree(5, {});
+    g.setHalfWidth(1, 60.0f);
+    g.setHalfWidth(3, 40.0f);
+
+    LineLayout layout;
+    placeLine(g, layout);
+
+    for (int i = 1; i < 5; i++) {
+        float gap = nodeX(g, i) - nodeX(g, i - 1) - g.halfWidthOf(i) - g.halfWidthOf(i - 1);
+        g_checks++;
+        if (gap < LineLayout::CELL_GAP - 0.01f) {
+            reportFailure("節点 " + std::to_string(i - 1) + " と " + std::to_string(i) +
+                          " の縁が " + std::to_string(gap) + " しかあいていない");
+        }
+    }
+}
+
+// ==========================================
+// バブルソート
+// ==========================================
+
+static std::vector<int> readArray(BubbleSortVisualizer& b) {
+    val s = b.getState(val::object());
+    val vs = s["values"];
+    int n = vs["length"].as<int>();
+    std::vector<int> out;
+    for (int i = 0; i < n; i++) out.push_back(vs[i].as<int>());
+    return out;
+}
+
+static std::vector<int> sortWith(BubbleSortVisualizer& b, const std::string& values) {
+    b.load("setValues", values);
+    b.runToEnd();
+    return readArray(b);
+}
+
+static void testBubbleSortsAscending() {
+    beginTest("並べ終えた結果が昇順になる");
+
+    const char* inputs[] = {
+        "5 2 9 1 7 3 8 4",
+        "1 2 3 4 5 6 7 8",   // 既に並んでいる
+        "8 7 6 5 4 3 2 1",   // 逆順
+        "4 4 2 2 9 9",       // 同じ値が混ざる
+        "42",
+    };
+    for (const char* in : inputs) {
+        BubbleSortVisualizer b;
+        std::vector<int> out = sortWith(b, in);
+        CHECK(b.getState(val::object())["finished"].as<bool>());
+        for (std::size_t i = 1; i < out.size(); i++) {
+            g_checks++;
+            if (out[i - 1] > out[i]) {
+                reportFailure(std::string("\"") + in + "\" が昇順になっていない: " +
+                              std::to_string(out[i - 1]) + " の後に " + std::to_string(out[i]));
+                break;
+            }
+        }
+    }
+}
+
+static void testBubbleKeepsTheSameValues() {
+    beginTest("値が消えたり増えたりしない");
+
+    // 入れ替えの向きを間違えると、片方の値が上書きされて消える
+    const char* in = "5 2 9 1 7 3 8 4 4 2";
+    BubbleSortVisualizer b;
+    std::vector<int> out = sortWith(b, in);
+
+    std::vector<int> expected;
+    std::istringstream iss(in);
+    int v;
+    while (iss >> v) expected.push_back(v);
+    std::sort(expected.begin(), expected.end());
+
+    CHECK_EQ((int)out.size(), (int)expected.size());
+    for (std::size_t i = 0; i < out.size() && i < expected.size(); i++) {
+        CHECK_EQ(out[i], expected[i]);
+    }
+}
+
+static void testBubbleStopsWhenNothingSwaps() {
+    beginTest("入れ替えが起きなければ1回の走査で終わる");
+
+    // 既に並んでいるなら、n-1 回比べた時点で終わっている
+    BubbleSortVisualizer b;
+    b.load("setValues", "1 2 3 4 5 6 7 8");
+    int steps = 0;
+    while (steps < 500 && b.step()) steps++;
+    CHECK_EQ(steps, 7);
+}
+
+static void testBubbleStepMatchesRunToEnd() {
+    beginTest("1手ずつ進めた結果と一気に実行した結果が一致する");
+
+    const char* inputs[] = {"5 2 9 1 7 3 8 4", "8 7 6 5 4 3 2 1"};
+    for (const char* in : inputs) {
+        BubbleSortVisualizer stepwise;
+        stepwise.load("setValues", in);
+        for (int i = 0; i < 500 && stepwise.step(); i++) {}
+
+        BubbleSortVisualizer atOnce;
+        std::vector<int> b2 = sortWith(atOnce, in);
+        std::vector<int> b1 = readArray(stepwise);
+
+        CHECK_EQ((int)b1.size(), (int)b2.size());
+        for (std::size_t i = 0; i < b1.size() && i < b2.size(); i++) CHECK_EQ(b1[i], b2[i]);
+    }
+}
+
+static void testBubbleStepBackReturnsToPreviousState() {
+    beginTest("1手進めて戻すと元の状態になる");
+
+    for (int stop = 1; stop <= 12; stop++) {
+        BubbleSortVisualizer before;
+        before.load("setValues", "5 2 9 1 7 3 8 4");
+        for (int i = 0; i < stop; i++) before.step();
+
+        BubbleSortVisualizer after;
+        after.load("setValues", "5 2 9 1 7 3 8 4");
+        for (int i = 0; i < stop + 1; i++) after.step();
+        after.stepBack();
+
+        std::vector<int> a = readArray(before), c = readArray(after);
+        CHECK_EQ((int)a.size(), (int)c.size());
+        for (std::size_t i = 0; i < a.size() && i < c.size(); i++) CHECK_EQ(a[i], c[i]);
+
+        val sa = before.getState(val::object());
+        val sc = after.getState(val::object());
+        CHECK_EQ(sa["compareLeft"].as<int>(), sc["compareLeft"].as<int>());
+        CHECK_EQ(sa["sortedFrom"].as<int>(), sc["sortedFrom"].as<int>());
+    }
+}
+
+static void testBubbleHandlesTinyInput() {
+    beginTest("値が無くても1つでも落ちない");
+
+    const std::pair<const char*, int> inputs[] = {{"", 0}, {"7", 1}};
+    for (const auto& in : inputs) {
+        BubbleSortVisualizer b;
+        b.load("setValues", in.first);
+        b.runToEnd();
+        val s = b.getState(val::object());
+        CHECK(s["finished"].as<bool>());
+        CHECK_EQ(s["nodeCount"].as<int>(), in.second);
+
+        b.stepBack(); // 戻せないときに何も壊さない
+        CHECK(b.getState(val::object())["finished"].as<bool>());
+    }
+}
+
 // ==========================================
 
 int main(int argc, char** argv) {
@@ -4137,6 +4318,18 @@ int main(int argc, char** argv) {
     testBTreeStepMatchesRunToEnd();
     testBTreeStepBackReturnsToPreviousState();
     testBTreeHandlesEmptyInput();
+
+    beginSection("配列を一列に並べる配置");
+    testLineKeepsIndexOrder();
+    testLineBoxesDoNotOverlap();
+
+    beginSection("バブルソート");
+    testBubbleSortsAscending();
+    testBubbleKeepsTheSameValues();
+    testBubbleStopsWhenNothingSwaps();
+    testBubbleStepMatchesRunToEnd();
+    testBubbleStepBackReturnsToPreviousState();
+    testBubbleHandlesTinyInput();
 
     if (g_failures == 0) {
         std::cout << "core: OK (" << g_checks << " checks)" << std::endl;

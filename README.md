@@ -23,6 +23,10 @@
 - [trie (接頭辞木) の構築](https://algoviz.nasu.uk/tree/trie)
 - [ハフマン木の構築](https://algoviz.nasu.uk/tree/huffman)
 
+**配列**
+
+- [バブルソート](https://algoviz.nasu.uk/array/bubble)
+
 **オートマトン**
 
 - [決定性有限オートマトン (DFA)](https://algoviz.nasu.uk/automaton)
@@ -85,7 +89,9 @@ cpp/
     GraphColors.hpp            colorId の「意味」の定義 (実際の配色は JS 側)
     ILayout.hpp                配置アルゴリズムの面。向きは配置が決める
     GeneralGraphLayout.hpp     ├ 一般グラフ (MDS → Stress Majorization → 凸包パッキング)
-    TreeLayout.hpp             └ 木 (Reingold-Tilford)。常に上から下
+    EasedLayout.hpp            └ 目標へイージングで寄せる配置の共通部分
+    TreeLayout.hpp                ├ 木 (Reingold-Tilford)。常に上から下
+    LineLayout.hpp                └ 配列 (番号順に左から一列)
     GraphVisualizer.hpp        グラフの生成・レイアウト・描画データ供給の基底クラス
     TraversalVisualizer.hpp    ├ BFS / DFS / ダイクストラ法
     AutomatonVisualizer.hpp    ├ DFA (常に有向 + 初期状態 + 受理状態 + 遷移記号)
@@ -95,6 +101,8 @@ cpp/
     HeapVisualizer.hpp         ├ ヒープの構築
     TrieVisualizer.hpp         ├ trie の構築
     HuffmanVisualizer.hpp      └ ハフマン木の構築
+    ArrayVisualizer.hpp        配列を一列に並べるものの基底 (節点の番号 = 添字)
+    BubbleSortVisualizer.hpp   └ バブルソート
 src/
   types/engine.ts              WASM 境界の型定義。C++ を変えたらここも揃える
   pages/                       ページ

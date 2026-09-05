@@ -118,6 +118,14 @@ export interface GraphState {
     landedNode?: number;
     landedSlot?: number;
 
+    /** ソートのビジュアライザのときだけ */
+    /** 比べている2つのうち左。-1 なら比べていない */
+    compareLeft?: number;
+    /** 直前の手で入れ替えたか */
+    swapped?: boolean;
+    /** ここより右は位置が確定している */
+    sortedFrom?: number;
+
     /** BstVisualizer のときだけ */
     values?: number[];
     /** これから挿入する値が values の何番目か */

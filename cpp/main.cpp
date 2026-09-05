@@ -12,6 +12,7 @@
 #include "include/HuffmanVisualizer.hpp"
 #include "include/AvlVisualizer.hpp"
 #include "include/BTreeVisualizer.hpp"
+#include "include/BubbleSortVisualizer.hpp"
 
 using namespace emscripten;
 
@@ -48,6 +49,8 @@ public:
             currentAlgo = std::make_unique<AvlVisualizer>();
         } else if (name == "btree") {
             currentAlgo = std::make_unique<BTreeVisualizer>();
+        } else if (name == "bubble") {
+            currentAlgo = std::make_unique<BubbleSortVisualizer>();
         } else {
             std::cerr << "Unknown algorithm: " << name << std::endl;
         }

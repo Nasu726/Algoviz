@@ -24,6 +24,12 @@ const GENRES: { name: string; items: { path: string; label: string }[] }[] = [
         ],
     },
     {
+        name: '配列',
+        items: [
+            { path: '/array/bubble', label: 'バブルソート' },
+        ],
+    },
+    {
         name: 'オートマトン',
         items: [
             { path: '/automaton', label: '決定性有限オートマトン (DFA)' },
