@@ -23,7 +23,7 @@ const RISING_FILL = 0xffcc80;
 // 節点の幅は C++ が決めるので、ずれるとセルが箱からはみ出す。
 const DIGIT_W  = 9.0;  // 16px 太字の数字1文字
 const CELL_PAD = 7.0;  // 区切り線と数字の間
-// 目標へ寄せる割合。TreeLayout::EASE と同じにして、値と節点の速さを揃える。
+// 目標へ寄せる割合。EasedLayout::EASE と同じにして、値と節点の速さを揃える。
 const VALUE_EASE = 0.203;
 
 // この縮尺より小さいと文字が数ピクセルにしか描かれず読めない。
