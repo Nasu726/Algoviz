@@ -4314,6 +4314,7 @@ static void testMergeProducesSortedRuns() {
     beginTest("併合した組は並んでいる");
 
     // 併合が正しく働いていれば、書き戻した範囲はその中で昇順になっている。
+    // 再帰の内側の節点の数だけ併合が起きる (8個なら7回)。
     MergeSortVisualizer b;
     b.load("setValues", "5 2 9 1 7 3 8 4");
     int merges = 0;
@@ -4355,11 +4356,11 @@ static void testMergeUsesTheWorkRow() {
     CHECK_EQ((int)readArray(b).size(), 8);      // 配列そのものは8個
 
     bool sawFilled = false;
-    std::set<int> widths;
+    int leaves = 0;
 
     for (int i = 0; i < 500 && b.step(); i++) {
         val s = b.getState(val::object());
-        widths.insert(s["runWidth"].as<int>());
+        if (s["leafRange"].as<bool>()) leaves++;
 
         val empties = s["emptySlots"];
         std::set<int> empty;
@@ -4380,10 +4381,8 @@ static void testMergeUsesTheWorkRow() {
         }
     }
     CHECK(sawFilled);
-
-    // 幅が倍になっていく
-    CHECK_EQ((int)widths.size(), 3);
-    CHECK(widths.count(1) && widths.count(2) && widths.count(4));
+    // 1つ以下まで分けきってから戻る。葉は値の数だけ
+    CHECK_EQ(leaves, 8);
 }
 
 static void testInsertionHoldsTheValueInTheHole() {

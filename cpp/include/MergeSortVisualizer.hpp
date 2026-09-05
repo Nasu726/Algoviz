@@ -1,111 +1,88 @@
 #pragma once
 #include "ArrayVisualizer.hpp"
 #include "GraphColors.hpp"
-#include <algorithm>
+#include <vector>
 
 // マージソートのビジュアライザ。
 //
-// 並んでいる2つの並びを突き合わせて、小さい方から順に取り出すと1つの並んだ
-// 並びになる。長さ1の並びから始めて、幅を倍にしながら全体が1つになるまで繰り返す。
+// 範囲を半分ずつに分けていき、1つ以下になったらそれは並んでいる。戻りながら、
+// 並んでいる2つを突き合わせて小さい方から取り出すと、1つの並んだ並びになる。
 //
 // **下の段が作業用の場所。** 併合した結果はいったんそこへ書き、書き終えてから
 // 上の段へ戻す。ほかのソートと違って**別の場所が要る**のがマージソートの特徴で、
 // その場で入れ替えるように書くと、その特徴が見えなくなる。
 //
-// 1ステップは3種類。
-//   組を取り出す … 次に併合する2つの並びを決める
+// 1ステップは5種類。
+//   分ける       … 範囲を半分に分け、左・右・併合の順に片付ける仕事を積む
+//   1つ以下      … 分けきったので、この範囲は並んでいる
+//   併合を始める … 分けた2つが並び終えたので、突き合わせに入る
 //   小さい方を移す … 2つの先頭を比べ、小さい方を下の段へ移す
 //   書き戻す     … 併合が終わったら、下の段の並びを上の段へまとめて戻す
 //
-// 幅を倍にしていく形 (下から積む) にしてある。再帰で書くと「分ける」段階で
-// 何も起きない手が続き、何をしているのか分からなくなる。
+// 再帰は仕事の積み重ねで持つ。積む順を「併合 → 右 → 左」にすると、取り出す順が
+// 「左 → 右 → 併合」になり、再帰で書いたときと同じ順に進む。
 class MergeSortVisualizer : public ArrayVisualizer {
 private:
-    enum Phase { TakePair, Merging, CopyBack };
+    // 片付ける仕事。merge が false なら「分ける」、true なら「併合する」
+    struct Task {
+        int lo, hi;
+        bool merge;
+    };
 
-    Phase phase = TakePair;
-    int width = 1;   // 今の段で併合する並びの長さ
-    int start = 0;   // 次に取り出す組の左端
+    enum Phase { Idle, Merging, CopyBack };
 
-    int lo = -1, mid = -1, hi = -1; // 今の組。[lo, mid) と [mid, hi)
+    std::vector<Task> pending;
+    Phase phase = Idle;
+
+    int lo = -1, mid = -1, hi = -1; // 今の範囲。[lo, mid) と [mid, hi) に分かれる
     int leftAt = 0, rightAt = 0;    // それぞれの先頭
     int writeAt = 0;                // 下の段の次に書く位置
-    bool lonelyRun = false;         // 相方がいないので併合しない組だった
+
+    bool dividing = false;  // 直前の手が「分ける」だった
+    bool leafRange = false; // 直前の手が「1つ以下」だった
 
     int workOf(int i) const { return rowSize() + i; } // 下の段の同じ位置
-    bool merging() const { return lo >= 0 && mid < hi; }
+    bool hasRange() const { return lo >= 0; }
 
 protected:
     // 下の段を作業用に使う。長さは配列と同じ
     int extraSlots() const override { return rowSize(); }
 
     void resetAlgorithm() override {
-        phase = TakePair;
-        width = 1;
-        start = 0;
+        pending.clear();
+        phase = Idle;
         lo = mid = hi = -1;
         leftAt = rightAt = writeAt = 0;
-        lonelyRun = false;
+        dividing = leafRange = false;
         focusA = focusB = -1;
-        if (rowSize() <= 1) { settleAll(); finished = true; }
+        if (rowSize() <= 0) { finished = true; return; }
+        pending.push_back({0, rowSize(), false});
     }
 
-    // 今の組を下地に塗ってから、並んでいる範囲と焦点を重ねる
+    // 並んでいる範囲を先に塗り、今の範囲を上に重ねる
     void syncVisuals() override {
         if (!graph) return;
         graph->resetColors();
+        paintSettled();
 
-        if (!finished && lo >= 0) {
-            for (int i = lo; i < hi; i++) graph->setNodeColor(i, NODE_RANGE);
-            // 左の並びの残り。どちらから取り出しているかを分ける
-            for (int i = leftAt; i < mid; i++) graph->setNodeColor(i, NODE_SMALLER);
-            // 下の段に書いた部分
+        if (!finished && hasRange()) {
+            for (int i = lo; i < mid; i++) graph->setNodeColor(i, NODE_SMALLER); // 左半分
+            for (int i = mid; i < hi; i++) graph->setNodeColor(i, NODE_RANGE);   // 右半分
             for (int i = lo; i < writeAt; i++) graph->setNodeColor(workOf(i), NODE_PATH);
         }
-        paintSettled();
         paintFocus();
     }
 
     bool advance() override {
         if (finished) return false;
-        lonelyRun = false;
-
-        if (phase == TakePair) {
-            // 段の終わり。幅を倍にして最初から
-            if (start >= rowSize()) {
-                width *= 2;
-                start = 0;
-                settled.assign(rowSize(), 0); // 段が変わると「並んでいる範囲」も変わる
-                if (width >= rowSize()) { settleAll(); finished = true; return false; }
-            }
-
-            lo = start;
-            mid = std::min(start + width, rowSize());
-            hi = std::min(start + width * 2, rowSize());
-            start += width * 2;
-            focusA = focusB = -1;
-
-            // 相方がいない。この段では並べ替えるものが無い
-            if (mid >= hi) {
-                markSettled(lo, hi - 1);
-                lonelyRun = true;
-                lo = mid = hi = -1;
-                return true;
-            }
-
-            leftAt = lo;
-            rightAt = mid;
-            writeAt = lo;
-            phase = Merging;
-            return true;
-        }
+        dividing = leafRange = false;
 
         if (phase == Merging) {
             // 片方が尽きていたら、残っている方から取る
             bool takeLeft;
-            if (leftAt >= mid)       takeLeft = false;
-            else if (rightAt >= hi)  takeLeft = true;
-            else                     takeLeft = valueAt(leftAt) <= valueAt(rightAt);
+            if (leftAt >= mid)      takeLeft = false;
+            else if (rightAt >= hi) takeLeft = true;
+            else                    takeLeft = valueAt(leftAt) <= valueAt(rightAt);
 
             int from = takeLeft ? leftAt++ : rightAt++;
             focusA = workOf(writeAt);
@@ -117,12 +94,47 @@ protected:
             return true;
         }
 
-        // 併合が終わった。下の段の並びを上の段へまとめて戻す
-        for (int i = lo; i < hi; i++) moveValue(workOf(i), i);
-        markSettled(lo, hi - 1);
+        if (phase == CopyBack) {
+            for (int i = lo; i < hi; i++) moveValue(workOf(i), i);
+            markSettled(lo, hi - 1);
+            focusA = focusB = -1;
+            lo = mid = hi = -1;
+            phase = Idle;
+            return true;
+        }
+
+        // 次の仕事を取り出す
+        if (pending.empty()) { settleAll(); finished = true; return false; }
+
+        Task task = pending.back();
+        pending.pop_back();
+        lo = task.lo;
+        hi = task.hi;
+        mid = (lo + hi) / 2;
         focusA = focusB = -1;
-        lo = mid = hi = -1;
-        phase = TakePair;
+
+        if (task.merge) {
+            // 分けた2つが並び終えたので、突き合わせに入る
+            leftAt = lo;
+            rightAt = mid;
+            writeAt = lo;
+            phase = Merging;
+            return true;
+        }
+
+        // 1つ以下なら、それだけで並んでいる
+        if (hi - lo <= 1) {
+            markSettled(lo, hi - 1);
+            leafRange = true;
+            lo = mid = hi = -1;
+            return true;
+        }
+
+        // 半分に分ける。取り出す順が「左 → 右 → 併合」になるよう逆に積む
+        pending.push_back({lo, hi, true});
+        pending.push_back({mid, hi, false});
+        pending.push_back({lo, mid, false});
+        dividing = true;
         return true;
     }
 
@@ -133,12 +145,15 @@ public:
 
     emscripten::val getState(emscripten::val params) override {
         emscripten::val state = ArrayVisualizer::getState(params);
-        state.set("rangeLo", merging() ? lo : -1);
-        state.set("rangeMid", merging() ? mid : -1);
-        state.set("rangeHi", merging() ? hi : -1);
-        state.set("runWidth", width);
+        state.set("rangeLo", hasRange() ? lo : -1);
+        state.set("rangeMid", hasRange() ? mid : -1);
+        state.set("rangeHi", hasRange() ? hi : -1);
+        state.set("dividing", dividing);
+        state.set("leafRange", leafRange);
+        // 次の手が書き戻しか
         state.set("copyingBack", phase == CopyBack);
-        state.set("lonelyRun", lonelyRun);
+        // まだ片付けていない仕事の数。再帰がどこまで進んだかが分かる
+        state.set("pendingTasks", (int)pending.size());
         return state;
     }
 };

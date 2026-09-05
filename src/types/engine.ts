@@ -152,12 +152,15 @@ export interface GraphState {
     skippedRange?: boolean;
     /** クイックソート: まだ並べていない範囲の数 */
     pendingRanges?: number;
-    /** マージソート: 今併合している組の真ん中。[rangeLo, rangeMid) と [rangeMid, rangeHi) */
+    /** マージソート: 今の範囲の真ん中。[rangeLo, rangeMid) と [rangeMid, rangeHi) に分かれる */
     rangeMid?: number;
-    /** マージソート: 今の段で併合する並びの長さ / 書き戻す手か / 相方がいない組か */
-    runWidth?: number;
+    /** マージソート: 直前の手が「半分に分ける」/「1つ以下なので並んでいる」だったか */
+    dividing?: boolean;
+    leafRange?: boolean;
+    /** マージソート: 次の手が書き戻しか */
     copyingBack?: boolean;
-    lonelyRun?: boolean;
+    /** マージソート: まだ片付けていない仕事の数 */
+    pendingTasks?: number;
 
     /** BstVisualizer のときだけ */
     values?: number[];
