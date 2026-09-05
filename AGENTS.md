@@ -82,6 +82,16 @@ npm test --silent
   実行部も UI も別物になる。BFS / DFS を分けたのと同じようにページを分ける。
   subset construction も「実際のアルゴリズム」として独立したページにする
 
+- **文字を扱うビジュアライザは 1文字 = 1バイトを前提にしている。**
+  ハフマン (文字を数える) / trie (1文字ずつ降りる) / DFA (遷移記号) の3つが
+  `char` 単位で回しているので、UTF-8 の1文字が複数バイトに割れる。
+  「あい」が2文字ではなく6個の葉になる。**必須ではないが、直すなら3つまとめて。**
+  - 辺の3列目は float なので、コードポイントならそのまま入る (2^24 まで正確)。
+    詰まるのは `char` 単位の走査と `std::string(1, c)` のラベル生成
+  - JS 側は `String.fromCharCode` を `fromCodePoint` に変えるだけ
+    ([functions.ts](src/utils/functions.ts), [PixiGraphApp.ts](src/components/visualizers/PixiGraphApp.ts))
+  - trie の `MAX_WORD_LENGTH` など「文字数」の上限もバイト数で数えている
+
 ## 配置アルゴリズムの分担
 
 `ILayout` の実装で分ける。**向きは配置が決めるもので、利用者に選ばせる設定ではない。**
