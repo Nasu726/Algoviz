@@ -65,7 +65,8 @@ const BubbleHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
         <ul>
             <li>1回の走査で、その範囲の最大の値が右端まで運ばれる</li>
             <li>運ばれた位置はもう動かないので、走査する範囲が1つずつ狭くなる</li>
-            <li>走査中に一度も入れ替えが起きなければ、そこで全体が並んでいる</li>
+            <li>走査は範囲が無くなるまで続く。<b>途中で並び終わっても打ち切らない</b>ので、
+                既に並んでいる入力でも手数は変わらない</li>
         </ul>
 
         <Common maxValues={maxValues} sample="5 2 9 1 7 3 8 4" heading={4} />
@@ -94,6 +95,10 @@ const SelectionHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
             バブルソートは比べるたびに入れ替えが起きますが、選択ソートは何回比べても
             入れ替えは1周に1回です。バブルソートと違って比べるのと入れ替えるのを
             別のステップにしてあるのは、この違いを見えるようにするためです。
+        </p>
+        <p>
+            見つけた最小の値が既に先頭にあっても、入れ替えのステップは踏みます。
+            そこだけ飛ばすと1周の形が揃わなくなるためです。
         </p>
 
         <Common maxValues={maxValues} sample="5 2 9 1 7 3 8 4" heading={4} />
@@ -144,6 +149,10 @@ const ShakerHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
             シェーカーソートは左向きの走査で一気に左端まで運べます。
         </p>
         <pre style={codeBlock}>2 3 4 5 6 7 8 1</pre>
+        <p>
+            バブルソートと同じく、<b>途中で並び終わっても打ち切りません</b>。
+            手数そのものは変わらないので、運ばれ方の違いを見てください。
+        </p>
 
         <Common maxValues={maxValues} sample="2 3 4 5 6 7 8 1" heading={4} />
     </>

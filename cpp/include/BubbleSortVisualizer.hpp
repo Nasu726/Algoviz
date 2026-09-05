@@ -8,18 +8,19 @@
 // 比べるソートでは1手ずつ追うには多すぎる。
 //
 // 1回の走査で最大の値が右端まで運ばれるので、右から順に位置が確定していく。
-// 走査中に一度も入れ替えが起きなければ、そこで全体が並んでいる。
+//
+// **入れ替えが起きなくなった時点で打ち切る工夫はしていない。** 速くはなるが、
+// 「隣どうしを何度も比べて、少しずつ運ぶ」という仕組みが見えにくくなる。
+// 既に並んでいる入力でも最後まで走査する。
 class BubbleSortVisualizer : public ArrayVisualizer {
 private:
     int scanEnd = 0;   // この位置までを走査する。ここより右は確定済み
     int cursor  = 0;   // 次に比べる位置
-    bool swappedInScan = false; // この走査で1回でも入れ替えたか
 
 protected:
     void resetAlgorithm() override {
         scanEnd = graph->nodeCount() - 1;
         cursor = 0;
-        swappedInScan = false;
         focusA = 0;
         focusB = graph->nodeCount() > 1 ? 1 : -1;
         if (scanEnd <= 0) { settleAll(); finished = true; } // 0個か1個なら並んでいる
@@ -30,19 +31,14 @@ protected:
 
         focusA = cursor;
         focusB = cursor + 1;
-        if (valueAt(cursor) > valueAt(cursor + 1)) {
-            swapValues(cursor, cursor + 1);
-            swappedInScan = true;
-        }
+        if (valueAt(cursor) > valueAt(cursor + 1)) swapValues(cursor, cursor + 1);
         cursor++;
 
         // 走査の終わり。右端に最大の値が来たので、その位置が確定する
         if (cursor >= scanEnd) {
             markSettled(scanEnd, scanEnd);
-            // 一度も入れ替えていないなら、残り全体が既に並んでいる
-            scanEnd = swappedInScan ? scanEnd - 1 : 0;
+            scanEnd--;
             cursor = 0;
-            swappedInScan = false;
             if (scanEnd <= 0) { settleAll(); finished = true; }
         }
         return true;

@@ -4117,15 +4117,29 @@ static void testSortsKeepTheSameValues() {
     }
 }
 
-static void testBubbleStopsWhenNothingSwaps() {
-    beginTest("入れ替えが起きなければ1回の走査で終わる");
+static void testScanSortsDoNotStopEarly() {
+    beginTest("走査するソートは並んでいても最後まで走る");
 
-    // 既に並んでいるなら、n-1 回比べた時点で終わっている
-    BubbleSortVisualizer b;
-    b.load("setValues", "1 2 3 4 5 6 7 8");
-    int steps = 0;
-    while (steps < 500 && b.step()) steps++;
-    CHECK_EQ(steps, 7);
+    // 入れ替えが起きなくなったら打ち切る工夫はしていない。速くはなるが、
+    // 「隣どうしを何度も比べて少しずつ運ぶ」仕組みが見えにくくなる。
+    auto steps = [](ArrayVisualizer& b, const char* in) {
+        b.load("setValues", in);
+        int n = 0;
+        while (n < 2000 && b.step()) n++;
+        return n;
+    };
+
+    BubbleSortVisualizer bubbleSorted, bubbleReversed;
+    int a = steps(bubbleSorted, "1 2 3 4 5 6 7 8");
+    int c = steps(bubbleReversed, "8 7 6 5 4 3 2 1");
+    CHECK(a > 0);
+    CHECK_EQ(a, c); // 手数が入力によらない
+
+    ShakerSortVisualizer shakerSorted, shakerReversed;
+    int d = steps(shakerSorted, "1 2 3 4 5 6 7 8");
+    int e = steps(shakerReversed, "8 7 6 5 4 3 2 1");
+    CHECK(d > 0);
+    CHECK_EQ(d, e);
 }
 
 static void testSortsStepMatchesRunToEnd() {
@@ -4206,20 +4220,36 @@ static void testSelectionSwapsOncePerRound() {
     CHECK(swaps <= 7); // n-1 周ぶん。バブルなら 28 回入れ替わる並び
 }
 
-static void testShakerBeatsBubbleWhenSmallValueIsAtTheRight() {
-    beginTest("小さい値が右端にあるとシェーカーの方が手数が少ない");
+static void testShakerCarriesASmallValueLeftInOneScan() {
+    beginTest("シェーカーは右端の小さい値を1回の左向き走査で左端まで運ぶ");
 
-    // 左向きの走査があるので、右端の 1 を一気に左へ運べる
+    // ここがバブルソートとの違い。バブルは1周で1つしか左へ動かせない。
+    // 打ち切りをやめたので手数では差が出ない。運ばれ方そのものを見る。
     const char* in = "2 3 4 5 6 7 8 1";
-    auto count = [&](ArrayVisualizer& b) {
-        b.load("setValues", in);
-        int steps = 0;
-        while (steps < 2000 && b.step()) steps++;
-        return steps;
+
+    auto runUntilSettled = [](ArrayVisualizer& b, int count) {
+        for (int i = 0; i < 2000; i++) {
+            if (b.getState(val::object())["settledCount"].as<int>() >= count) return;
+            if (!b.step()) return;
+        }
     };
-    BubbleSortVisualizer bubble;
+    auto indexOf = [](ArrayVisualizer& b, int value) {
+        std::vector<int> a = readArray(b);
+        for (std::size_t i = 0; i < a.size(); i++) if (a[i] == value) return (int)i;
+        return -1;
+    };
+
+    // 右向きと左向きを1回ずつ終えた時点 (両端が1つずつ確定した時点)
     ShakerSortVisualizer shaker;
-    CHECK(count(shaker) < count(bubble));
+    shaker.load("setValues", in);
+    runUntilSettled(shaker, 2);
+    CHECK_EQ(indexOf(shaker, 1), 0);
+
+    // バブルは同じだけ確定させても、1 は1つずつしか左へ来ない
+    BubbleSortVisualizer bubble;
+    bubble.load("setValues", in);
+    runUntilSettled(bubble, 2);
+    CHECK(indexOf(bubble, 1) > 0);
 }
 
 
@@ -4410,12 +4440,12 @@ int main(int argc, char** argv) {
     testSortsAscending();
     testSortsSettleEveryPosition();
     testSortsKeepTheSameValues();
-    testBubbleStopsWhenNothingSwaps();
+    testScanSortsDoNotStopEarly();
     testSortsStepMatchesRunToEnd();
     testSortsStepBackReturnsToPreviousState();
     testSortsHandleTinyInput();
     testSelectionSwapsOncePerRound();
-    testShakerBeatsBubbleWhenSmallValueIsAtTheRight();
+    testShakerCarriesASmallValueLeftInOneScan();
 
     if (g_failures == 0) {
         std::cout << "core: OK (" << g_checks << " checks)" << std::endl;

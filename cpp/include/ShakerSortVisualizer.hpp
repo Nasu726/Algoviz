@@ -9,13 +9,15 @@
 //
 // バブルソートが苦手な「小さい値が右端近くにある」並びで差が出る。
 // バブルは1周で1つしか左へ動かせないが、左向きの走査なら一気に運べる。
+//
+// **バブルソートと同じく、入れ替えが起きなくなっても打ち切らない。**
+// 速くはなるが、向きが入れ替わりながら両端が縮んでいく仕組みが見えにくくなる。
 class ShakerSortVisualizer : public ArrayVisualizer {
 private:
     int left = 0;      // ここより左は確定済み
     int right = 0;     // ここより右は確定済み
     int cursor = 0;    // 今 cursor と cursor+1 を比べている
     bool movingRight = true;
-    bool swappedInScan = false;
 
     // 端を1つ確定させ、走査の向きを変える。並び終えていたら true
     bool turnAround() {
@@ -26,12 +28,10 @@ private:
             markSettled(left, left);
             left++;
         }
-        // 一度も入れ替えていないなら、残り全体が既に並んでいる
-        if (!swappedInScan || left >= right) return true;
+        if (left >= right) return true;
 
         movingRight = !movingRight;
         cursor = movingRight ? left : right - 1;
-        swappedInScan = false;
         return false;
     }
 
@@ -41,7 +41,6 @@ protected:
         right = graph->nodeCount() - 1;
         cursor = 0;
         movingRight = true;
-        swappedInScan = false;
         focusA = 0;
         focusB = graph->nodeCount() > 1 ? 1 : -1;
         if (right <= 0) { settleAll(); finished = true; }
@@ -52,10 +51,7 @@ protected:
 
         focusA = cursor;
         focusB = cursor + 1;
-        if (valueAt(cursor) > valueAt(cursor + 1)) {
-            swapValues(cursor, cursor + 1);
-            swappedInScan = true;
-        }
+        if (valueAt(cursor) > valueAt(cursor + 1)) swapValues(cursor, cursor + 1);
 
         cursor += movingRight ? 1 : -1;
         // 端まで来たらそこが確定し、向きが変わる

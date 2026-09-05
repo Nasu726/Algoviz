@@ -40,7 +40,8 @@ protected:
         if (swapping) {
             focusA = head;
             focusB = minIndex;
-            if (minIndex != head) swapValues(head, minIndex);
+            // 既に先頭にあっても入れ替えの手は踏む。教科書どおりの形にしておく
+            swapValues(head, minIndex);
             markSettled(head, head);
             head++;
 
