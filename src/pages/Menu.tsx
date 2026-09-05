@@ -24,6 +24,15 @@ const GENRES: { name: string; items: { path: string; label: string }[] }[] = [
         ],
     },
     {
+        name: '配列',
+        items: [
+            { path: '/array/bubble', label: 'バブルソート' },
+            { path: '/array/selection', label: '選択ソート' },
+            { path: '/array/insertion', label: '挿入ソート' },
+            { path: '/array/shaker', label: 'シェーカーソート' },
+        ],
+    },
+    {
         name: 'オートマトン',
         items: [
             { path: '/automaton', label: '決定性有限オートマトン (DFA)' },

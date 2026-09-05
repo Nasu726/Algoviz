@@ -118,6 +118,27 @@ export interface GraphState {
     landedNode?: number;
     landedSlot?: number;
 
+    /** ソートのビジュアライザのときだけ */
+    /** その手で見ている位置。無ければ -1 */
+    focusA?: number;
+    focusB?: number;
+    /** 直前の手で入れ替えたか */
+    swapped?: boolean;
+    /** 位置が確定した (挿入ソートでは並んでいる) 個数 */
+    settledCount?: number;
+    /** 選択ソート: 今のところ最小の値がある位置 / 次の手で入れ替えるか */
+    minIndex?: number;
+    swapping?: boolean;
+    /** 挿入ソート: これから入れる値の位置 */
+    insertingAt?: number;
+    /** 挿入ソート: 取り出して持ち上げている値と、その値が空けているマス */
+    heldValue?: number;
+    holeIndex?: number;
+    /** 挿入ソート: この手で差し込んだ場所。-1 なら差し込んでいない */
+    droppedAt?: number;
+    /** シェーカーソート: 今どちら向きに走査しているか */
+    movingRight?: boolean;
+
     /** BstVisualizer のときだけ */
     values?: number[];
     /** これから挿入する値が values の何番目か */

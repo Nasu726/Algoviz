@@ -1,6 +1,6 @@
 #pragma once
 #include "GraphData.hpp"
-#include "ILayout.hpp"
+#include "EasedLayout.hpp"
 #include <vector>
 #include <algorithm>
 #include <cmath>
@@ -15,7 +15,9 @@
 // 頂点数の上限は 50 なので、輪郭の突き合わせが O(n * 深さ) でも問題にならない。
 //
 // 木の向きは常に上から下。preferHorizontal は木には意味が無いので上書きしない。
-class TreeLayout : public ILayout {
+//
+// 目標へ寄せる部分は EasedLayout が持つ。ここは目標を決めるだけ。
+class TreeLayout : public EasedLayout {
 public:
     static constexpr float LEVEL_GAP   = 90.0f;  // 深さ1つぶんの縦の間隔
     // 隣り合う節点の縁どうしの最小の間隔。節点ごとに幅が違うので、
@@ -24,18 +26,6 @@ public:
     static constexpr float TREE_GAP    = 120.0f; // 森にしたときの木と木の間隔
 
 private:
-    // 目標へ寄せる割合。指数的に減衰するので、所要フレームは
-    // log(1/(1-EASE)) に反比例する。
-    // 0.3 -> 0.277 で 1.1 倍、0.277 -> 0.221 でさらに 1.3 倍、
-    // 0.221 -> 0.203 でさらに 1.1 倍かかる。
-    static constexpr float EASE    = 0.203f;
-    static constexpr float EPSILON = 0.5f;
-
-    bool stable = false;
-    int nodeSize = 0;
-
-    std::vector<float> targetX, targetY;
-
     std::vector<std::vector<int>> children;
     // 実際に部分木として辿った子。閉路や合流があると children とは一致しないので、
     // 座標を配るときはこちらを使う。
@@ -155,7 +145,8 @@ private:
         }
     }
 
-    void computeTargets(GraphData* graph) {
+protected:
+    void computeTargets(GraphData* graph) override {
         buildChildren(graph);
         halfWidth.assign(nodeSize, GraphData::DEFAULT_HALF_WIDTH);
         for (int i = 0; i < nodeSize; i++) halfWidth[i] = graph->halfWidthOf(i);
@@ -183,48 +174,4 @@ private:
 
         placeLeftovers(cursor);
     }
-
-public:
-    void init(GraphData* graph, const std::vector<std::vector<int>>& adj) override {
-        (void)adj; // 木は辺の向きを見るので、無向の隣接リストは使わない
-        nodeSize = graph->nodeCount();
-        stable = false;
-        if (nodeSize == 0) {
-            stable = true;
-            return;
-        }
-        computeTargets(graph);
-    }
-
-    // 目標の座標へ少しずつ寄せる。一気に飛ばすと挿入のたびに節点が瞬間移動する。
-    bool update(GraphData* graph) override {
-        if (stable) return true;
-
-        float maxMove = 0.0f;
-        for (int i = 0; i < nodeSize; i++) {
-            std::size_t o = (std::size_t)i * GraphData::NODE_STRIDE;
-            float x = graph->nodeData[o], y = graph->nodeData[o + 1];
-            float nx = x + (targetX[i] - x) * EASE;
-            float ny = y + (targetY[i] - y) * EASE;
-            maxMove = std::max(maxMove, std::hypot(nx - x, ny - y));
-            graph->nodeData[o] = nx;
-            graph->nodeData[o + 1] = ny;
-        }
-
-        // 目標に十分近づいたら、ぴったり合わせて終わりにする
-        if (maxMove < EPSILON) finish(graph);
-        return stable;
-    }
-
-    void finish(GraphData* graph) override {
-        for (int i = 0; i < nodeSize; i++) {
-            std::size_t o = (std::size_t)i * GraphData::NODE_STRIDE;
-            graph->nodeData[o] = targetX[i];
-            graph->nodeData[o + 1] = targetY[i];
-        }
-        stable = true;
-    }
-
-    bool isStable() const override { return stable; }
-    void invalidate() override { stable = false; }
 };

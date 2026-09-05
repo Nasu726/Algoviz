@@ -48,10 +48,11 @@
   `latest` にするとローカルと CI で別のコンパイラが動き、出荷する WASM が再現しない
 - リファクタの前にテストを書く。`step()` と `runToEnd()` の統合では
   「両者の結果が一致する」テストが安全網になった
-- **ビジュアライザを足したら3か所を更新する。** どれも忘れやすい
+- **ビジュアライザを足したら2か所を更新する。** どちらも忘れやすい
   - `src/pages/Menu.tsx` の一覧 (これが無いと辿り着けない)
   - `README.md` の「現在利用可能なビジュアライザ」
-  - `visualize_plan.md` の該当項目にチェック
+
+  `visualize_plan.md` は持ち主の手元のメモで git 管理外。あれば同じくチェックを入れる
 
 ## PR の出し方
 
@@ -81,6 +82,16 @@ npm test --silent
 - **オートマトンは DFA だけ。** NFA は現在状態が集合になり ε-閉包も要るので、
   実行部も UI も別物になる。BFS / DFS を分けたのと同じようにページを分ける。
   subset construction も「実際のアルゴリズム」として独立したページにする
+
+- **文字を扱うビジュアライザは 1文字 = 1バイトを前提にしている。**
+  ハフマン (文字を数える) / trie (1文字ずつ降りる) / DFA (遷移記号) の3つが
+  `char` 単位で回しているので、UTF-8 の1文字が複数バイトに割れる。
+  「あい」が2文字ではなく6個の葉になる。**必須ではないが、直すなら3つまとめて。**
+  - 辺の3列目は float なので、コードポイントならそのまま入る (2^24 まで正確)。
+    詰まるのは `char` 単位の走査と `std::string(1, c)` のラベル生成
+  - JS 側は `String.fromCharCode` を `fromCodePoint` に変えるだけ
+    ([functions.ts](src/utils/functions.ts), [PixiGraphApp.ts](src/components/visualizers/PixiGraphApp.ts))
+  - trie の `MAX_WORD_LENGTH` など「文字数」の上限もバイト数で数えている
 
 ## 配置アルゴリズムの分担
 

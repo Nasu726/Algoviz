@@ -23,8 +23,14 @@ const RISING_FILL = 0xffcc80;
 // 節点の幅は C++ が決めるので、ずれるとセルが箱からはみ出す。
 const DIGIT_W  = 9.0;  // 16px 太字の数字1文字
 const CELL_PAD = 7.0;  // 区切り線と数字の間
-// 目標へ寄せる割合。TreeLayout::EASE と同じにして、値と節点の速さを揃える。
+// 目標へ寄せる割合。EasedLayout::EASE と同じにして、値と節点の速さを揃える。
 const VALUE_EASE = 0.203;
+// 取り出した値を配列の上に浮かせる高さ (挿入ソート)
+const HELD_LIFT = 58;
+// 差し込むときに落ちるのにかけるフレーム数。VALUE_EASE で浮きの高さぶんを
+// 詰めるのにかかる数に合わせてある。距離で終わりを決めると、落とす先の
+// マス自身も動いている間は縮まらず、いつまでも消えないことがある。
+const DROP_FRAMES = 24;
 
 // この縮尺より小さいと文字が数ピクセルにしか描かれず読めない。
 // 描いても情報にならないうえに、辺の多いグラフでは描画コストの主因になる。
@@ -74,6 +80,12 @@ export class PixiGraphApp {
     private flyY: number = 0;
     private flyGeneration: number = -1;
     private flySprite!: PIXI.Container;
+    // 配列から取り出して持ち上げている値 (挿入ソート)。空になるマスと、
+    // 差し込むときに上から落ちる動き
+    private holeIndex: number = -1;
+    private helding: boolean = false;
+    private dropFrames: number = 0;
+    private dropIndex: number = -1;
     private labelMode: GraphState['labelMode'] = 'index';
     private showWeights: boolean = false;
     
@@ -168,6 +180,77 @@ export class PixiGraphApp {
           .roundRect(-w / 2 + 2, -this.nodeRadius + 4, w - 4, this.nodeRadius * 2 - 8, 6)
           .fill(RISING_FILL).stroke({ width: 2, color: nodeStroke(1) });
         text.text = parts[this.flySlot];
+    }
+
+    // 配列から取り出した値を、空いたマスの上に浮かせる。差し込むときは
+    // そこへ落とす。持ち上げた値は配列の中では空きになるので、
+    // 動く様子が無いと値が瞬間移動して見える。
+    //
+    // B木の飛ぶ値とは同じ部品を使う。どちらか一方しか起きない。
+    private updateHeldValue(state: GraphState, nodeArray: Float32Array): boolean {
+        const held = state.heldValue ?? -1;
+        const hole = state.holeIndex ?? -1;
+        this.holeIndex = hole;
+
+        const at = (i: number, dy: number) => ({
+            x: nodeArray[i * NODE_STRIDE], y: nodeArray[i * NODE_STRIDE + 1] + dy,
+        });
+        const inRange = (i: number) => i >= 0 && i * NODE_STRIDE < nodeArray.length;
+
+        // 持ち上げている間は、空いたマスの上に浮かせておく。
+        // 空きが左へ移るとこちらも横に付いていく
+        if (held >= 0 && inRange(hole)) {
+            if (!this.helding) {
+                const from = at(hole, 0); // 持ち上げ始め。マスの位置から浮き上がる
+                this.flyX = from.x;
+                this.flyY = from.y;
+            }
+            this.helding = true;
+            this.dropFrames = 0;
+            const to = at(hole, -HELD_LIFT);
+            this.flyX += (to.x - this.flyX) * VALUE_EASE;
+            this.flyY += (to.y - this.flyY) * VALUE_EASE;
+            this.drawHeld(held);
+            return true;
+        }
+
+        // 差し込んだ。浮いていた場所から、置かれたマスへ落とす
+        if (this.helding) {
+            this.helding = false;
+            this.dropIndex = state.droppedAt ?? -1;
+            this.dropFrames = inRange(this.dropIndex) ? DROP_FRAMES : 0;
+        }
+
+        if (this.dropFrames > 0 && inRange(this.dropIndex)) {
+            this.dropFrames--;
+            const to = at(this.dropIndex, 0);
+            this.flyX += (to.x - this.flyX) * VALUE_EASE;
+            this.flyY += (to.y - this.flyY) * VALUE_EASE;
+            if (this.dropFrames > 0) {
+                this.drawHeld(this.valueOf(nodeArray, this.dropIndex));
+                return true;
+            }
+        }
+
+        this.dropFrames = 0;
+        this.flySprite.visible = false;
+        return false;
+    }
+
+    private valueOf(nodeArray: Float32Array, i: number): number {
+        return nodeArray[i * NODE_STRIDE + 2];
+    }
+
+    private drawHeld(value: number) {
+        this.flySprite.visible = true;
+        this.flySprite.position.set(this.flyX, this.flyY);
+        const bg = this.flySprite.children[0] as PIXI.Graphics;
+        const text = this.flySprite.children[1] as PIXI.Text;
+        const w = this.nodeRadius * 2.2;
+        bg.clear()
+          .roundRect(-w / 2, -this.nodeRadius, w, this.nodeRadius * 2, this.nodeRadius * 0.6)
+          .fill(RISING_FILL).stroke({ width: 3, color: nodeStroke(1) });
+        text.text = formatNodeValue(value);
     }
 
     private halfWidthOf(i: number): number {
@@ -560,8 +643,10 @@ export class PixiGraphApp {
         this.risingNode = state.risingNode ?? -1;
         this.risingSlot = state.risingSlot ?? -1;
 
-        // 節点を描く前に進める。飛んでいる値のセルは節点側で描かない
-        this.updateFlyingValue(state, nodeArray);
+        // 節点を描く前に進める。飛んでいる値のマスは節点側で描かない
+        if (!this.updateHeldValue(state, nodeArray)) {
+            this.updateFlyingValue(state, nodeArray);
+        }
         const startIdx: number = state.startNodeIndex ?? -1;
         const accepting: Set<number> = new Set(state.acceptingStates ?? []);
 
@@ -815,7 +900,11 @@ export class PixiGraphApp {
                     // グラフの頂点は 0,1,2、オートマトンの状態は q₀,q₁,q₂、木は節点の値。
                     labelText.text =
                         this.labelMode === 'state' ? `q${this.toSubscript(nodeIndex)}`
-                        : this.labelMode === 'value' ? formatNodeValue(nodeArray[i + 2])
+                        // 取り出して持ち上げている値のマスは空にする (挿入ソート)
+                        : this.labelMode === 'value'
+                            ? (nodeIndex === this.holeIndex ||
+                               (this.dropFrames > 0 && nodeIndex === this.dropIndex)
+                                ? '' : formatNodeValue(nodeArray[i + 2]))
                         // ハフマン木の葉は文字、内部の節点は空
                         : this.labelMode === 'text' ? (this.nodeLabels[nodeIndex] ?? '')
                         // trie の節点には名前が無い。根からの道がその接頭辞を表す

@@ -16,6 +16,8 @@
 #include <tuple>
 #include <array>
 #include <algorithm>
+#include <functional>
+#include <memory>
 
 #include "../cpp/include/Brainfuck.hpp"
 #include "../cpp/include/GraphVisualizer.hpp"
@@ -28,6 +30,11 @@
 #include "../cpp/include/HuffmanVisualizer.hpp"
 #include "../cpp/include/AvlVisualizer.hpp"
 #include "../cpp/include/BTreeVisualizer.hpp"
+#include "../cpp/include/LineLayout.hpp"
+#include "../cpp/include/BubbleSortVisualizer.hpp"
+#include "../cpp/include/SelectionSortVisualizer.hpp"
+#include "../cpp/include/InsertionSortVisualizer.hpp"
+#include "../cpp/include/ShakerSortVisualizer.hpp"
 
 using emscripten::val;
 
@@ -3959,6 +3966,360 @@ static void testBTreeHandlesEmptyInput() {
     CHECK_EQ(b.getState(val::object())["nodeCount"].as<int>(), 0);
 }
 
+
+// ==========================================
+// 配列を一列に並べる配置
+// ==========================================
+
+static void placeLine(GraphData& g, LineLayout& layout) {
+    std::vector<std::vector<int>> adj(g.nodeCount());
+    layout.init(&g, adj);
+    layout.finish(&g);
+}
+
+static void testLineKeepsIndexOrder() {
+    beginTest("節点が番号順に左から並ぶ");
+
+    GraphData g = makeTree(6, {});
+    LineLayout layout;
+    placeLine(g, layout);
+
+    for (int i = 1; i < 6; i++) {
+        CHECK(nodeX(g, i) > nodeX(g, i - 1));
+        CHECK_NEAR(nodeY(g, i), nodeY(g, 0), 0.01f); // 一列なので y は揃う
+    }
+}
+
+static void testLineBoxesDoNotOverlap() {
+    beginTest("隣り合う箱が重ならない");
+
+    // 幅がまちまちでも縁どうしが CELL_GAP 以上あくか
+    GraphData g = makeTree(5, {});
+    g.setHalfWidth(1, 60.0f);
+    g.setHalfWidth(3, 40.0f);
+
+    LineLayout layout;
+    placeLine(g, layout);
+
+    for (int i = 1; i < 5; i++) {
+        float gap = nodeX(g, i) - nodeX(g, i - 1) - g.halfWidthOf(i) - g.halfWidthOf(i - 1);
+        g_checks++;
+        if (gap < LineLayout::CELL_GAP - 0.01f) {
+            reportFailure("節点 " + std::to_string(i - 1) + " と " + std::to_string(i) +
+                          " の縁が " + std::to_string(gap) + " しかあいていない");
+        }
+    }
+}
+
+// ==========================================
+// バブルソート
+// ==========================================
+
+static std::vector<int> readArray(ArrayVisualizer& b) {
+    val s = b.getState(val::object());
+    val vs = s["values"];
+    int n = vs["length"].as<int>();
+    std::vector<int> out;
+    for (int i = 0; i < n; i++) out.push_back(vs[i].as<int>());
+    return out;
+}
+
+static std::vector<int> sortWith(ArrayVisualizer& b, const std::string& values) {
+    b.load("setValues", values);
+    b.runToEnd();
+    return readArray(b);
+}
+
+// ソートは4つとも「並べ終えたら昇順」「値が変わらない」を満たす。
+// 中身は違うので、同じ検査を4つに当てられるよう作る側だけ差し替える。
+using MakeSort = std::function<std::unique_ptr<ArrayVisualizer>()>;
+
+static std::vector<std::pair<const char*, MakeSort>> allSorts() {
+    return {
+        {"バブル",     [] { return std::unique_ptr<ArrayVisualizer>(new BubbleSortVisualizer()); }},
+        {"選択",       [] { return std::unique_ptr<ArrayVisualizer>(new SelectionSortVisualizer()); }},
+        {"挿入",       [] { return std::unique_ptr<ArrayVisualizer>(new InsertionSortVisualizer()); }},
+        {"シェーカー", [] { return std::unique_ptr<ArrayVisualizer>(new ShakerSortVisualizer()); }},
+    };
+}
+
+static void testSortsAscending() {
+    beginTest("並べ終えた結果が昇順になる");
+
+    const char* inputs[] = {
+        "5 2 9 1 7 3 8 4",
+        "1 2 3 4 5 6 7 8",   // 既に並んでいる
+        "8 7 6 5 4 3 2 1",   // 逆順
+        "4 4 2 2 9 9",       // 同じ値が混ざる
+        "2 3 4 5 6 7 8 1",   // 小さい値が右端にある (シェーカーが得意な形)
+        "42",
+    };
+    for (const auto& kind : allSorts()) {
+        for (const char* in : inputs) {
+            auto b = kind.second();
+            std::vector<int> out = sortWith(*b, in);
+            CHECK(b->getState(val::object())["finished"].as<bool>());
+            for (std::size_t i = 1; i < out.size(); i++) {
+                g_checks++;
+                if (out[i - 1] > out[i]) {
+                    reportFailure(std::string(kind.first) + "ソートの \"" + in +
+                                  "\" が昇順になっていない: " + std::to_string(out[i - 1]) +
+                                  " の後に " + std::to_string(out[i]));
+                    break;
+                }
+            }
+        }
+    }
+}
+
+static void testSortsSettleEveryPosition() {
+    beginTest("並べ終えたときに全部の位置が確定した色になる");
+
+    // 比べている2つの色が残ると「まだ何かしている」ように見える
+    for (const auto& kind : allSorts()) {
+        auto b = kind.second();
+        b->load("setValues", "5 2 9 1 7 3 8 4");
+        b->runToEnd();
+        val s = b->getState(val::object());
+        CHECK_EQ(s["settledCount"].as<int>(), 8);
+
+        val nodes = s["nodes"];
+        for (int i = 0; i < 8; i++) {
+            g_checks++;
+            int color = (int)nodes[i * GraphData::NODE_STRIDE + 3].as<float>();
+            if (color != NODE_VISITED) {
+                reportFailure(std::string(kind.first) + "ソートの位置 " + std::to_string(i) +
+                              " が確定した色になっていない (colorId " +
+                              std::to_string(color) + ")");
+            }
+        }
+    }
+}
+
+static void testSortsKeepTheSameValues() {
+    beginTest("値が消えたり増えたりしない");
+
+    // 入れ替えの向きを間違えると、片方の値が上書きされて消える
+    const char* in = "5 2 9 1 7 3 8 4 4 2";
+    std::vector<int> expected;
+    std::istringstream iss(in);
+    int v;
+    while (iss >> v) expected.push_back(v);
+    std::sort(expected.begin(), expected.end());
+
+    for (const auto& kind : allSorts()) {
+        auto b = kind.second();
+        std::vector<int> out = sortWith(*b, in);
+        CHECK_EQ((int)out.size(), (int)expected.size());
+        for (std::size_t i = 0; i < out.size() && i < expected.size(); i++) {
+            CHECK_EQ(out[i], expected[i]);
+        }
+    }
+}
+
+static void testScanSortsDoNotStopEarly() {
+    beginTest("走査するソートは毎回、端から端まで見る");
+
+    // 速さの工夫を入れていない。入れ替えが起きなくなっても打ち切らず、
+    // 確定した範囲も走査から外さないので、手数は並びによらず (n-1)^2 になる。
+    auto steps = [](ArrayVisualizer& b, const char* in) {
+        b.load("setValues", in);
+        int n = 0;
+        while (n < 2000 && b.step()) n++;
+        return n;
+    };
+    const int EXPECTED = 7 * 7; // 8個の入力
+
+    BubbleSortVisualizer bubbleSorted, bubbleReversed;
+    CHECK_EQ(steps(bubbleSorted, "1 2 3 4 5 6 7 8"), EXPECTED);
+    CHECK_EQ(steps(bubbleReversed, "8 7 6 5 4 3 2 1"), EXPECTED);
+
+    ShakerSortVisualizer shakerSorted, shakerReversed;
+    CHECK_EQ(steps(shakerSorted, "1 2 3 4 5 6 7 8"), EXPECTED);
+    CHECK_EQ(steps(shakerReversed, "8 7 6 5 4 3 2 1"), EXPECTED);
+}
+
+static void testSortsStepMatchesRunToEnd() {
+    beginTest("1手ずつ進めた結果と一気に実行した結果が一致する");
+
+    const char* inputs[] = {"5 2 9 1 7 3 8 4", "8 7 6 5 4 3 2 1"};
+    for (const auto& kind : allSorts()) {
+        for (const char* in : inputs) {
+            auto stepwise = kind.second();
+            stepwise->load("setValues", in);
+            for (int i = 0; i < 2000 && stepwise->step(); i++) {}
+
+            auto atOnce = kind.second();
+            std::vector<int> b2 = sortWith(*atOnce, in);
+            std::vector<int> b1 = readArray(*stepwise);
+
+            CHECK_EQ((int)b1.size(), (int)b2.size());
+            for (std::size_t i = 0; i < b1.size() && i < b2.size(); i++) CHECK_EQ(b1[i], b2[i]);
+        }
+    }
+}
+
+static void testSortsStepBackReturnsToPreviousState() {
+    beginTest("1手進めて戻すと元の状態になる");
+
+    for (const auto& kind : allSorts()) {
+        for (int stop = 1; stop <= 12; stop++) {
+            auto before = kind.second();
+            before->load("setValues", "5 2 9 1 7 3 8 4");
+            for (int i = 0; i < stop; i++) before->step();
+
+            auto after = kind.second();
+            after->load("setValues", "5 2 9 1 7 3 8 4");
+            for (int i = 0; i < stop + 1; i++) after->step();
+            after->stepBack();
+
+            std::vector<int> a = readArray(*before), c = readArray(*after);
+            CHECK_EQ((int)a.size(), (int)c.size());
+            for (std::size_t i = 0; i < a.size() && i < c.size(); i++) CHECK_EQ(a[i], c[i]);
+
+            val sa = before->getState(val::object());
+            val sc = after->getState(val::object());
+            CHECK_EQ(sa["focusA"].as<int>(), sc["focusA"].as<int>());
+            CHECK_EQ(sa["settledCount"].as<int>(), sc["settledCount"].as<int>());
+        }
+    }
+}
+
+static void testSortsHandleTinyInput() {
+    beginTest("値が無くても1つでも落ちない");
+
+    const std::pair<const char*, int> inputs[] = {{"", 0}, {"7", 1}};
+    for (const auto& kind : allSorts()) {
+        for (const auto& in : inputs) {
+            auto b = kind.second();
+            b->load("setValues", in.first);
+            b->runToEnd();
+            val s = b->getState(val::object());
+            CHECK(s["finished"].as<bool>());
+            CHECK_EQ(s["nodeCount"].as<int>(), in.second);
+
+            b->stepBack(); // 戻せるところまで戻しても壊れない
+            CHECK_EQ((int)readArray(*b).size(), in.second);
+        }
+    }
+}
+
+static void testSelectionSwapsOncePerRound() {
+    beginTest("選択ソートは1周に1回だけ入れ替える");
+
+    // 入れ替えの少なさがこのソートの見どころ。同じ手にまとめると見えなくなる。
+    // 最小が既に先頭にある周も、残りが1つの最後の周も飛ばさないので、
+    // 入れ替えの数は位置の数と同じになる。
+    SelectionSortVisualizer b;
+    b.load("setValues", "8 7 6 5 4 3 2 1");
+    int swaps = 0, steps = 0;
+    while (steps < 2000 && b.step()) {
+        steps++;
+        if (b.getState(val::object())["swapped"].as<bool>()) swaps++;
+    }
+    CHECK_EQ(swaps, 8);   // 8個ぶんの周
+    CHECK_EQ(steps, 36);  // 探す手 28 + 入れ替えの手 8
+}
+
+static void testEveryPositionTakesTheSameSteps() {
+    beginTest("端の位置も決め打ちにせず同じ手順で決める");
+
+    // 挿入ソートは先頭の1つも取り出して差し込む
+    InsertionSortVisualizer ins;
+    ins.load("setValues", "5 2 9 1");
+    ins.step();
+    val a = ins.getState(val::object());
+    CHECK_EQ(a["heldValue"].as<int>(), 5);
+    CHECK_EQ(a["holeIndex"].as<int>(), 0);
+    CHECK_EQ(a["settledCount"].as<int>(), 0); // まだ何も決まっていない
+
+    // 選択ソートは残りが1つになった最後の周も踏む
+    SelectionSortVisualizer sel;
+    sel.load("setValues", "1 2 3");
+    int settledBeforeLast = -1;
+    for (int i = 0; i < 100 && sel.step(); i++) {
+        val s = sel.getState(val::object());
+        if (s["finished"].as<bool>()) break;
+        settledBeforeLast = s["settledCount"].as<int>();
+    }
+    // 最後の周に入る手前で、まだ1つ残っている
+    CHECK_EQ(settledBeforeLast, 2);
+}
+
+static void testInsertionHoldsTheValueInTheHole() {
+    beginTest("挿入ソートは取り出した値を空いたマスに残す");
+
+    // 描画側は「空いたマス」を空に見せ、取り出した値を配列の外に描く。
+    // 中身が入力の並べ替えでなくなると、値が消えたり増えたりして見える。
+    InsertionSortVisualizer b;
+    const char* in = "5 2 9 1 7 3 8 4";
+    b.load("setValues", in);
+
+    std::vector<int> expected;
+    std::istringstream iss(in);
+    int v;
+    while (iss >> v) expected.push_back(v);
+    std::sort(expected.begin(), expected.end());
+
+    for (int i = 0; i < 500 && b.step(); i++) {
+        val s = b.getState(val::object());
+        int held = s["heldValue"].as<int>();
+        int hole = s["holeIndex"].as<int>();
+
+        // 持ち上げているかどうかは、空いたマスがあるかどうかと一致する
+        CHECK_EQ(held >= 0, hole >= 0);
+
+        std::vector<int> now = readArray(b);
+        if (hole >= 0 && hole < (int)now.size()) {
+            CHECK_EQ(now[hole], held); // 空いたマスには取り出した値が残っている
+        }
+
+        // 途中でも中身は入力の並べ替えのまま
+        std::vector<int> sorted = now;
+        std::sort(sorted.begin(), sorted.end());
+        CHECK_EQ((int)sorted.size(), (int)expected.size());
+        for (std::size_t k = 0; k < sorted.size() && k < expected.size(); k++) {
+            CHECK_EQ(sorted[k], expected[k]);
+        }
+
+        // 差し込んだ手では、もう持ち上げていない
+        if (s["droppedAt"].as<int>() >= 0) CHECK_EQ(held, -1);
+    }
+}
+
+static void testShakerCarriesASmallValueLeftInOneScan() {
+    beginTest("シェーカーは右端の小さい値を1回の左向き走査で左端まで運ぶ");
+
+    // ここがバブルソートとの違い。バブルは1周で1つしか左へ動かせない。
+    // 打ち切りをやめたので手数では差が出ない。運ばれ方そのものを見る。
+    const char* in = "2 3 4 5 6 7 8 1";
+
+    auto runUntilSettled = [](ArrayVisualizer& b, int count) {
+        for (int i = 0; i < 2000; i++) {
+            if (b.getState(val::object())["settledCount"].as<int>() >= count) return;
+            if (!b.step()) return;
+        }
+    };
+    auto indexOf = [](ArrayVisualizer& b, int value) {
+        std::vector<int> a = readArray(b);
+        for (std::size_t i = 0; i < a.size(); i++) if (a[i] == value) return (int)i;
+        return -1;
+    };
+
+    // 右向きと左向きを1回ずつ終えた時点 (両端が1つずつ確定した時点)
+    ShakerSortVisualizer shaker;
+    shaker.load("setValues", in);
+    runUntilSettled(shaker, 2);
+    CHECK_EQ(indexOf(shaker, 1), 0);
+
+    // バブルは同じだけ確定させても、1 は1つずつしか左へ来ない
+    BubbleSortVisualizer bubble;
+    bubble.load("setValues", in);
+    runUntilSettled(bubble, 2);
+    CHECK(indexOf(bubble, 1) > 0);
+}
+
+
 // ==========================================
 
 int main(int argc, char** argv) {
@@ -4137,6 +4498,23 @@ int main(int argc, char** argv) {
     testBTreeStepMatchesRunToEnd();
     testBTreeStepBackReturnsToPreviousState();
     testBTreeHandlesEmptyInput();
+
+    beginSection("配列を一列に並べる配置");
+    testLineKeepsIndexOrder();
+    testLineBoxesDoNotOverlap();
+
+    beginSection("ソート");
+    testSortsAscending();
+    testSortsSettleEveryPosition();
+    testSortsKeepTheSameValues();
+    testScanSortsDoNotStopEarly();
+    testSortsStepMatchesRunToEnd();
+    testSortsStepBackReturnsToPreviousState();
+    testSortsHandleTinyInput();
+    testSelectionSwapsOncePerRound();
+    testEveryPositionTakesTheSameSteps();
+    testInsertionHoldsTheValueInTheHole();
+    testShakerCarriesASmallValueLeftInOneScan();
 
     if (g_failures == 0) {
         std::cout << "core: OK (" << g_checks << " checks)" << std::endl;
