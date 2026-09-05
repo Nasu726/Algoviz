@@ -18,14 +18,17 @@
 class TreeLayout : public ILayout {
 public:
     static constexpr float LEVEL_GAP   = 90.0f;  // 深さ1つぶんの縦の間隔
-    static constexpr float SIBLING_GAP = 70.0f;  // 隣り合う節点の最小の横の間隔
+    // 隣り合う節点の縁どうしの最小の間隔。節点ごとに幅が違うので、
+    // 中心の間隔ではなく縁の間隔で持つ。
+    static constexpr float SIBLING_GAP = 30.0f;
     static constexpr float TREE_GAP    = 120.0f; // 森にしたときの木と木の間隔
 
 private:
     // 目標へ寄せる割合。指数的に減衰するので、所要フレームは
     // log(1/(1-EASE)) に反比例する。
-    // 0.3 -> 0.277 で 1.1 倍、0.277 -> 0.221 でさらに 1.3 倍かかる。
-    static constexpr float EASE    = 0.221f;
+    // 0.3 -> 0.277 で 1.1 倍、0.277 -> 0.221 でさらに 1.3 倍、
+    // 0.221 -> 0.203 でさらに 1.1 倍かかる。
+    static constexpr float EASE    = 0.203f;
     static constexpr float EPSILON = 0.5f;
 
     bool stable = false;
@@ -39,9 +42,10 @@ private:
     std::vector<std::vector<int>> laidChildren;
     std::vector<int> roots;
 
-    std::vector<float> prelim; // 親から見た相対 x
-    std::vector<char> seen;    // 部分木として組み立て済み
-    std::vector<char> placed;  // 絶対座標を配り済み
+    std::vector<float> prelim;    // 親から見た相対 x
+    std::vector<float> halfWidth; // 節点ごとの半幅
+    std::vector<char> seen;       // 部分木として組み立て済み
+    std::vector<char> placed;     // 絶対座標を配り済み
 
     // 辺の向きをそのまま親子関係として読む。木は向きに意味があるので、
     // 呼び出し側がくれる無向の隣接リストは使わない。
@@ -85,8 +89,10 @@ private:
         kids.clear();
         for (int c : children[u]) if (!seen[c]) kids.push_back(c);
 
-        lc.assign(1, 0.0f);
-        rc.assign(1, 0.0f);
+        // 輪郭は節点の縁。幅を入れておくと、寄せる量の計算がそのまま
+        // 「縁どうしが SIBLING_GAP 以上あく」を意味するようになる。
+        lc.assign(1, -halfWidth[u]);
+        rc.assign(1,  halfWidth[u]);
         if (kids.empty()) return;
 
         std::vector<float> accL, accR; // 置き終えた兄弟たちの輪郭
@@ -126,6 +132,9 @@ private:
             lc.push_back(accL[d] - mid);
             rc.push_back(accR[d] - mid);
         }
+        // 親自身の幅も輪郭に入れる。子より広いことがある (B木)
+        lc[0] = std::min(lc[0], -halfWidth[u]);
+        rc[0] = std::max(rc[0],  halfWidth[u]);
     }
 
     void assignAbsolute(int u, float x, int depth) {
@@ -142,12 +151,14 @@ private:
             if (placed[i]) continue;
             targetX[i] = x;
             targetY[i] = 0.0f;
-            x += SIBLING_GAP;
+            x += halfWidth[i] * 2.0f + SIBLING_GAP;
         }
     }
 
     void computeTargets(GraphData* graph) {
         buildChildren(graph);
+        halfWidth.assign(nodeSize, GraphData::DEFAULT_HALF_WIDTH);
+        for (int i = 0; i < nodeSize; i++) halfWidth[i] = graph->halfWidthOf(i);
         laidChildren.assign(nodeSize, {});
         prelim.assign(nodeSize, 0.0f);
         targetX.assign(nodeSize, 0.0f);

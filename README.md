@@ -18,6 +18,7 @@
 
 - [二分探索木の構築](https://algoviz.nasu.uk/tree/bst)
 - [AVL 木の構築](https://algoviz.nasu.uk/tree/avl)
+- [B木の構築](https://algoviz.nasu.uk/tree/btree)
 - [ヒープの構築](https://algoviz.nasu.uk/tree/heap)
 - [trie (接頭辞木) の構築](https://algoviz.nasu.uk/tree/trie)
 - [ハフマン木の構築](https://algoviz.nasu.uk/tree/huffman)
@@ -80,6 +81,7 @@ cpp/
     IVisualizer.hpp            全ビジュアライザ共通のインターフェース
     Brainfuck.hpp / src/       Brainfuck インタプリタ
     GraphData.hpp              頂点・辺の平坦な float 配列。JS とゼロコピー共有する
+                               (節点ごとの半幅も持つ。B木は値の数だけ横に広がる)
     GraphColors.hpp            colorId の「意味」の定義 (実際の配色は JS 側)
     ILayout.hpp                配置アルゴリズムの面。向きは配置が決める
     GeneralGraphLayout.hpp     ├ 一般グラフ (MDS → Stress Majorization → 凸包パッキング)
@@ -89,6 +91,7 @@ cpp/
     AutomatonVisualizer.hpp    ├ DFA (常に有向 + 初期状態 + 受理状態 + 遷移記号)
     BstVisualizer.hpp          ├ 二分探索木の構築
     AvlVisualizer.hpp          ├ AVL 木の構築 (回転で形が変わる)
+    BTreeVisualizer.hpp        ├ B木の構築 (1つの節点に値が複数入る)
     HeapVisualizer.hpp         ├ ヒープの構築
     TrieVisualizer.hpp         ├ trie の構築
     HuffmanVisualizer.hpp      └ ハフマン木の構築

@@ -16,6 +16,16 @@ const NODE_FILL   = [0xffffff, 0xfff3e0, 0xffebee, 0xeceff1, 0xe8f5e9, 0xe3f2fd,
 export const EDGE_COLOR  = [0x999999, 0x3498db, 0xe74c3c, 0xcfd8dc, 0x27ae60];
 const EDGE_WIDTH  = [2, 3, 4, 2, 4];
 
+// 上へ動く値を塗る色。節点ごと色を変えても、値のどれが上がるのかは分からない。
+const RISING_FILL = 0xffcc80;
+
+// 値を並べる節点 (B木) のセルの寸法。C++ の BTreeVisualizer と同じ値にする。
+// 節点の幅は C++ が決めるので、ずれるとセルが箱からはみ出す。
+const DIGIT_W  = 9.0;  // 16px 太字の数字1文字
+const CELL_PAD = 7.0;  // 区切り線と数字の間
+// 目標へ寄せる割合。TreeLayout::EASE と同じにして、値と節点の速さを揃える。
+const VALUE_EASE = 0.203;
+
 // この縮尺より小さいと文字が数ピクセルにしか描かれず読めない。
 // 描いても情報にならないうえに、辺の多いグラフでは描画コストの主因になる。
 const TEXT_MIN_SCALE = 0.4;
@@ -52,6 +62,18 @@ export class PixiGraphApp {
     private isAutomaton: boolean = false;
     private edgeSymbols: boolean = false;
     private nodeLabels: string[] = [];
+    private halfWidths: Float32Array = new Float32Array(0);
+    // 上へ動く値 (B木の分割)。節点の番号と、その節点の何番目の値か
+    private risingNode: number = -1;
+    private risingSlot: number = -1;
+    // 親へ移っている最中の値。行き先の節点とセル、今いる座標
+    private flying: boolean = false;
+    private flyNode: number = -1;
+    private flySlot: number = -1;
+    private flyX: number = 0;
+    private flyY: number = 0;
+    private flyGeneration: number = -1;
+    private flySprite!: PIXI.Container;
     private labelMode: GraphState['labelMode'] = 'index';
     private showWeights: boolean = false;
     
@@ -76,6 +98,99 @@ export class PixiGraphApp {
     private lastPinchDist = 0;
 
     // 数字を下付き文字（Unicode）に変換する関数
+    // 節点の半幅。指定が無ければ半径と同じ (今までどおりの円)
+    // 値ごとのセルの境目と中心を、節点の中心から見た x で返す。
+    // 文字は測らず、C++ と同じ式で並べる。測ると C++ の決めた箱の幅とずれる。
+    private cellLayout(parts: string[]): { edges: number[]; centers: number[] } {
+        const edges: number[] = [];
+        const centers: number[] = [];
+        const widths = parts.map((p) => p.length * DIGIT_W + CELL_PAD * 2);
+        let x = -widths.reduce((a, b) => a + b, 0) / 2;
+        for (const w of widths) {
+            edges.push(x);
+            centers.push(x + w / 2);
+            x += w;
+        }
+        edges.push(x);
+        return { edges, centers };
+    }
+
+    // 表示名を値ごとに分ける。値を持たない節点 (trie など) は空になる
+    private valueParts(label: string): string[] {
+        return label.length > 0 ? label.split(/ +/) : [];
+    }
+
+    // 親へ移った値を、元いた節点から入った先のセルまで動かす。
+    // 高さの変わらない分割では節点がほとんど動かないので、
+    // これが無いと値が一瞬で親に現れる。
+    private updateFlyingValue(state: GraphState, nodeArray: Float32Array) {
+        const generation = state.generation ?? 0;
+        if (generation !== this.flyGeneration) {
+            this.flyGeneration = generation;
+            const from = state.landedFrom ?? -1;
+            const to   = state.landedNode ?? -1;
+            this.flying = from >= 0 && to >= 0;
+            this.flyNode = to;
+            this.flySlot = state.landedSlot ?? -1;
+            if (this.flying) {
+                this.flyX = nodeArray[from * NODE_STRIDE];
+                this.flyY = nodeArray[from * NODE_STRIDE + 1];
+            }
+        }
+        if (!this.flying) { this.flySprite.visible = false; return; }
+
+        const parts = this.valueParts(this.nodeLabels[this.flyNode] ?? '');
+        if (this.flySlot < 0 || this.flySlot >= parts.length ||
+            this.flyNode * NODE_STRIDE >= nodeArray.length) {
+            this.flying = false;
+            this.flySprite.visible = false;
+            return;
+        }
+
+        const { edges, centers } = this.cellLayout(parts);
+        const tx = nodeArray[this.flyNode * NODE_STRIDE] + centers[this.flySlot];
+        const ty = nodeArray[this.flyNode * NODE_STRIDE + 1];
+        this.flyX += (tx - this.flyX) * VALUE_EASE;
+        this.flyY += (ty - this.flyY) * VALUE_EASE;
+
+        if (Math.hypot(tx - this.flyX, ty - this.flyY) < 0.5) {
+            this.flying = false;
+            this.flySprite.visible = false;
+            return;
+        }
+
+        this.flySprite.visible = true;
+        this.flySprite.position.set(this.flyX, this.flyY);
+        const bg = this.flySprite.children[0] as PIXI.Graphics;
+        const text = this.flySprite.children[1] as PIXI.Text;
+        const w = edges[this.flySlot + 1] - edges[this.flySlot];
+        bg.clear()
+          .roundRect(-w / 2 + 2, -this.nodeRadius + 4, w - 4, this.nodeRadius * 2 - 8, 6)
+          .fill(RISING_FILL).stroke({ width: 2, color: nodeStroke(1) });
+        text.text = parts[this.flySlot];
+    }
+
+    private halfWidthOf(i: number): number {
+        const w = this.halfWidths[i];
+        return Number.isFinite(w) && w > 0 ? w : this.nodeRadius;
+    }
+
+    // 節点の中心から、外周までの距離を向き (dx, dy) について返す。
+    // 円なら半径そのもの、横長の箱なら箱との交点までの距離。
+    private edgeInset(i: number, dx: number, dy: number): number {
+        const hw = this.halfWidthOf(i);
+        const hh = this.nodeRadius;
+        if (hw <= hh + 0.01) return hh + 2; // 円のまま
+
+        const len = Math.hypot(dx, dy);
+        if (len < 1e-6) return hh + 2;
+        const nx = Math.abs(dx) / len, ny = Math.abs(dy) / len;
+        // 箱の縁に当たるまでの距離。x か y のどちらが先に縁へ届くか
+        const tx = nx > 1e-6 ? hw / nx : Infinity;
+        const ty = ny > 1e-6 ? hh / ny : Infinity;
+        return Math.min(tx, ty) + 2;
+    }
+
     private toSubscript(num: number): string {
         const subscripts = ['₀', '₁', '₂', '₃', '₄', '₅', '₆', '₇', '₈', '₉'];
         return num.toString().split('').map(digit => subscripts[parseInt(digit, 10)]).join('');
@@ -135,6 +250,15 @@ export class PixiGraphApp {
         this.nodeContainer = new PIXI.Container();
         this.world.addChild(this.nodeContainer);
 
+        // 親へ移っている最中の値。節点の上に描く
+        this.flySprite = new PIXI.Container();
+        this.flySprite.visible = false;
+        this.flySprite.addChild(new PIXI.Graphics());
+        const flyLabel = new PIXI.Text({ text: '', style: { fontSize: 16, fill: 0x333333, fontWeight: 'bold' } });
+        flyLabel.anchor.set(0.5);
+        this.flySprite.addChild(flyLabel);
+        this.world.addChild(this.flySprite);
+
         if (import.meta.env.DEV) {
             this.fpsText = new PIXI.Text({ text: 'FPS: 0', style: { fontSize: 16, fill: 0x000000 } });
             this.fpsText.x = 10;
@@ -168,6 +292,16 @@ export class PixiGraphApp {
         const acceptRing = new PIXI.Graphics();
         acceptRing.label = "acceptRing";
         nodeGroup.addChild(acceptRing);
+
+        // 値を並べる節点 (B木) の区切り線と、上へ動く値の塗り
+        const cells = new PIXI.Graphics();
+        cells.label = "cells";
+        nodeGroup.addChild(cells);
+
+        // 値ごとのテキスト。必要になった節点だけが中身を持つ
+        const valueTexts = new PIXI.Container();
+        valueTexts.label = "valueTexts";
+        nodeGroup.addChild(valueTexts);
 
         // 3. "start ->" の矢印
         const startArrow = new PIXI.Graphics();
@@ -422,6 +556,12 @@ export class PixiGraphApp {
         this.labelMode = state.labelMode ?? 'index';
         this.edgeSymbols = !!state.edgeSymbols;
         this.nodeLabels = state.nodeLabels ?? [];
+        this.halfWidths = state.nodeHalfWidths ?? new Float32Array(0);
+        this.risingNode = state.risingNode ?? -1;
+        this.risingSlot = state.risingSlot ?? -1;
+
+        // 節点を描く前に進める。飛んでいる値のセルは節点側で描かない
+        this.updateFlyingValue(state, nodeArray);
         const startIdx: number = state.startNodeIndex ?? -1;
         const accepting: Set<number> = new Set(state.acceptingStates ?? []);
 
@@ -582,8 +722,11 @@ export class PixiGraphApp {
                     if (actualOffset === 0) {
                         // 直線
                         const ndx = dx / dist, ndy = dy / dist;
-                        const startX = fx + ndx * actualRadius, startY = fy + ndy * actualRadius;
-                        const endX = tx - ndx * actualRadius, endY = ty - ndy * actualRadius;
+                        // 節点ごとに形が違うので、端点はそれぞれの縁で止める
+                        const fromInset = this.edgeInset(fromIdx, ndx, ndy);
+                        const toInset   = this.edgeInset(toIdx, ndx, ndy);
+                        const startX = fx + ndx * fromInset, startY = fy + ndy * fromInset;
+                        const endX = tx - ndx * toInset, endY = ty - ndy * toInset;
 
                         this.edgeGraphics.moveTo(startX, startY).lineTo(endX, endY).stroke(strokeStyle);
 
@@ -602,11 +745,13 @@ export class PixiGraphApp {
                         
                         const vFromControlX = controlX - fx, vFromControlY = controlY - fy;
                         const lenFrom = Math.sqrt(vFromControlX ** 2 + vFromControlY ** 2);
-                        const startX = fx + (vFromControlX / lenFrom) * actualRadius, startY = fy + (vFromControlY / lenFrom) * actualRadius;
+                        const fromInset = this.edgeInset(fromIdx, vFromControlX, vFromControlY);
+                        const startX = fx + (vFromControlX / lenFrom) * fromInset, startY = fy + (vFromControlY / lenFrom) * fromInset;
 
                         const vToControlX = controlX - tx, vToControlY = controlY - ty;
                         const lenTo = Math.sqrt(vToControlX ** 2 + vToControlY ** 2);
-                        const endX = tx + (vToControlX / lenTo) * actualRadius, endY = ty + (vToControlY / lenTo) * actualRadius;
+                        const toInset = this.edgeInset(toIdx, vToControlX, vToControlY);
+                        const endX = tx + (vToControlX / lenTo) * toInset, endY = ty + (vToControlY / lenTo) * toInset;
 
                         this.edgeGraphics.moveTo(startX, startY).quadraticCurveTo(controlX, controlY, endX, endY).stroke(strokeStyle);
 
@@ -649,10 +794,17 @@ export class PixiGraphApp {
                 group.x = x; group.y = y;
 
                 const borderColor = nodeStroke(colorId);
+                const halfWidth = this.halfWidthOf(nodeIndex);
                 const bg = group.children[0] as PIXI.Graphics;
-                bg.clear().circle(0, 0, this.nodeRadius)
-                  .fill(nodeFill(colorId))
-                  .stroke({ width: 3, color: borderColor });
+                bg.clear();
+                if (halfWidth > this.nodeRadius + 0.01) {
+                    // 値を並べる節点 (B木) は角丸の長方形。高さは円と同じ
+                    bg.roundRect(-halfWidth, -this.nodeRadius,
+                                 halfWidth * 2, this.nodeRadius * 2, this.nodeRadius * 0.6);
+                } else {
+                    bg.circle(0, 0, this.nodeRadius);
+                }
+                bg.fill(nodeFill(colorId)).stroke({ width: 3, color: borderColor });
 
                 
                 // labelText のみを取得してテキストを更新する
@@ -669,6 +821,55 @@ export class PixiGraphApp {
                         // trie の節点には名前が無い。根からの道がその接頭辞を表す
                         : this.labelMode === 'none' ? ''
                         : `${nodeIndex}`;
+                }
+
+                // 値を並べる節点 (B木) は値ごとにセルへ区切る。1つの文字列を
+                // 中央に置くだけでは、区切り線と数字の間隔を決められない。
+                const cells = group.getChildByLabel("cells") as PIXI.Graphics;
+                const valueTexts = group.getChildByLabel("valueTexts") as PIXI.Container;
+                const parts = this.valueParts(labelText ? labelText.text : '');
+                const flyingHere = this.flying && nodeIndex === this.flyNode;
+                const useCells = parts.length > 1 || (flyingHere && parts.length === 1);
+
+                if (labelText) labelText.visible = readable && !useCells;
+                if (valueTexts) valueTexts.visible = readable && useCells;
+                if (cells) cells.visible = readable && useCells;
+
+                if (useCells && valueTexts && cells) {
+                    const { edges, centers } = this.cellLayout(parts);
+
+                    // 値ごとのテキスト。数が変わるのは分割のときだけ
+                    while (valueTexts.children.length < parts.length) {
+                        const t = new PIXI.Text({
+                            text: '', style: { fontSize: 16, fill: 0x333333, fontWeight: 'bold' },
+                        });
+                        t.anchor.set(0.5);
+                        valueTexts.addChild(t);
+                    }
+                    while (valueTexts.children.length > parts.length) {
+                        valueTexts.removeChildAt(valueTexts.children.length - 1).destroy();
+                    }
+
+                    cells.clear();
+                    for (let k = 0; k < parts.length; k++) {
+                        const t = valueTexts.children[k] as PIXI.Text;
+                        t.text = parts[k];
+                        t.position.set(centers[k], 0);
+                        // 移っている最中の値は、飛んでいる方だけを描く
+                        t.visible = !(flyingHere && k === this.flySlot);
+
+                        // 上へ動く値。節点ごと塗るとどの値が上がるのか分からない
+                        if (nodeIndex === this.risingNode && k === this.risingSlot) {
+                            cells.roundRect(edges[k] + 2, -this.nodeRadius + 4,
+                                            edges[k + 1] - edges[k] - 4, this.nodeRadius * 2 - 8, 6)
+                                 .fill(RISING_FILL).stroke({ width: 2, color: nodeStroke(1) });
+                        }
+                    }
+                    for (let k = 1; k < parts.length; k++) {
+                        cells.moveTo(edges[k], -this.nodeRadius + 4)
+                             .lineTo(edges[k], this.nodeRadius - 4);
+                    }
+                    cells.stroke({ width: 1.5, color: borderColor });
                 }
 
                 const acceptRing = group.getChildByLabel("acceptRing") as PIXI.Graphics;

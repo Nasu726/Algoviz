@@ -30,6 +30,8 @@ export interface GraphState {
     nodes: Float32Array;
     /** [from, to, weight, colorId] * E */
     edges: Float32Array;
+    /** 節点ごとの半幅。既定は 20 (半径と同じ)。広いものは角丸の長方形で描く */
+    nodeHalfWidths: Float32Array;
     nodeCount: number;
     edgeCount: number;
     maxNodes: number;
@@ -103,6 +105,18 @@ export interface GraphState {
     /** 直前の回転。0 無し / 1 右 / 2 左 / 3 左右 / 4 右左 */
     rotation?: number;
     treeHeight?: number;
+
+    /** BTreeVisualizer のときだけ */
+    order?: number;
+    /** 直前の手があふれた節点の分割だった */
+    splitting?: boolean;
+    /** 上へ動く値を持つ節点と、その節点の何番目の値か。無いときは -1 */
+    risingNode?: number;
+    risingSlot?: number;
+    /** 直前の手で親へ移った値。元いた節点と、入った先の節点・セル */
+    landedFrom?: number;
+    landedNode?: number;
+    landedSlot?: number;
 
     /** BstVisualizer のときだけ */
     values?: number[];

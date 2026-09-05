@@ -27,6 +27,7 @@
 #include "../cpp/include/TrieVisualizer.hpp"
 #include "../cpp/include/HuffmanVisualizer.hpp"
 #include "../cpp/include/AvlVisualizer.hpp"
+#include "../cpp/include/BTreeVisualizer.hpp"
 
 using emscripten::val;
 
@@ -2487,14 +2488,69 @@ static void testTreeNodesDoNotOverlap() {
     TreeLayout layout;
     placeTree(g, layout);
 
-    // 深さごとにまとめて、隣り合う節点の間隔を見る
+    // 深さごとにまとめて、隣り合う節点の間隔を見る。
+    // SIBLING_GAP は縁どうしの間隔なので、既定の幅なら中心の間隔は
+    // 半幅 x 2 + SIBLING_GAP になる。
+    const float MIN_CENTER_GAP =
+        GraphData::DEFAULT_HALF_WIDTH * 2.0f + TreeLayout::SIBLING_GAP;
     std::map<float, std::vector<float>> rows;
     for (int i = 0; i < g.nodeCount(); i++) rows[nodeY(g, i)].push_back(nodeX(g, i));
     for (auto& row : rows) {
         std::sort(row.second.begin(), row.second.end());
         for (std::size_t i = 1; i < row.second.size(); i++) {
-            CHECK(row.second[i] - row.second[i - 1] >= TreeLayout::SIBLING_GAP - 0.01f);
+            CHECK(row.second[i] - row.second[i - 1] >= MIN_CENTER_GAP - 0.01f);
         }
+    }
+}
+
+static void testWideNodesDoNotOverlap() {
+    beginTest("幅の広い節点どうしも重ならない");
+
+    // 真ん中の子だけを広くする。幅を見ていないと、両隣にめり込む。
+    //      0
+    //   /  |      //  1   2   3     ← 2 だけ幅が広い
+    GraphData g = makeTree(4, {{0, 1}, {0, 2}, {0, 3}});
+    g.setHalfWidth(2, 90.0f);
+
+    TreeLayout layout;
+    placeTree(g, layout);
+
+    // 縁どうしが SIBLING_GAP 以上あいているか
+    for (int i = 1; i <= 3; i++) {
+        for (int j = i + 1; j <= 3; j++) {
+            if (nodeY(g, i) != nodeY(g, j)) continue;
+            float gap = std::fabs(nodeX(g, i) - nodeX(g, j))
+                      - g.halfWidthOf(i) - g.halfWidthOf(j);
+            g_checks++;
+            if (gap < TreeLayout::SIBLING_GAP - 0.01f) {
+                reportFailure("節点 " + std::to_string(i) + " と " + std::to_string(j) +
+                              " の縁が " + std::to_string(gap) + " しかあいていない");
+            }
+        }
+    }
+
+    // 親は端の子2つの中央のまま
+    CHECK_NEAR(nodeX(g, 0), (nodeX(g, 1) + nodeX(g, 3)) / 2.0f, 0.01f);
+}
+
+static void testDefaultWidthKeepsOldLayout() {
+    beginTest("幅を指定しなければ今までと同じ配置になる");
+
+    // 幅を可変にした影響で、既存の木の見た目が変わっていないこと
+    std::vector<std::pair<int, int>> edges = {{0, 1}, {0, 2}, {1, 3}, {1, 4}, {2, 5}, {2, 6}};
+
+    GraphData plain = makeTree(7, edges);
+    TreeLayout l1;
+    placeTree(plain, l1);
+
+    GraphData explicitWidth = makeTree(7, edges);
+    for (int i = 0; i < 7; i++) explicitWidth.setHalfWidth(i, GraphData::DEFAULT_HALF_WIDTH);
+    TreeLayout l2;
+    placeTree(explicitWidth, l2);
+
+    for (int i = 0; i < 7; i++) {
+        CHECK_NEAR(nodeX(plain, i), nodeX(explicitWidth, i), 0.01f);
+        CHECK_NEAR(nodeY(plain, i), nodeY(explicitWidth, i), 0.01f);
     }
 }
 
@@ -3543,6 +3599,367 @@ static void testAvlHandlesEmptyInput() {
 }
 
 // ==========================================
+// B木の構築
+// ==========================================
+
+struct ParsedBTree {
+    int n = 0;
+    int root = -1;
+    std::vector<std::vector<int>> keys;
+    std::vector<std::vector<int>> children; // 辺の3列目の並び順どおり
+};
+
+static ParsedBTree readBTree(BTreeVisualizer& b) {
+    val s = b.getState(val::object());
+    ParsedBTree pb;
+    pb.n = s["nodeCount"].as<int>();
+    pb.root = s["startNodeIndex"].as<int>();
+    pb.children.assign(pb.n, {});
+
+    val ls = s["nodeLabels"];
+    for (int i = 0; i < pb.n; i++) {
+        std::istringstream iss(ls[i].as<std::string>());
+        std::vector<int> ks;
+        int v;
+        while (iss >> v) ks.push_back(v);
+        pb.keys.push_back(ks);
+    }
+
+    // 3列目が子の並び順。読んだあとに並べ替えて左からの順にする
+    std::vector<std::vector<std::pair<float, int>>> ordered(pb.n);
+    val edges = s["edges"];
+    int m = s["edgeCount"].as<int>();
+    for (int i = 0; i < m; i++) {
+        int from = (int)edges[i * GraphData::EDGE_STRIDE].as<float>();
+        int to   = (int)edges[i * GraphData::EDGE_STRIDE + 1].as<float>();
+        float slot = edges[i * GraphData::EDGE_STRIDE + 2].as<float>();
+        if (from < 0 || from >= pb.n) continue;
+        ordered[from].push_back({slot, to});
+    }
+    for (int i = 0; i < pb.n; i++) {
+        std::sort(ordered[i].begin(), ordered[i].end());
+        for (const auto& e : ordered[i]) pb.children[i].push_back(e.second);
+    }
+    return pb;
+}
+
+static ParsedBTree buildBTree(int order, const std::string& values) {
+    BTreeVisualizer b;
+    b.load("setOrder", std::to_string(order));
+    b.load("setValues", values);
+    b.runToEnd();
+    return readBTree(b);
+}
+
+// 葉の深さを集める。同時に、辿れた節点の数も数える。
+static void btreeLeafDepths(const ParsedBTree& pb, int node, int depth,
+                            std::vector<int>& out, int& seen) {
+    if (node < 0 || node >= pb.n || depth > 60) return;
+    seen++;
+    if (pb.children[node].empty()) { out.push_back(depth); return; }
+    for (int c : pb.children[node]) btreeLeafDepths(pb, c, depth + 1, out, seen);
+}
+
+static void btreeInorder(const ParsedBTree& pb, int node, std::vector<int>& out, int depth = 0) {
+    if (node < 0 || node >= pb.n || depth > 60) return;
+    const std::vector<int>& ks = pb.keys[node];
+    if (pb.children[node].empty()) {
+        for (int k : ks) out.push_back(k);
+        return;
+    }
+    for (std::size_t i = 0; i < ks.size(); i++) {
+        btreeInorder(pb, pb.children[node][i], out, depth + 1);
+        out.push_back(ks[i]);
+    }
+    btreeInorder(pb, pb.children[node][ks.size()], out, depth + 1);
+}
+
+static void testBTreeLeavesAreAtTheSameDepth() {
+    beginTest("どの葉も同じ深さにある");
+
+    const char* inputs[] = {
+        "10 20 30 40 50 60 70",
+        "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15", // 昇順。二分探索木なら一直線になる
+        "15 14 13 12 11 10 9 8 7 6 5 4 3 2 1", // 降順
+        "50 30 70 20 40 60 80 10 90 25",
+        "42",
+    };
+    for (int order = BTreeVisualizer::MIN_ORDER; order <= BTreeVisualizer::MAX_ORDER; order++) {
+        for (const char* in : inputs) {
+            ParsedBTree pb = buildBTree(order, in);
+            std::vector<int> depths;
+            int seen = 0;
+            btreeLeafDepths(pb, pb.root, 0, depths, seen);
+
+            g_checks++;
+            if (depths.empty()) {
+                reportFailure("葉が1つも無い (次数 " + std::to_string(order) + ")");
+                continue;
+            }
+            for (int d : depths) {
+                g_checks++;
+                if (d != depths[0]) {
+                    reportFailure("次数 " + std::to_string(order) + " の \"" + in +
+                                  "\" で葉の深さが揃っていない: " + std::to_string(depths[0]) +
+                                  " と " + std::to_string(d));
+                    break;
+                }
+            }
+            // 割ってできた節点が根から切り離されていないか
+            CHECK_EQ(seen, pb.n);
+        }
+    }
+}
+
+static void testBTreeNodeSizesAreInRange() {
+    beginTest("節点が持つ値の数が上限と下限に収まる");
+
+    for (int order = BTreeVisualizer::MIN_ORDER; order <= BTreeVisualizer::MAX_ORDER; order++) {
+        ParsedBTree pb = buildBTree(order, "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18");
+        int maxKeys = order - 1;
+        int minKeys = (order + 1) / 2 - 1; // ceil(m/2) - 1
+        for (int i = 0; i < pb.n; i++) {
+            int k = (int)pb.keys[i].size();
+            g_checks++;
+            if (k > maxKeys) {
+                reportFailure("次数 " + std::to_string(order) + " の節点 " + std::to_string(i) +
+                              " が値を " + std::to_string(k) + " 個持っている");
+            }
+            if (i == pb.root) continue; // 根だけは下限を割ってよい
+            g_checks++;
+            if (k < minKeys) {
+                reportFailure("次数 " + std::to_string(order) + " の節点 " + std::to_string(i) +
+                              " の値が " + std::to_string(k) + " 個しかない");
+            }
+        }
+        // 子の数は値の数 + 1
+        for (int i = 0; i < pb.n; i++) {
+            if (pb.children[i].empty()) continue;
+            CHECK_EQ((int)pb.children[i].size(), (int)pb.keys[i].size() + 1);
+        }
+    }
+}
+
+static void testBTreeInorderIsSorted() {
+    beginTest("中順に辿ると昇順になる");
+
+    for (int order = BTreeVisualizer::MIN_ORDER; order <= BTreeVisualizer::MAX_ORDER; order++) {
+        ParsedBTree pb = buildBTree(order, "50 30 70 20 40 60 80 10 90 25 35 45 55 65");
+        std::vector<int> seq;
+        btreeInorder(pb, pb.root, seq);
+
+        std::vector<int> expected = {10, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 80, 90};
+        CHECK_EQ((int)seq.size(), (int)expected.size());
+        for (std::size_t i = 0; i < seq.size() && i < expected.size(); i++) {
+            CHECK_EQ(seq[i], expected[i]);
+        }
+    }
+}
+
+static void testBTreeKeepsHeightLow() {
+    beginTest("昇順に 20 個入れても深くならない");
+
+    // 二分探索木なら深さ 20 の一直線になる並び
+    std::string values;
+    for (int i = 1; i <= 20; i++) values += std::to_string(i) + " ";
+
+    BTreeVisualizer b;
+    b.load("setOrder", "4");
+    b.load("setValues", values);
+    b.runToEnd();
+    CHECK(b.getState(val::object())["treeHeight"].as<int>() <= 4);
+}
+
+static void testBTreeOrderChangesTheShape() {
+    beginTest("次数を変えると木の形が変わる");
+
+    std::string values;
+    for (int i = 1; i <= 20; i++) values += std::to_string(i) + " ";
+
+    auto heightOf = [&](int order) {
+        BTreeVisualizer b;
+        b.load("setOrder", std::to_string(order));
+        b.load("setValues", values);
+        b.runToEnd();
+        return b.getState(val::object())["treeHeight"].as<int>();
+    };
+
+    // 次数が大きいほど1つの節点に値が入るので、浅くなる
+    CHECK(heightOf(3) > heightOf(5));
+
+    // 範囲の外を指定しても、いちばん近い次数に丸められる
+    BTreeVisualizer b;
+    b.load("setOrder", "99");
+    CHECK_EQ(b.getState(val::object())["order"].as<int>(), BTreeVisualizer::MAX_ORDER);
+    b.load("setOrder", "1");
+    CHECK_EQ(b.getState(val::object())["order"].as<int>(), BTreeVisualizer::MIN_ORDER);
+}
+
+static void testBTreeIgnoresDuplicates() {
+    beginTest("同じ値を2回入れても増えない");
+
+    ParsedBTree once = buildBTree(4, "10 20 30 40 50");
+    ParsedBTree twice = buildBTree(4, "10 20 30 40 50 30 10 50");
+
+    std::vector<int> a, c;
+    btreeInorder(once, once.root, a);
+    btreeInorder(twice, twice.root, c);
+    CHECK_EQ((int)a.size(), (int)c.size());
+    for (std::size_t i = 0; i < a.size() && i < c.size(); i++) CHECK_EQ(a[i], c[i]);
+}
+
+static void testBTreeWidensNodesThatHoldSeveralValues() {
+    beginTest("値を複数持つ節点は幅が広がる");
+
+    // 幅の広い節点が重ならないことは TreeLayout 側で見ている。
+    // ここで見るのは「B木が値の数から幅を入れているか」だけ。
+    BTreeVisualizer b;
+    b.load("setOrder", "5");
+    b.load("setValues", "10 20 30 40 50 60 70 80 90");
+    b.runToEnd();
+
+    val s = b.getState(val::object());
+    int n = s["nodeCount"].as<int>();
+    val widths = s["nodeHalfWidths"];
+    val ls = s["nodeLabels"];
+
+    bool sawWide = false;
+    for (int i = 0; i < n; i++) {
+        if (ls[i].as<std::string>().find(' ') == std::string::npos) continue;
+        sawWide = true;
+        g_checks++;
+        if (widths[i].as<float>() <= GraphData::DEFAULT_HALF_WIDTH) {
+            reportFailure("値が複数ある節点 " + std::to_string(i) + " の幅が広がっていない");
+        }
+    }
+    CHECK(sawWide);
+}
+
+static void testBTreeReportsWhereTheRisingValueLanded() {
+    beginTest("上がった値がどの節点のどのセルに入ったかを返す");
+
+    // 描画側はこの3つを見て、値が元の節点から入った先のセルまで動く様子を
+    // 描く。ずれると関係のない値が動いて見える。
+    for (int order = BTreeVisualizer::MIN_ORDER; order <= BTreeVisualizer::MAX_ORDER; order++) {
+        BTreeVisualizer b;
+        b.load("setOrder", std::to_string(order));
+        b.load("setValues", "50 30 70 20 40 60 80 10 90 25 35 45");
+
+        int splits = 0;
+        for (int i = 0; i < 500 && b.step(); i++) {
+            val s = b.getState(val::object());
+            if (!s["splitting"].as<bool>()) continue;
+            splits++;
+
+            int from = s["landedFrom"].as<int>();
+            int node = s["landedNode"].as<int>();
+            int slot = s["landedSlot"].as<int>();
+            ParsedBTree pb = readBTree(b);
+
+            CHECK(from >= 0 && from < pb.n);
+            CHECK(node >= 0 && node < pb.n);
+            if (from < 0 || node < 0 || from >= pb.n || node >= pb.n) continue;
+
+            g_checks++;
+            if (slot < 0 || slot >= (int)pb.keys[node].size()) {
+                reportFailure("入った先のセル " + std::to_string(slot) +
+                              " が節点 " + std::to_string(node) + " の値の数を外れている");
+                continue;
+            }
+
+            // 上がったのは真ん中の値。割られて残った左半分はどれもそれより小さい
+            int landed = pb.keys[node][slot];
+            for (int k : pb.keys[from]) {
+                g_checks++;
+                if (k >= landed) {
+                    reportFailure("上がった値 " + std::to_string(landed) +
+                                  " より小さくない値 " + std::to_string(k) +
+                                  " が元の節点に残っている");
+                    break;
+                }
+            }
+        }
+        CHECK(splits > 0);
+    }
+}
+
+static void testBTreeStepMatchesRunToEnd() {
+    beginTest("1手ずつ進めた結果と一気に実行した結果が一致する");
+
+    const char* inputs[] = {"10 20 30 40 50 60 70", "50 30 70 20 40 60 80 10 90 25"};
+    for (int order = BTreeVisualizer::MIN_ORDER; order <= BTreeVisualizer::MAX_ORDER; order++) {
+        for (const char* in : inputs) {
+            BTreeVisualizer stepwise;
+            stepwise.load("setOrder", std::to_string(order));
+            stepwise.load("setValues", in);
+            for (int i = 0; i < 500 && stepwise.step(); i++) {}
+
+            BTreeVisualizer atOnce;
+            atOnce.load("setOrder", std::to_string(order));
+            atOnce.load("setValues", in);
+            atOnce.runToEnd();
+
+            ParsedBTree a = readBTree(stepwise), c = readBTree(atOnce);
+            CHECK_EQ(a.n, c.n);
+            CHECK_EQ(a.root, c.root);
+            for (int i = 0; i < a.n && i < c.n; i++) {
+                CHECK_EQ((int)a.keys[i].size(), (int)c.keys[i].size());
+                for (std::size_t k = 0; k < a.keys[i].size() && k < c.keys[i].size(); k++) {
+                    CHECK_EQ(a.keys[i][k], c.keys[i][k]);
+                }
+                CHECK_EQ((int)a.children[i].size(), (int)c.children[i].size());
+                for (std::size_t k = 0; k < a.children[i].size() && k < c.children[i].size(); k++) {
+                    CHECK_EQ(a.children[i][k], c.children[i][k]);
+                }
+            }
+        }
+    }
+}
+
+static void testBTreeStepBackReturnsToPreviousState() {
+    beginTest("1手進めて戻すと元の状態になる");
+
+    for (int stop = 1; stop <= 14; stop++) {
+        BTreeVisualizer before;
+        before.load("setValues", "10 20 30 40 50 60 70");
+        for (int i = 0; i < stop; i++) before.step();
+
+        BTreeVisualizer after;
+        after.load("setValues", "10 20 30 40 50 60 70");
+        for (int i = 0; i < stop + 1; i++) after.step();
+        after.stepBack();
+
+        val a = before.getState(val::object());
+        val c = after.getState(val::object());
+        CHECK_EQ(a["nodeCount"].as<int>(), c["nodeCount"].as<int>());
+        CHECK_EQ(a["pending"].as<int>(), c["pending"].as<int>());
+        CHECK_EQ(a["cursor"].as<int>(), c["cursor"].as<int>());
+
+        ParsedBTree pa = readBTree(before), pc = readBTree(after);
+        for (int i = 0; i < pa.n && i < pc.n; i++) {
+            CHECK_EQ((int)pa.keys[i].size(), (int)pc.keys[i].size());
+            for (std::size_t k = 0; k < pa.keys[i].size() && k < pc.keys[i].size(); k++) {
+                CHECK_EQ(pa.keys[i][k], pc.keys[i][k]);
+            }
+        }
+    }
+}
+
+static void testBTreeHandlesEmptyInput() {
+    beginTest("値が1つも無くても落ちない");
+
+    BTreeVisualizer b;
+    b.load("setValues", "");
+    b.runToEnd();
+    val s = b.getState(val::object());
+    CHECK_EQ(s["nodeCount"].as<int>(), 0);
+    CHECK(s["finished"].as<bool>());
+
+    b.stepBack();
+    CHECK_EQ(b.getState(val::object())["nodeCount"].as<int>(), 0);
+}
+
+// ==========================================
 
 int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
@@ -3658,6 +4075,8 @@ int main(int argc, char** argv) {
     testTreeDepthBecomesY();
     testTreeParentIsCenteredOverChildren();
     testTreeNodesDoNotOverlap();
+    testWideNodesDoNotOverlap();
+    testDefaultWidthKeepsOldLayout();
     testForestIsPlacedSideBySide();
     testTreeLayoutHandlesEdgeCases();
     testTreeLayoutEasesToTarget();
@@ -3705,6 +4124,19 @@ int main(int argc, char** argv) {
     testAvlStepMatchesRunToEnd();
     testAvlStepBackReturnsToPreviousState();
     testAvlHandlesEmptyInput();
+
+    beginSection("B木の構築");
+    testBTreeLeavesAreAtTheSameDepth();
+    testBTreeNodeSizesAreInRange();
+    testBTreeInorderIsSorted();
+    testBTreeKeepsHeightLow();
+    testBTreeOrderChangesTheShape();
+    testBTreeIgnoresDuplicates();
+    testBTreeWidensNodesThatHoldSeveralValues();
+    testBTreeReportsWhereTheRisingValueLanded();
+    testBTreeStepMatchesRunToEnd();
+    testBTreeStepBackReturnsToPreviousState();
+    testBTreeHandlesEmptyInput();
 
     if (g_failures == 0) {
         std::cout << "core: OK (" << g_checks << " checks)" << std::endl;
