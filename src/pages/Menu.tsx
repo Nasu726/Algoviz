@@ -60,7 +60,10 @@ export const MenuPage: React.FC = () => {
             padding: '40px 20px', textAlign: 'center',
             fontFamily: 'sans-serif', backgroundColor: '#ffffff', color: '#000000',
         }}>
-            <h1 style={{ fontSize: '42px', margin: '0 0 28px' }}>AlgoVizへようこそ</h1>
+            <h1 style={{ fontSize: '42px', margin: '0 0 8px' }}>AlgoVizへようこそ</h1>
+            <p style={{ margin: '0 0 28px', color: '#546e7a' }}>
+                アルゴリズムやデータ構造の動きを、一手ずつ観察するビジュアライザ。
+            </p>
 
             <div style={{
                 display: 'flex', flexWrap: 'wrap', justifyContent: 'center',

@@ -121,7 +121,6 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
             title={TREE_TITLE[variant]}
             compact={compact}
             onBack={onBack}
-            backConfirm="ビジュアライザ一覧へ戻りますか？"
             isHelpOpen={isHelpOpen}
             setIsHelpOpen={setIsHelpOpen}
             help={<TreeHelp variant={variant} maxValues={maxValues} />}
