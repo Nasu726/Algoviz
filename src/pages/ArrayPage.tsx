@@ -101,7 +101,6 @@ export const ArrayPage: React.FC<Props> = ({ engine, onBack, variant }) => {
             title={ARRAY_TITLE[variant]}
             compact={compact}
             onBack={onBack}
-            backConfirm="ビジュアライザ一覧へ戻りますか？"
             isHelpOpen={isHelpOpen}
             setIsHelpOpen={setIsHelpOpen}
             help={<ArrayHelp variant={variant} maxValues={maxValues} />}
