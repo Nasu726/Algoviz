@@ -264,9 +264,115 @@ const MergeHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
     </>
 );
 
+// 探すページ用。値の入れ方の言葉が並べ替えとは違う
+const SearchCommon: React.FC<{ maxValues: number; sample: string; heading: number;
+                               sortedNote?: boolean }> =
+    ({ maxValues, sample, heading, sortedNote }) => (
+    <>
+        <h3>{heading}. 値の入れ方</h3>
+        <ul>
+            <li><b>探す値</b>：入力して Enter か「この値を探す」。値の並びはそのまま</li>
+            <li><b>この値で作り直す</b>：空白か改行で区切って値を並べる</li>
+            <li><b>ランダム生成</b>：個数を決めると、重複しない値を選んで並べる
+                {sortedNote ? ' (昇順で作ります)' : ''}</li>
+        </ul>
+        <pre style={codeBlock}>{sample}</pre>
+        <ul>
+            <li>値の個数の上限は {maxValues}</li>
+        </ul>
+
+        <h3>{heading + 1}. 画面の操作</h3>
+        <ul>
+            <li><b>ドラッグ</b>：表示位置を動かす</li>
+            <li><b>ホイール / 2本指のピンチ</b>：拡大・縮小</li>
+        </ul>
+
+        <h3>{heading + 2}. ショートカットキー</h3>
+        <ul>
+            <li><b>Esc</b>：ビジュアライザ一覧へ戻る</li>
+            <li><b>Ctrl + H</b>：ヘルプを開く</li>
+            <li><b>Ctrl + S</b>：この値で作り直す</li>
+            <li><b>Ctrl + Enter</b>：実行 / 一時停止</li>
+            <li><b>Ctrl + &larr;</b> / <b>&rarr;</b>：戻る / 進む</li>
+            <li><b>Ctrl + &uarr;</b> / <b>&darr;</b>：実行速度の増減</li>
+        </ul>
+    </>
+);
+
+const LinearHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
+    <>
+        <h3>1. 画面の見方</h3>
+        <ul>
+            <li>箱が左から順に並んだ配列。箱の中がその位置の値</li>
+            <li>赤色が今見ている値。緑色が見つけた値</li>
+            <li>灰色は<b>もう見ない範囲</b>。違うと分かったところ</li>
+        </ul>
+
+        <h3>2. 1ステップの単位</h3>
+        <p>
+            <b>1つ見る</b>のが1ステップです。左から順に見ていき、探す値と同じなら
+            そこで止まります。灰色が左から伸びていく長さが、そのまま何回見たかです。
+        </p>
+
+        <h3>3. 終わり方は2通り</h3>
+        <ul>
+            <li>探す値と同じものが見つかる</li>
+            <li>右端まで見ても無い。<b>その配列には無い</b>と分かる</li>
+        </ul>
+
+        <h3>4. 並んでいる必要は無い</h3>
+        <p>
+            どんな並びでも同じ手順で探せます。そのぶん、無い値を探すと端まで
+            見ることになります。二分探索との違いはここです。
+        </p>
+
+        <SearchCommon maxValues={maxValues} sample="5 2 9 1 7 3 8 4" heading={5} />
+    </>
+);
+
+const BinaryHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
+    <>
+        <h3>1. 画面の見方</h3>
+        <ul>
+            <li>紫色が<b>探す範囲</b>。赤色がその真ん中で、今見ている値</li>
+            <li>緑色が見つけた値</li>
+            <li>灰色は<b>もう見ない範囲</b>。真ん中と比べて捨てた側</li>
+        </ul>
+
+        <h3>2. 1ステップの単位</h3>
+        <p>
+            <b>真ん中を見て、範囲を半分にする</b>のが1ステップです。真ん中が探す値と
+            同じなら見つかり、違えば<b>半分を丸ごと捨てられます</b>。
+        </p>
+        <ul>
+            <li>真ん中の方が小さい → 探す値は右にあるので、左半分を捨てる</li>
+            <li>真ん中の方が大きい → 探す値は左にあるので、右半分を捨てる</li>
+        </ul>
+
+        <h3>3. 並んでいることが前提</h3>
+        <p>
+            半分を捨てられるのは、並んでいるから「こちら側には無い」と言い切れるためです。
+            <b>並んでいない入力でも動かせるようにしてあります</b>が、そのときは
+            在るのに見つからないことが起きます。並んでいなければパネルに出ます。
+        </p>
+        <pre style={codeBlock}>1 2 3 4 5 7 8 9</pre>
+
+        <h3>4. 線形探索との違い</h3>
+        <p>
+            線形探索は1回見ると候補が1つ減りますが、二分探索は1回で半分に減ります。
+            「まだ見ていない場所」の数がどう減るかを見比べてください。
+        </p>
+
+        <SearchCommon maxValues={maxValues} sample="1 2 3 4 5 7 8 9" heading={5}
+                      sortedNote />
+    </>
+);
+
 export const ArrayHelp: React.FC<{ variant: ArrayVariant; maxValues: number }> =
     ({ variant, maxValues }) =>
-        variant === 'merge' ? <MergeHelp maxValues={maxValues} />
+        variant === 'linear' ? <LinearHelp maxValues={maxValues} />
+        : variant === 'binary' ? <BinaryHelp maxValues={maxValues} />
+        : variant === 'merge' ? <MergeHelp maxValues={maxValues} />
         : variant === 'quick' ? <QuickHelp maxValues={maxValues} />
         : variant === 'selection' ? <SelectionHelp maxValues={maxValues} />
         : variant === 'insertion' ? <InsertionHelp maxValues={maxValues} />

@@ -8,7 +8,7 @@ import { ArrayHelp } from '../components/array/ArrayHelp';
 import { useKeyboardShortcuts } from '../hooks/keyboardShortcut';
 import { useLayoutTier } from '../hooks/useLayoutTier';
 import { usePlayback } from '../hooks/usePlayback';
-import { ARRAY_TITLE, arrayAlgorithm, defaultValues } from '../components/array/types';
+import { ARRAY_TITLE, arrayAlgorithm, defaultValues, defaultTarget } from '../components/array/types';
 import type { ArrayVariant } from '../components/array/types';
 import type { VisualizerEngine, GraphState } from '../types/engine';
 
@@ -25,6 +25,7 @@ export const ArrayPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     const tier = useLayoutTier();
 
     const [valueText, setValueText] = useState(defaultValues[variant]);
+    const [targetText, setTargetText] = useState(defaultTarget[variant]);
     const [count, setCount] = useState('12');
     const [state, setState] = useState<GraphState | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
@@ -32,8 +33,8 @@ export const ArrayPage: React.FC<Props> = ({ engine, onBack, variant }) => {
 
     // 入力欄の最新値をコマンド組み立て時に読む。依存配列に並べると
     // 入力するたびに配列が作り直されてしまう。
-    const latest = useRef({ valueText, count });
-    latest.current = { valueText, count };
+    const latest = useRef({ valueText, count, targetText });
+    latest.current = { valueText, count, targetText };
 
     const readState = () => setState(engine.getState<GraphState>({}));
 
@@ -46,6 +47,13 @@ export const ArrayPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     const applyValues = () => {
         setIsPlaying(false);
         engine.load('setValues', latest.current.valueText);
+        readState();
+    };
+
+    // 探す値だけを変える。値の並びは作り直さない
+    const applyTarget = () => {
+        setIsPlaying(false);
+        engine.load('setTarget', latest.current.targetText);
         readState();
     };
 
@@ -62,6 +70,7 @@ export const ArrayPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         if (!engine) return;
         setIsPlaying(false);
         engine.setAlgorithm(arrayAlgorithm(variant));
+        if (latest.current.targetText) engine.load('setTarget', latest.current.targetText);
         engine.load('setValues', latest.current.valueText);
         readState();
         setIsLoaded(true);
@@ -101,6 +110,10 @@ export const ArrayPage: React.FC<Props> = ({ engine, onBack, variant }) => {
                 tier={tier}
                 setupPanel={
                     <ArraySetupPanel
+                        variant={variant}
+                        targetText={targetText}
+                        setTargetText={setTargetText}
+                        onApplyTarget={applyTarget}
                         valueText={valueText}
                         setValueText={setValueText}
                         count={count}

@@ -144,6 +144,8 @@ function App() {
       <Route path="/array/shaker" element={<ArrayWrapper engine={engineRef.current!} variant="shaker" />} />
       <Route path="/array/quick" element={<ArrayWrapper engine={engineRef.current!} variant="quick" />} />
       <Route path="/array/merge" element={<ArrayWrapper engine={engineRef.current!} variant="merge" />} />
+      <Route path="/array/linear" element={<ArrayWrapper engine={engineRef.current!} variant="linear" />} />
+      <Route path="/array/binary" element={<ArrayWrapper engine={engineRef.current!} variant="binary" />} />
 
       {/* 描くだけのページ。メニューには載せないが、レイアウトとパッキングの
           回帰を目視確認する手段としてルートは残す */}

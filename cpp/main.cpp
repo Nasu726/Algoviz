@@ -18,6 +18,8 @@
 #include "include/ShakerSortVisualizer.hpp"
 #include "include/QuickSortVisualizer.hpp"
 #include "include/MergeSortVisualizer.hpp"
+#include "include/LinearSearchVisualizer.hpp"
+#include "include/BinarySearchVisualizer.hpp"
 
 using namespace emscripten;
 
@@ -66,6 +68,10 @@ public:
             currentAlgo = std::make_unique<QuickSortVisualizer>();
         } else if (name == "merge") {
             currentAlgo = std::make_unique<MergeSortVisualizer>();
+        } else if (name == "linear") {
+            currentAlgo = std::make_unique<LinearSearchVisualizer>();
+        } else if (name == "binary") {
+            currentAlgo = std::make_unique<BinarySearchVisualizer>();
         } else {
             std::cerr << "Unknown algorithm: " << name << std::endl;
         }

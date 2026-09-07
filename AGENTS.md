@@ -42,6 +42,15 @@
   npm run test:smoke   # 出荷する core.js への疎通。再ビルド漏れを検出する
   ```
 
+- **`build:wasm` は失敗しても終了コード 0 を返す。** Docker が起動していないと
+  `failed to connect to the docker API` と出るだけで、`npm run` は成功したように見え、
+  **古い WASM がそのまま残る。** ビルドの出力を必ず目で見るか、成果物を確かめる
+
+  ```bash
+  # 足したアルゴリズムの名前が出荷する WASM に入っているか
+  grep -c '<新しい setAlgorithm の名前>' public/wasm/core.js
+  ```
+
 - **`emcc` ではなく `em++`。** C++ をリンクするので `emcc` だと
   `operator new/delete` が未定義になる
 - **emscripten のバージョンは `emscripten/emsdk:5.0.1` に固定。**
