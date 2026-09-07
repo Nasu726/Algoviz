@@ -9,17 +9,19 @@
 
 // スタック / キュー / デックのビジュアライザ。
 //
-// **上の段が入れ物、下の段が出てきた順。** 同じ操作の並びを流しても、
-// 取り出す端が違えば出てくる順が変わる。**その対比がこのページの見どころ**で、
-// 出た順を残さないと1手ずつ見る意味が薄い。
+// **見どころは、値がどちらの端から入り、どちらの端から出るか。** 3つとも
+// 中身は同じで、違うのはその端だけ。分類ごとに決まるものなので setAlgorithm の
+// 名前で固定し、UI に切り替えは置かない。
 //
-// 1ステップは1つの操作。値は左から詰めて置き、取り出すと残りが詰め直される。
+// 入れ物は箱の並び。**その両端に「外」のマスを1つずつ置いてある。** 入れる値は
+// まず外に現れてから箱へ入り、取り出した値は箱から外へ出る。出た値はその手だけ
+// 見えて、次の手で消える。
+// 外のマスが無いと、値が箱の中に湧いて消えるだけになり、出入りの向きが見えない。
 //
-// 入れ物の枠は先に並べておき、値の入っていない枠は空の箱として描く。
-// GraphData に節点を消す口が無いので、この形でないと「減る」を表せない。
+// スタックだけ縦に置く。**口は上で、下から積み上がる。** 横一列にすると
+// キューと同じ形になり、取り出す端の色でしか違いが分からなくなる。
 //
-// 3つとも中身は同じで、**違うのは出し入れする端だけ**。分類ごとに決まるものなので
-// setAlgorithm の名前で固定し、UI に切り替えは置かない。
+// 1ステップは1つの操作。値は入れ物の左から詰めて置く。
 class DequeVisualizer : public ArrayVisualizer {
 public:
     // どの端から出し入れするか
@@ -36,31 +38,45 @@ private:
 
     Kind kind = Stack;
     std::vector<Op> ops;
-    int slots = 1; // 上下それぞれの枠の数
+    int slots = 1; // 入れ物に入る数
 
-    int count = 0;        // 入っている数。上の段の 0..count-1 に詰めてある
+    int count = 0;        // 入っている数。入れ物の 0..count-1 に詰めてある
     int opIndex = 0;      // 次に実行する操作
-    int poppedCount = 0;  // 出した数。下の段の 0..poppedCount-1 に並べてある
+    int poppedCount = 0;  // 出した数
+    int poppedValue = -1; // 直前の手で出した値。出していなければ -1
     bool emptyPop = false; // 直前の手が「空なのに取り出そうとした」だった
-    bool overflowed = false; // 直前の手が「枠が足りずに入らなかった」だった
+    bool overflowed = false; // 直前の手が「箱が足りずに入らなかった」だった
 
-    int workOf(int i) const { return rowSize() + i; } // 下の段の同じ位置
+    // 節点は [外] [入れ物 0..slots-1] [外] の並び。
+    // 縦置きのときは 0 が下、slots+1 が上になる
+    int cellOf(int i) const { return i + 1; }
+    int handL() const { return 0; }
+    int handR() const { return slots + 1; }
+    int handFor(bool left) const { return left ? handL() : handR(); }
 
-    // 空の枠に値を置く。動いたものとして扱い、色が付くようにする
+    // 外のマスを空にする。出入りした値は、その手のあいだだけ見せる
+    void clearHands() {
+        if (handR() < (int)emptySlot.size()) {
+            emptySlot[handL()] = 1;
+            emptySlot[handR()] = 1;
+        }
+    }
+
+    // 空のマスに値を置く。動いたものとして扱い、色が付くようにする
     void placeValue(int slot, int v) {
         setValueAt(slot, v);
         if (slot >= 0 && slot < (int)emptySlot.size()) emptySlot[slot] = 0;
         justSwapped = true;
     }
 
-    // 操作の並びを流して、上下の段に要る枠の数を求める
+    // 操作の並びを流して、入れ物に要る箱の数を求める
     void computeSlots() {
-        int now = 0, most = 0, pops = 0;
+        int now = 0, most = 0;
         for (const Op& op : ops) {
             if (op.push) { now++; most = std::max(most, now); }
-            else if (now > 0) { now--; pops++; }
+            else if (now > 0) { now--; }
         }
-        slots = std::max(1, std::max(most, pops));
+        slots = std::max(1, most);
     }
 
     static std::string lowered(const std::string& s) {
@@ -95,7 +111,7 @@ private:
             ops.push_back(op);
         }
         computeSlots();
-        values.assign(slots, 0); // 枠だけ用意する。中身は実行しながら入る
+        values.assign(slots + 2, 0); // 箱だけ用意する。中身は実行しながら入る
         resetRun();
     }
 
@@ -120,32 +136,37 @@ private:
     }
 
 protected:
-    // 下の段を「出てきた順」に使う
-    int extraSlots() const override { return rowSize(); }
+    // スタックは縦。口が上で、下から積み上がる。
+    // 横並びのときは、両端の「外」を広く取って入れ物から離す。
+    // 縦のときに広げると、幅が段ごとの x を決めるので列が揃わなくなる
+    void configureCells() override {
+        line->setPerRow(kind == Stack ? 1 : rowSize());
+        line->setBottomUp(kind == Stack);
+        float hand = kind == Stack ? CELL_HALF_WIDTH : CELL_HALF_WIDTH * 2.0f;
+        graph->setHalfWidth(handL(), hand);
+        graph->setHalfWidth(handR(), hand);
+    }
 
     void resetAlgorithm() override {
         count = 0;
         opIndex = 0;
         poppedCount = 0;
+        poppedValue = -1;
         emptyPop = false;
         overflowed = false;
         focusA = focusB = -1;
-        // 入れ物は最初、全部の枠が空
+        // 最初は入れ物も外も空
         for (int i = 0; i < (int)emptySlot.size(); i++) emptySlot[i] = 1;
         if (ops.empty()) finished = true;
     }
 
-    // 次に出る値と、もう出た値を塗る
+    // 次に出る値を塗る。ここが分類ごとの違いそのもの
     void syncVisuals() override {
         if (!graph) return;
         graph->resetColors();
-
-        for (int i = 0; i < poppedCount; i++) graph->setNodeColor(workOf(i), NODE_VISITED);
-
-        // 取り出す端。ここが分類ごとの違いそのもの
         if (!finished && count > 0) {
-            if (kind != Queue) graph->setNodeColor(count - 1, NODE_FRONTIER);
-            if (kind != Stack) graph->setNodeColor(0, NODE_FRONTIER);
+            if (kind != Queue) graph->setNodeColor(cellOf(count - 1), NODE_FRONTIER);
+            if (kind != Stack) graph->setNodeColor(cellOf(0), NODE_FRONTIER);
         }
         paintFocus();
     }
@@ -168,6 +189,8 @@ protected:
         if (finished) return false;
         emptyPop = false;
         overflowed = false;
+        poppedValue = -1;
+        clearHands(); // 前の手で出入りした値は、ここで画面から消える
 
         if (opIndex >= (int)ops.size()) {
             finished = true;
@@ -181,18 +204,19 @@ protected:
 
         if (op.push) {
             if (count >= slots) {
-                overflowed = true; // 枠が足りない。何もしない
-            } else if (op.left) {
-                // 左に入れるので、入っているものを右へ1つずつずらす
-                for (int i = count - 1; i >= 0; i--) moveValue(i, i + 1);
-                placeValue(0, op.value);
-                focusA = 0;
-                count++;
-            } else {
-                placeValue(count, op.value);
-                focusA = count;
-                count++;
+                overflowed = true; // 箱が足りない。何もしない
+                return true;
             }
+            int hand = handFor(op.left);
+            placeValue(hand, op.value); // まず外に現れる
+            // 左に入れるので、入っているものを右へ1つずつずらす
+            if (op.left) {
+                for (int i = count - 1; i >= 0; i--) moveValue(cellOf(i), cellOf(i + 1));
+            }
+            int dest = op.left ? cellOf(0) : cellOf(count);
+            moveValue(hand, dest); // 外から箱へ入る
+            focusA = dest;
+            count++;
             return true;
         }
 
@@ -201,14 +225,15 @@ protected:
             return true;
         }
 
+        int from = op.left ? cellOf(0) : cellOf(count - 1);
+        int hand = handFor(op.left);
+        poppedValue = valueAt(from);
+        moveValue(from, hand); // 箱から外へ出る
+        // 左端が空いたので、残りを左へ詰める
         if (op.left) {
-            moveValue(0, workOf(poppedCount));
-            // 左端が空いたので、残りを左へ詰める
-            for (int i = 1; i < count; i++) moveValue(i, i - 1);
-        } else {
-            moveValue(count - 1, workOf(poppedCount));
+            for (int i = 1; i < count; i++) moveValue(cellOf(i), cellOf(i - 1));
         }
-        focusA = workOf(poppedCount);
+        focusA = hand;
         poppedCount++;
         count--;
         return true;
@@ -234,10 +259,23 @@ public:
         state.set("ops", list);
         state.set("opIndex", opIndex);
         state.set("heldCount", count);
+        state.set("capacity", slots);
         state.set("poppedCount", poppedCount);
+        state.set("poppedValue", poppedValue);
         state.set("emptyPop", emptyPop);
         state.set("overflowed", overflowed);
         state.set("maxOps", MAX_OPS);
+
+        // 入れ物の中身。外のマスは含めない
+        emscripten::val held = emscripten::val::array();
+        for (int i = 0; i < count; i++) held.call<void>("push", valueAt(cellOf(i)));
+        state.set("held", held);
+
+        // 枠を描かないマス。値が入っているときだけ見せる
+        emscripten::val outside = emscripten::val::array();
+        outside.call<void>("push", handL());
+        outside.call<void>("push", handR());
+        state.set("outsideSlots", outside);
         return state;
     }
 };

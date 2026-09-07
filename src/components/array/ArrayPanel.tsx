@@ -44,7 +44,8 @@ const statusOf = (variant: ArrayVariant, state: GraphState | null): string => {
         const done = state?.opIndex ?? 0;
         const op = (state?.ops ?? [])[done - 1];
         if (!op) return '操作の並びを頭から流します';
-        return op.startsWith('push') ? `入れました (${op})` : `取り出しました (${op})`;
+        if (op.startsWith('push')) return `入れました (${op})`;
+        return `取り出しました (${state?.poppedValue ?? 0})`;
     }
     if (state?.finished) return '並び終えました';
     if (variant === 'selection') {
@@ -121,6 +122,7 @@ export const ArrayPanel: React.FC<Props> = ({
                     {opQueue}
                     <div>
                         <b>入っている数</b>: {state?.heldCount ?? 0}
+                        <span style={{ color: '#90a4ae' }}> / {state?.capacity ?? 0}</span>
                         <span style={{ color: '#90a4ae' }}>
                             {'　'}出した数: {state?.poppedCount ?? 0}
                         </span>
@@ -171,8 +173,7 @@ export const ArrayPanel: React.FC<Props> = ({
             {ops ? (
                 <>
                     <Swatch color={NODE_STROKE[1]} label="次に出る値" />
-                    <Swatch color={NODE_STROKE[4]} label="今動かした値" />
-                    <Swatch color={NODE_STROKE[3]} label="もう出た値" />
+                    <Swatch color={NODE_STROKE[4]} label="今出入りした値" />
                 </>
             ) : search ? (
                 <>

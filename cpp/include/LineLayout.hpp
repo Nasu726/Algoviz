@@ -19,8 +19,13 @@ public:
     // 1段に並べる数。0 なら段に分けず全部を1列にする
     void setPerRow(int count) { perRow = count; }
 
+    // 段を下から上へ積むか。スタックの縦置きで使う。
+    // 積み上がる向きは分類で決まるものなので、利用者には選ばせない
+    void setBottomUp(bool on) { bottomUp = on; }
+
 private:
     int perRow = 0;
+    bool bottomUp = false;
 
 protected:
     void computeTargets(GraphData* graph) override {
@@ -38,7 +43,8 @@ protected:
             float half = graph->halfWidthOf(i);
             x += half;
             targetX[i] = x;
-            targetY[i] = (float)(i / width) * ROW_GAP;
+            float row = (float)(i / width) * ROW_GAP;
+            targetY[i] = bottomUp ? -row : row;
             x += half + CELL_GAP;
         }
     }

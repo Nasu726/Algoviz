@@ -4628,23 +4628,26 @@ static void testSearchesStepBackAndHandleTinyInput() {
 // スタック / キュー / デック
 // ==========================================
 
-// 下の段に並んだ「出てきた順」を読む
-static std::vector<int> readPopped(DequeVisualizer& b) {
-    val s = b.getState(val::object());
-    int rowSize = s["rowSize"].as<int>();
-    int popped = s["poppedCount"].as<int>();
-    val nodes = s["nodes"];
+// 出てきた値を出た順に集める。取り出した値は画面に残らないので、
+// 1手ずつ進めながら「その手で出た値」を読む
+static std::vector<int> runOps(DequeVisualizer& b, const std::string& ops) {
+    b.load("setValues", ops);
     std::vector<int> out;
-    for (int i = 0; i < popped; i++) {
-        out.push_back((int)nodes[(rowSize + i) * GraphData::NODE_STRIDE + 2].as<float>());
+    for (int i = 0; i < 200 && b.step(); i++) {
+        int v = b.getState(val::object())["poppedValue"].as<int>();
+        if (v >= 0) out.push_back(v);
     }
     return out;
 }
 
-static std::vector<int> runOps(DequeVisualizer& b, const std::string& ops) {
-    b.load("setValues", ops);
-    b.runToEnd();
-    return readPopped(b);
+// 入れ物の中身を左から読む
+static std::vector<int> readHeld(DequeVisualizer& b) {
+    val held = b.getState(val::object())["held"];
+    std::vector<int> out;
+    for (int i = 0; i < held["length"].as<int>(); i++) {
+        out.push_back(held[i].as<int>());
+    }
+    return out;
 }
 
 static void checkOrder(const char* name, const std::vector<int>& got,
@@ -4664,7 +4667,7 @@ static void checkOrder(const char* name, const std::vector<int>& got,
 static void testSameOpsGiveDifferentOrder() {
     beginTest("同じ操作の並びでも、取り出す端が違えば出る順が変わる");
 
-    // ここがこのページの見どころ。出た順を見れば LIFO と FIFO の違いが分かる
+    // ここがこのページの見どころ。出る順を見れば LIFO と FIFO の違いが分かる
     const char* ops = "push 5 push 2 pop push 9 pop pop";
 
     DequeVisualizer stack(DequeVisualizer::Stack);
@@ -4690,6 +4693,79 @@ static void testDequeUsesBothEnds() {
                runOps(asQueue, "pushR 1 pushR 2 pushR 3 popL popL popL"), {1, 2, 3});
 }
 
+static void testHeldValuesStayPackedToTheLeft() {
+    beginTest("入れ物の中身が左から詰まっている");
+
+    // 左端から出したあと、残りが左へ詰まる。詰め忘れると空きが挟まる
+    DequeVisualizer q(DequeVisualizer::Queue);
+    q.load("setValues", "push 5 push 2 push 9 pop pop");
+    for (int i = 0; i < 4; i++) q.step();
+    checkOrder("左から出したあと", readHeld(q), {2, 9});
+
+    // 左から入れると、入っていたものが右へずれる
+    DequeVisualizer d(DequeVisualizer::Deque);
+    d.load("setValues", "pushR 5 pushR 2 pushL 9");
+    for (int i = 0; i < 3; i++) d.step();
+    checkOrder("左から入れたあと", readHeld(d), {9, 5, 2});
+}
+
+// 節点が今いる x。入れ替えは今いる座標も入れ替えるので、
+// 動く前にどこに居たかがここに残る
+static float stateX(const val& s, int i) {
+    return s["nodes"][(std::size_t)i * GraphData::NODE_STRIDE].as<float>();
+}
+
+// 外のマスが空かどうか
+static bool outsideIsEmpty(const val& s, int hand) {
+    val empties = s["emptySlots"];
+    for (int i = 0; i < empties["length"].as<int>(); i++) {
+        if (empties[i].as<int>() == hand) return true;
+    }
+    return false;
+}
+
+static void testValuesEnterAndLeaveFromOutside() {
+    beginTest("入れる値は外から入り、取り出した値は外へ出る");
+
+    // 箱の中に湧いて消えるのではなく、入れ物の外から出入りする。
+    // ここが見どころなので、値が動く前にどこに居たかを見る
+    DequeVisualizer q(DequeVisualizer::Queue);
+    q.load("setValues", "push 5 pop");
+    val s0 = q.getState(val::object());
+    int hL = s0["outsideSlots"][0].as<int>();
+    int hR = s0["outsideSlots"][1].as<int>();
+    float outsideRight = stateX(s0, hR);
+    float insideFirst = stateX(s0, 1); // 入れ物の左端の箱
+
+    q.step(); // 右の外から入れる
+    CHECK_NEAR(stateX(q.getState(val::object()), 1), outsideRight, 0.01f);
+
+    // 配置を収束させて箱へ収める。step だけでは値が動いた先へ寄らない
+    for (int i = 0; i < 300 && !q.prepare(); i++) {}
+    q.step(); // 左の外へ出る
+    CHECK_NEAR(stateX(q.getState(val::object()), hL), insideFirst, 0.01f);
+}
+
+static void testPoppedValueLeavesTheScreen() {
+    beginTest("取り出した値は次の手で画面から消える");
+
+    // 出た値が残ると「出てきた順」の記録になる。見せたいのは出入りの動きだけ
+    DequeVisualizer q(DequeVisualizer::Queue);
+    q.load("setValues", "push 5 pop push 2");
+    int hL = q.getState(val::object())["outsideSlots"][0].as<int>();
+
+    q.step();
+    q.step(); // 5 を左の外へ出す
+    val popped = q.getState(val::object());
+    CHECK_EQ(popped["poppedValue"].as<int>(), 5);
+    CHECK(!outsideIsEmpty(popped, hL)); // 出たその手は見えている
+
+    q.step(); // 次の手は右から入れる。左の外は関係ない
+    val next = q.getState(val::object());
+    CHECK_EQ(next["poppedValue"].as<int>(), -1);
+    CHECK(outsideIsEmpty(next, hL)); // もう消えている
+}
+
 static void testEmptyPopDoesNothing() {
     beginTest("空なのに取り出そうとしても何も起きない");
 
@@ -4702,23 +4778,22 @@ static void testEmptyPopDoesNothing() {
     CHECK_EQ(s["poppedCount"].as<int>(), 0);
     CHECK_EQ(s["heldCount"].as<int>(), 0);
 
-    b.runToEnd();
-    checkOrder("空の取り出しを含む並び", readPopped(b), {5});
+    checkOrder("空の取り出しを含む並び", runOps(b, "pop push 5 pop pop"), {5});
 }
 
-static void testSlotsFitTheOperations() {
-    beginTest("枠の数が操作の並びに足りている");
+static void testCapacityFitsTheOperations() {
+    beginTest("箱の数が、同時に入る最大の数になっている");
 
-    // 上の段は同時に入る最大の数、下の段は出す回数。どちらも足りないと表せない
+    // 出た値は残らないので、必要なのは同時に入る数だけ
     DequeVisualizer b(DequeVisualizer::Queue);
-    b.load("setValues", "push 1 pop push 2 pop push 3 pop"); // 最大1個、3回出す
+    b.load("setValues", "push 1 pop push 2 pop push 3 pop"); // 最大1個
     val s = b.getState(val::object());
-    CHECK_EQ(s["rowSize"].as<int>(), 3);
-    CHECK_EQ(s["nodeCount"].as<int>(), 6); // 上下2段
+    CHECK_EQ(s["capacity"].as<int>(), 1);
+    CHECK_EQ(s["nodeCount"].as<int>(), 3); // 入れ物1つと、両端の外
 
     DequeVisualizer deep(DequeVisualizer::Stack);
-    deep.load("setValues", "push 1 push 2 push 3 push 4 pop"); // 最大4個、1回出す
-    CHECK_EQ(deep.getState(val::object())["rowSize"].as<int>(), 4);
+    deep.load("setValues", "push 1 push 2 push 3 push 4 pop"); // 最大4個
+    CHECK_EQ(deep.getState(val::object())["capacity"].as<int>(), 4);
 }
 
 static void testDequeStepMatchesRunToEndAndStepsBack() {
@@ -4734,7 +4809,10 @@ static void testDequeStepMatchesRunToEndAndStepsBack() {
         for (int i = 0; i < 200 && stepwise.step(); i++) {}
         atOnce.load("setValues", ops);
         atOnce.runToEnd();
-        checkOrder("1手ずつ", readPopped(stepwise), readPopped(atOnce));
+        val a = stepwise.getState(val::object()), c = atOnce.getState(val::object());
+        CHECK_EQ(a["opIndex"].as<int>(), c["opIndex"].as<int>());
+        CHECK_EQ(a["poppedCount"].as<int>(), c["poppedCount"].as<int>());
+        checkOrder("1手ずつ", readHeld(stepwise), readHeld(atOnce));
 
         // 1手進めて戻すと元に戻る
         DequeVisualizer before(k), after(k);
@@ -4743,10 +4821,10 @@ static void testDequeStepMatchesRunToEndAndStepsBack() {
         for (int i = 0; i < 3; i++) before.step();
         for (int i = 0; i < 4; i++) after.step();
         after.stepBack();
-        val a = before.getState(val::object()), c = after.getState(val::object());
-        CHECK_EQ(a["opIndex"].as<int>(), c["opIndex"].as<int>());
-        CHECK_EQ(a["heldCount"].as<int>(), c["heldCount"].as<int>());
-        checkOrder("戻したあと", readPopped(before), readPopped(after));
+        val sb = before.getState(val::object()), sa = after.getState(val::object());
+        CHECK_EQ(sb["opIndex"].as<int>(), sa["opIndex"].as<int>());
+        CHECK_EQ(sb["heldCount"].as<int>(), sa["heldCount"].as<int>());
+        checkOrder("戻したあと", readHeld(before), readHeld(after));
     }
 }
 
@@ -4759,6 +4837,7 @@ static void testDequeHandlesEmptyInput() {
     val s = b.getState(val::object());
     CHECK(s["finished"].as<bool>());
     CHECK_EQ(s["poppedCount"].as<int>(), 0);
+    CHECK_EQ(s["heldCount"].as<int>(), 0);
 
     b.stepBack(); // 戻せないときに何も壊さない
     CHECK(b.getState(val::object())["finished"].as<bool>());
@@ -4957,8 +5036,11 @@ int main(int argc, char** argv) {
     beginSection("スタック / キュー / デック");
     testSameOpsGiveDifferentOrder();
     testDequeUsesBothEnds();
+    testHeldValuesStayPackedToTheLeft();
+    testValuesEnterAndLeaveFromOutside();
+    testPoppedValueLeavesTheScreen();
     testEmptyPopDoesNothing();
-    testSlotsFitTheOperations();
+    testCapacityFitsTheOperations();
     testDequeStepMatchesRunToEndAndStepsBack();
     testDequeHandlesEmptyInput();
 
