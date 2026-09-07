@@ -162,6 +162,14 @@ export interface GraphState {
     /** マージソート: まだ片付けていない仕事の数 */
     pendingTasks?: number;
 
+    /** 探索: 探す値 / 見つけた位置 (-1 なら見つかっていない) / 入力が昇順か */
+    target?: number;
+    foundAt?: number;
+    sorted?: boolean;
+    /** 二分探索: 今見ている真ん中と、まだ見ていない場所の数 */
+    midIndex?: number;
+    rangeSize?: number;
+
     /** BstVisualizer のときだけ */
     values?: number[];
     /** これから挿入する値が values の何番目か */

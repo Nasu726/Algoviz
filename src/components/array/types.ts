@@ -2,7 +2,11 @@
 // variant がそのままページの中身を決める。
 
 export type ArrayVariant =
-    'bubble' | 'selection' | 'insertion' | 'shaker' | 'quick' | 'merge';
+    'bubble' | 'selection' | 'insertion' | 'shaker' | 'quick' | 'merge'
+    | 'linear' | 'binary';
+
+/** 値を並べ替えるものか、値を探すものか。入力欄と凡例の言葉が変わる */
+export const isSearch = (v: ArrayVariant): boolean => v === 'linear' || v === 'binary';
 
 export const ARRAY_TITLE: Record<ArrayVariant, string> = {
     bubble: 'バブルソート',
@@ -11,23 +15,35 @@ export const ARRAY_TITLE: Record<ArrayVariant, string> = {
     shaker: 'シェーカーソート',
     quick: 'クイックソート',
     merge: 'マージソート',
+    linear: '線形探索',
+    binary: '二分探索',
 };
 
 /** C++ 側の setAlgorithm へ渡す名前 */
 export const arrayAlgorithm = (v: ArrayVariant): string => v;
 
-/**
- * 灰色の範囲が「もう動かない」のか「並んでいるだけ」なのか。
- * 挿入ソートだけ、後から来た値が割り込むので確定ではない。
- */
-// 挿入とマージの灰色は「その中では並んでいる」だけで、位置は確定していない
-const ordersWithoutSettling = (v: ArrayVariant) => v === 'insertion' || v === 'merge';
+// 灰色の意味は3通りある。
+//   ソート        … その位置が確定した
+//   挿入 / マージ … その中では並んでいるだけ (後から来た値が割り込む)
+//   探索          … もう見ない
+const greyMeaning = (v: ArrayVariant): 'settled' | 'ordered' | 'skipped' =>
+    isSearch(v) ? 'skipped'
+    : v === 'insertion' || v === 'merge' ? 'ordered'
+    : 'settled';
 
-export const settledLabel = (v: ArrayVariant): string =>
-    ordersWithoutSettling(v) ? '並んでいる範囲' : '位置が確定した値';
+export const settledLabel = (v: ArrayVariant): string => {
+    const kind = greyMeaning(v);
+    return kind === 'skipped' ? 'もう見ない範囲'
+        : kind === 'ordered' ? '並んでいる範囲'
+        : '位置が確定した値';
+};
 
-export const settledCountLabel = (v: ArrayVariant): string =>
-    ordersWithoutSettling(v) ? '並んでいる個数' : '位置が確定した個数';
+export const settledCountLabel = (v: ArrayVariant): string => {
+    const kind = greyMeaning(v);
+    return kind === 'skipped' ? '見終わった個数'
+        : kind === 'ordered' ? '並んでいる個数'
+        : '位置が確定した個数';
+};
 
 /** 既定で入れておく値。動きが分かりやすい並びにしてある */
 export const defaultValues: Record<ArrayVariant, string> = {
@@ -38,4 +54,13 @@ export const defaultValues: Record<ArrayVariant, string> = {
     shaker: '2 3 4 5 6 7 8 1',
     quick: '5 2 9 1 7 3 8 4',
     merge: '5 2 9 1 7 3 8 4',
+    linear: '5 2 9 1 7 3 8 4',
+    // 二分探索は並んでいることが前提
+    binary: '1 2 3 4 5 7 8 9',
+};
+
+/** 探すものの既定の値。値の中に在るものにしてある */
+export const defaultTarget: Record<ArrayVariant, string> = {
+    bubble: '', selection: '', insertion: '', shaker: '', quick: '', merge: '',
+    linear: '7', binary: '7',
 };

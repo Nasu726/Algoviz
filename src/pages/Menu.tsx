@@ -32,6 +32,8 @@ const GENRES: { name: string; items: { path: string; label: string }[] }[] = [
             { path: '/array/shaker', label: 'シェーカーソート' },
             { path: '/array/quick', label: 'クイックソート' },
             { path: '/array/merge', label: 'マージソート' },
+            { path: '/array/linear', label: '線形探索' },
+            { path: '/array/binary', label: '二分探索' },
         ],
     },
     {

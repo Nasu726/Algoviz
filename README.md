@@ -31,6 +31,8 @@
 - [シェーカーソート](https://algoviz.nasu.uk/array/shaker)
 - [クイックソート](https://algoviz.nasu.uk/array/quick)
 - [マージソート](https://algoviz.nasu.uk/array/merge)
+- [線形探索](https://algoviz.nasu.uk/array/linear)
+- [二分探索](https://algoviz.nasu.uk/array/binary)
 
 **オートマトン**
 
@@ -113,6 +115,9 @@ cpp/
     ShakerSortVisualizer.hpp   ├ シェーカーソート
     QuickSortVisualizer.hpp    ├ クイックソート
     MergeSortVisualizer.hpp    └ マージソート (下の段を作業用に使う)
+    SearchVisualizer.hpp       配列から値を探すものの基底 (終わり方が2通り)
+    LinearSearchVisualizer.hpp ├ 線形探索
+    BinarySearchVisualizer.hpp └ 二分探索
 src/
   types/engine.ts              WASM 境界の型定義。C++ を変えたらここも揃える
   pages/                       ページ

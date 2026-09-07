@@ -37,6 +37,8 @@
 #include "../cpp/include/ShakerSortVisualizer.hpp"
 #include "../cpp/include/QuickSortVisualizer.hpp"
 #include "../cpp/include/MergeSortVisualizer.hpp"
+#include "../cpp/include/LinearSearchVisualizer.hpp"
+#include "../cpp/include/BinarySearchVisualizer.hpp"
 
 using emscripten::val;
 
@@ -4459,6 +4461,168 @@ static void testShakerCarriesASmallValueLeftInOneScan() {
 }
 
 
+
+// ==========================================
+// 探索
+// ==========================================
+
+// 探し終えるまで進めて、見つけた位置を返す。見つからなければ -1
+static int searchFor(SearchVisualizer& b, const std::string& values, int target,
+                     int* stepsOut = nullptr) {
+    b.load("setValues", values);
+    b.load("setTarget", std::to_string(target));
+    int steps = 0;
+    while (steps < 500 && b.step()) steps++;
+    if (stepsOut) *stepsOut = steps;
+    return b.getState(val::object())["foundAt"].as<int>();
+}
+
+static void testSearchesFindWhatIsThere() {
+    beginTest("在る値を見つけ、無い値は見つからないと分かる");
+
+    // 線形探索は並んでいなくてよい。二分探索は並んでいる入力で見る
+    const char* unsorted = "5 2 9 1 7 3 8 4";
+    const char* sorted   = "1 2 3 4 5 7 8 9";
+
+    LinearSearchVisualizer lin;
+    CHECK_EQ(searchFor(lin, unsorted, 5), 0); // 左端
+    LinearSearchVisualizer lin2;
+    CHECK_EQ(searchFor(lin2, unsorted, 4), 7); // 右端
+    LinearSearchVisualizer lin3;
+    CHECK_EQ(searchFor(lin3, unsorted, 7), 4);
+    LinearSearchVisualizer lin4;
+    CHECK_EQ(searchFor(lin4, unsorted, 99), -1); // 無い
+
+    BinarySearchVisualizer bin;
+    CHECK_EQ(searchFor(bin, sorted, 1), 0);
+    BinarySearchVisualizer bin2;
+    CHECK_EQ(searchFor(bin2, sorted, 9), 7);
+    BinarySearchVisualizer bin3;
+    CHECK_EQ(searchFor(bin3, sorted, 7), 5);
+    BinarySearchVisualizer bin4;
+    CHECK_EQ(searchFor(bin4, sorted, 6), -1); // 並びの中に無い
+}
+
+static void testLinearLooksAtEveryPlaceUntilItFinds() {
+    beginTest("線形探索は見つけるまで左から1つずつ見る");
+
+    // 見終わった数が、見つけた位置と一致する (見つけた場所は見終わり扱いにしない)
+    LinearSearchVisualizer b;
+    int steps = 0;
+    CHECK_EQ(searchFor(b, "5 2 9 1 7 3 8 4", 7, &steps), 4);
+    CHECK_EQ(steps, 5); // 0,1,2,3 を見て違い、4 で見つける
+
+    // 途中でも、見終わった数と見た回数が一致する
+    LinearSearchVisualizer partial;
+    partial.load("setValues", "5 2 9 1 7 3 8 4");
+    partial.load("setTarget", "7");
+    for (int i = 1; i <= 3; i++) {
+        partial.step();
+        CHECK_EQ(partial.getState(val::object())["settledCount"].as<int>(), i);
+    }
+
+    // 無い値は端まで見る
+    LinearSearchVisualizer missing;
+    CHECK_EQ(searchFor(missing, "5 2 9 1 7 3 8 4", 99, &steps), -1);
+    CHECK_EQ(steps, 8);
+    CHECK_EQ(missing.getState(val::object())["settledCount"].as<int>(), 8);
+}
+
+static void testBinaryHalvesTheRange() {
+    beginTest("二分探索は毎回、見る場所を半分に減らす");
+
+    BinarySearchVisualizer b;
+    b.load("setValues", "1 2 3 4 5 7 8 9");
+    b.load("setTarget", "9");
+
+    int before = b.getState(val::object())["rangeSize"].as<int>();
+    CHECK_EQ(before, 8);
+
+    while (b.step()) {
+        val s = b.getState(val::object());
+        if (s["foundAt"].as<int>() >= 0) break;
+        int now = s["rangeSize"].as<int>();
+        g_checks++;
+        // 半分より多く残っていたら、捨て方が足りない
+        if (now > before / 2) {
+            reportFailure("見る場所が " + std::to_string(before) + " から " +
+                          std::to_string(now) + " にしか減っていない");
+            break;
+        }
+        before = now;
+    }
+}
+
+static void testBinaryLooksAtFewerPlacesThanLinear() {
+    beginTest("二分探索の方が線形探索より見る回数が少ない");
+
+    // 並んでいる16個から右寄りの値を探す。線形は端まで、二分は数回で済む
+    std::string values;
+    for (int i = 1; i <= 16; i++) values += std::to_string(i) + " ";
+
+    int linSteps = 0, binSteps = 0;
+    LinearSearchVisualizer lin;
+    CHECK_EQ(searchFor(lin, values, 15, &linSteps), 14);
+    BinarySearchVisualizer bin;
+    CHECK_EQ(searchFor(bin, values, 15, &binSteps), 14);
+    CHECK(binSteps < linSteps);
+}
+
+static void testBinaryRunsOnUnsortedInput() {
+    beginTest("並んでいない入力でも二分探索が落ちない");
+
+    // 勝手に並べ替えない。在るのに見つからないことがあるのをそのまま見せる
+    BinarySearchVisualizer b;
+    b.load("setValues", "5 2 9 1 7 3 8 4");
+    CHECK(!b.getState(val::object())["sorted"].as<bool>());
+
+    int steps = 0;
+    while (steps < 500 && b.step()) steps++;
+    CHECK(b.getState(val::object())["finished"].as<bool>());
+
+    // 並んでいる入力なら並んでいると分かる
+    BinarySearchVisualizer ok;
+    ok.load("setValues", "1 2 3 4 5 7 8 9");
+    CHECK(ok.getState(val::object())["sorted"].as<bool>());
+}
+
+static void testSearchesStepBackAndHandleTinyInput() {
+    beginTest("1手戻せる。値が無くても落ちない");
+
+    for (int kind = 0; kind < 2; kind++) {
+        std::unique_ptr<SearchVisualizer> a(
+            kind == 0 ? (SearchVisualizer*)new LinearSearchVisualizer()
+                      : (SearchVisualizer*)new BinarySearchVisualizer());
+        std::unique_ptr<SearchVisualizer> c(
+            kind == 0 ? (SearchVisualizer*)new LinearSearchVisualizer()
+                      : (SearchVisualizer*)new BinarySearchVisualizer());
+
+        a->load("setValues", "1 2 3 4 5 7 8 9");
+        a->load("setTarget", "9");
+        c->load("setValues", "1 2 3 4 5 7 8 9");
+        c->load("setTarget", "9");
+
+        a->step();
+        c->step();
+        c->step();
+        c->stepBack();
+        val sa = a->getState(val::object()), sc = c->getState(val::object());
+        CHECK_EQ(sa["settledCount"].as<int>(), sc["settledCount"].as<int>());
+        CHECK_EQ(sa["foundAt"].as<int>(), sc["foundAt"].as<int>());
+
+        // 値が1つも無いとき
+        std::unique_ptr<SearchVisualizer> empty(
+            kind == 0 ? (SearchVisualizer*)new LinearSearchVisualizer()
+                      : (SearchVisualizer*)new BinarySearchVisualizer());
+        empty->load("setValues", "");
+        empty->runToEnd();
+        val se = empty->getState(val::object());
+        CHECK(se["finished"].as<bool>());
+        CHECK_EQ(se["foundAt"].as<int>(), -1);
+        empty->stepBack(); // 戻せないときに何も壊さない
+    }
+}
+
 // ==========================================
 
 int main(int argc, char** argv) {
@@ -4641,6 +4805,14 @@ int main(int argc, char** argv) {
     beginSection("配列を一列に並べる配置");
     testLineKeepsIndexOrder();
     testLineBoxesDoNotOverlap();
+
+    beginSection("探索");
+    testSearchesFindWhatIsThere();
+    testLinearLooksAtEveryPlaceUntilItFinds();
+    testBinaryHalvesTheRange();
+    testBinaryLooksAtFewerPlacesThanLinear();
+    testBinaryRunsOnUnsortedInput();
+    testSearchesStepBackAndHandleTinyInput();
 
     beginSection("ソート");
     testSortsAscending();

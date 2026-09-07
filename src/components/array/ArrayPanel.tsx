@@ -2,7 +2,7 @@ import React from 'react';
 import { PlaybackControls } from '../ui/PlaybackControls';
 import { NODE_STROKE } from '../visualizers/PixiGraphApp';
 import { Section, Swatch } from '../graph/panelParts';
-import { settledLabel, settledCountLabel } from './types';
+import { settledLabel, settledCountLabel, isSearch } from './types';
 import type { ArrayVariant } from './types';
 import type { GraphState } from '../../types/engine';
 
@@ -26,6 +26,17 @@ interface Props {
 
 // 今どの手を打ったか。ソートごとに見どころが違うので言葉を変える。
 const statusOf = (variant: ArrayVariant, state: GraphState | null): string => {
+    if (isSearch(variant)) {
+        const found = state?.foundAt ?? -1;
+        if (found >= 0) return `見つけました (${found} 番目)`;
+        if (state?.finished) return 'この配列には無いと分かりました';
+        if (variant === 'binary') {
+            return (state?.midIndex ?? -1) < 0
+                ? '真ん中を見て、範囲を半分にします'
+                : '真ん中の値と比べ、半分を捨てました';
+        }
+        return '1つずつ見ています';
+    }
     if (state?.finished) return '並び終えました';
     if (variant === 'selection') {
         if (state?.swapped) return '見つけた最小の値を先頭と入れ替えました';
@@ -73,6 +84,7 @@ export const ArrayPanel: React.FC<Props> = ({
     const total = (state?.values ?? []).length;
     const settled = state?.settledCount ?? 0;
     const pending = state?.pendingRanges ?? 0;
+    const search = isSearch(variant);
 
     const progress = (
         <div style={{ fontSize, lineHeight: 1.7, minWidth: 0 }}>
@@ -80,6 +92,21 @@ export const ArrayPanel: React.FC<Props> = ({
                 <b>{settledCountLabel(variant)}</b>: {settled}
                 <span style={{ color: '#90a4ae' }}> / {total}</span>
             </div>
+            {search && (
+                <div>
+                    <b>探す値</b>: {state?.target ?? 0}
+                </div>
+            )}
+            {variant === 'binary' && !state?.finished && (
+                <div>
+                    <b>まだ見ていない場所</b>: {state?.rangeSize ?? 0}
+                </div>
+            )}
+            {variant === 'binary' && state?.sorted === false && (
+                <div style={{ color: '#e67e22' }}>
+                    入力が昇順に並んでいません。二分探索は並んでいることを前提にしています
+                </div>
+            )}
             {variant === 'quick' && !state?.finished && (
                 <div>
                     <b>まだ並べていない範囲</b>: {pending}
@@ -99,7 +126,15 @@ export const ArrayPanel: React.FC<Props> = ({
 
     const legend = (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px' }}>
-            {variant === 'selection' ? (
+            {search ? (
+                <>
+                    {variant === 'binary' && (
+                        <Swatch color={NODE_STROKE[6]} label="探す範囲" />
+                    )}
+                    <Swatch color={NODE_STROKE[2]} label="今見ている値" />
+                    <Swatch color={NODE_STROKE[4]} label="見つけた値" />
+                </>
+            ) : variant === 'selection' ? (
                 <>
                     <Swatch color={NODE_STROKE[2]} label="今見ている値" />
                     <Swatch color={NODE_STROKE[1]} label="今のところ最小" />
