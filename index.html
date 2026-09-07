@@ -1,14 +1,26 @@
 <!doctype html>
-<html lang="jp">
+<html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="アルゴリズムやデータ構造の動きを、一手ずつ観察できるビジュアライザ。" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="AlgoViz" />
+    <meta property="og:description" content="アルゴリズムやデータ構造の動きを、一手ずつ観察できるビジュアライザ。" />
+    <meta property="og:image" content="https://algoviz.nasu.uk/favicon.png" />
+    <meta property="og:url" content="https://algoviz.nasu.uk/" />
+
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="AlgoViz" />
+    <meta name="twitter:description" content="アルゴリズムやデータ構造の動きを、一手ずつ観察できるビジュアライザ。" />
+    <meta name="twitter:image" content="https://algoviz.nasu.uk/favicon.png" />
+
     <title>AlgoViz</title>
   </head>
   <body>
     <div id="root"></div>
-    <script src="/wasm/core.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
