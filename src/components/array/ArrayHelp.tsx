@@ -5,6 +5,28 @@ const codeBlock: React.CSSProperties = {
     background: '#eceff1', padding: '8px', borderRadius: '4px', margin: '4px 0',
 };
 
+// 画面の操作とショートカット。どのページも同じで、Ctrl + S の言葉だけ変わる
+const Controls: React.FC<{ heading: number; applyLabel: string }> =
+    ({ heading, applyLabel }) => (
+    <>
+        <h3>{heading}. 画面の操作</h3>
+        <ul>
+            <li><b>ドラッグ</b>：表示位置を動かす</li>
+            <li><b>ホイール / 2本指のピンチ</b>：拡大・縮小</li>
+        </ul>
+
+        <h3>{heading + 1}. ショートカットキー</h3>
+        <ul>
+            <li><b>Esc</b>：ビジュアライザ一覧へ戻る</li>
+            <li><b>Ctrl + H</b>：ヘルプを開く</li>
+            <li><b>Ctrl + S</b>：{applyLabel}</li>
+            <li><b>Ctrl + Enter</b>：実行 / 一時停止</li>
+            <li><b>Ctrl + &larr;</b> / <b>&rarr;</b>：戻る / 進む</li>
+            <li><b>Ctrl + &uarr;</b> / <b>&darr;</b>：実行速度の増減</li>
+        </ul>
+    </>
+);
+
 // どのソートでも同じ部分。画面の見方の前半と、値の入れ方から下。
 const Common: React.FC<{ maxValues: number; sample: string; heading: number }> =
     ({ maxValues, sample, heading }) => (
@@ -19,21 +41,7 @@ const Common: React.FC<{ maxValues: number; sample: string; heading: number }> =
             <li>値の個数の上限は {maxValues}</li>
         </ul>
 
-        <h3>{heading + 1}. 画面の操作</h3>
-        <ul>
-            <li><b>ドラッグ</b>：表示位置を動かす</li>
-            <li><b>ホイール / 2本指のピンチ</b>：拡大・縮小</li>
-        </ul>
-
-        <h3>{heading + 2}. ショートカットキー</h3>
-        <ul>
-            <li><b>Esc</b>：ビジュアライザ一覧へ戻る</li>
-            <li><b>Ctrl + H</b>：ヘルプを開く</li>
-            <li><b>Ctrl + S</b>：この値で並べ直す</li>
-            <li><b>Ctrl + Enter</b>：実行 / 一時停止</li>
-            <li><b>Ctrl + &larr;</b> / <b>&rarr;</b>：戻る / 進む</li>
-            <li><b>Ctrl + &uarr;</b> / <b>&darr;</b>：実行速度の増減</li>
-        </ul>
+        <Controls heading={heading + 1} applyLabel="この値で並べ直す" />
     </>
 );
 
@@ -281,21 +289,75 @@ const SearchCommon: React.FC<{ maxValues: number; sample: string; heading: numbe
             <li>値の個数の上限は {maxValues}</li>
         </ul>
 
-        <h3>{heading + 1}. 画面の操作</h3>
+        <Controls heading={heading + 1} applyLabel="この値で作り直す" />
+    </>
+);
+
+// スタック / キュー / デック。操作の並びを流す
+const OpsHelp: React.FC<{ maxOps: number; kind: 'stack' | 'queue' | 'deque' }> =
+    ({ maxOps, kind }) => (
+    <>
+        <h3>1. 画面の見方</h3>
         <ul>
-            <li><b>ドラッグ</b>：表示位置を動かす</li>
-            <li><b>ホイール / 2本指のピンチ</b>：拡大・縮小</li>
+            <li><b>上の段が入れ物、下の段が出てきた順</b></li>
+            <li>値は左から詰めて置く。空の枠は空の箱</li>
+            <li>橙色が<b>次に出る値</b>。ここが3つの違いそのもの</li>
+            <li>緑色が今動かした値、灰色がもう出た値</li>
         </ul>
 
-        <h3>{heading + 2}. ショートカットキー</h3>
+        <h3>2. 1ステップの単位</h3>
+        <p>
+            <b>操作を1つ実行する</b>のが1ステップです。左のパネルに書いた並びを
+            頭から流します。実行状態のパネルで、今どの操作を実行したかが分かります。
+        </p>
+
+        <h3>3. 出し入れする端</h3>
+        {kind === 'stack' && (
+            <ul>
+                <li><b>入れるのも出すのも右端</b> (最後に入れたものが最初に出る)</li>
+                <li>この出方を LIFO という</li>
+            </ul>
+        )}
+        {kind === 'queue' && (
+            <ul>
+                <li><b>入れるのは右端、出すのは左端</b> (最初に入れたものが最初に出る)</li>
+                <li>この出方を FIFO という</li>
+                <li>左端から出すので、残りが左へ詰まる</li>
+            </ul>
+        )}
+        {kind === 'deque' && (
+            <ul>
+                <li><b>左右どちらの端からも入れられるし、出せる</b></li>
+                <li><code>pushL</code> / <code>pushR</code> / <code>popL</code> /
+                    <code> popR</code> で端を書き分ける</li>
+                <li>右だけ使えばスタック、右で入れて左で出せばキューになる</li>
+            </ul>
+        )}
+        <p>
+            <b>同じ並びを別のページに入れると、下の段の並びが変わります。</b>
+            そこが見どころです。
+        </p>
+
+        <h3>4. 操作の書き方</h3>
         <ul>
-            <li><b>Esc</b>：ビジュアライザ一覧へ戻る</li>
-            <li><b>Ctrl + H</b>：ヘルプを開く</li>
-            <li><b>Ctrl + S</b>：この値で作り直す</li>
-            <li><b>Ctrl + Enter</b>：実行 / 一時停止</li>
-            <li><b>Ctrl + &larr;</b> / <b>&rarr;</b>：戻る / 進む</li>
-            <li><b>Ctrl + &uarr;</b> / <b>&darr;</b>：実行速度の増減</li>
+            {kind === 'deque' ? (
+                <li><code>pushL</code> か <code>pushR</code> に続けて値、
+                    <code>popL</code> か <code>popR</code></li>
+            ) : (
+                <li><code>push</code> に続けて値、<code>pop</code></li>
+            )}
+            <li><b>ランダム生成</b>：空なのに取り出す操作が出ないように作ります</li>
+            <li>空なのに取り出そうとしたときは、何も起きません</li>
         </ul>
+        <pre style={codeBlock}>
+            {kind === 'deque' ? 'pushR 5 pushL 2 pushR 9 popL popR popL'
+                              : 'push 5 push 2 pop push 9 pop pop'}
+        </pre>
+        <ul>
+            <li>操作の数の上限は {maxOps}</li>
+        </ul>
+
+        <Controls heading={5} applyLabel="この並びで動かす" />
     </>
 );
 
@@ -370,7 +432,9 @@ const BinaryHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
 
 export const ArrayHelp: React.FC<{ variant: ArrayVariant; maxValues: number }> =
     ({ variant, maxValues }) =>
-        variant === 'linear' ? <LinearHelp maxValues={maxValues} />
+        variant === 'stack' || variant === 'queue' || variant === 'deque'
+            ? <OpsHelp maxOps={maxValues} kind={variant} />
+        : variant === 'linear' ? <LinearHelp maxValues={maxValues} />
         : variant === 'binary' ? <BinaryHelp maxValues={maxValues} />
         : variant === 'merge' ? <MergeHelp maxValues={maxValues} />
         : variant === 'quick' ? <QuickHelp maxValues={maxValues} />

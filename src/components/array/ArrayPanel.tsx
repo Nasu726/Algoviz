@@ -2,7 +2,7 @@ import React from 'react';
 import { PlaybackControls } from '../ui/PlaybackControls';
 import { NODE_STROKE } from '../visualizers/PixiGraphApp';
 import { Section, Swatch } from '../graph/panelParts';
-import { settledLabel, settledCountLabel, isSearch } from './types';
+import { settledLabel, settledCountLabel, isSearch, usesOps } from './types';
 import type { ArrayVariant } from './types';
 import type { GraphState } from '../../types/engine';
 
@@ -36,6 +36,15 @@ const statusOf = (variant: ArrayVariant, state: GraphState | null): string => {
                 : '真ん中の値と比べ、半分を捨てました';
         }
         return '1つずつ見ています';
+    }
+    if (usesOps(variant)) {
+        if (state?.finished) return '操作の並びを流し終えました';
+        if (state?.emptyPop) return '空なので、取り出せませんでした';
+        if (state?.overflowed) return '枠が足りないので、入りませんでした';
+        const done = state?.opIndex ?? 0;
+        const op = (state?.ops ?? [])[done - 1];
+        if (!op) return '操作の並びを頭から流します';
+        return op.startsWith('push') ? `入れました (${op})` : `取り出しました (${op})`;
     }
     if (state?.finished) return '並び終えました';
     if (variant === 'selection') {
@@ -85,37 +94,70 @@ export const ArrayPanel: React.FC<Props> = ({
     const settled = state?.settledCount ?? 0;
     const pending = state?.pendingRanges ?? 0;
     const search = isSearch(variant);
+    const ops = usesOps(variant);
+    const opList = state?.ops ?? [];
+    const opIndex = state?.opIndex ?? 0;
+
+    // 操作の並び。実行済み / 次に実行するもの を色で分ける
+    const opQueue = (
+        <div style={{ fontFamily: 'monospace', fontSize: compact ? '13px' : '15px',
+                      wordBreak: 'break-all', lineHeight: 1.7 }}>
+            {opList.length === 0
+                ? <span style={{ color: '#90a4ae' }}>（操作がありません）</span>
+                : opList.map((op, i) => (
+                    <span key={i} style={{
+                        marginRight: '10px',
+                        color: i < opIndex ? '#90a4ae' : i === opIndex ? '#e74c3c' : '#000',
+                        fontWeight: i === opIndex ? 'bold' : 'normal',
+                    }}>{op}</span>
+                ))}
+        </div>
+    );
 
     const progress = (
         <div style={{ fontSize, lineHeight: 1.7, minWidth: 0 }}>
-            <div>
-                <b>{settledCountLabel(variant)}</b>: {settled}
-                <span style={{ color: '#90a4ae' }}> / {total}</span>
-            </div>
-            {search && (
-                <div>
-                    <b>探す値</b>: {state?.target ?? 0}
-                </div>
-            )}
-            {variant === 'binary' && !state?.finished && (
-                <div>
-                    <b>まだ見ていない場所</b>: {state?.rangeSize ?? 0}
-                </div>
-            )}
-            {variant === 'binary' && state?.sorted === false && (
-                <div style={{ color: '#e67e22' }}>
-                    入力が昇順に並んでいません。二分探索は並んでいることを前提にしています
-                </div>
-            )}
-            {variant === 'quick' && !state?.finished && (
-                <div>
-                    <b>まだ並べていない範囲</b>: {pending}
-                </div>
-            )}
-            {variant === 'merge' && !state?.finished && (
-                <div>
-                    <b>まだ片付けていない範囲</b>: {state?.pendingTasks ?? 0}
-                </div>
+            {ops ? (
+                <>
+                    {opQueue}
+                    <div>
+                        <b>入っている数</b>: {state?.heldCount ?? 0}
+                        <span style={{ color: '#90a4ae' }}>
+                            {'　'}出した数: {state?.poppedCount ?? 0}
+                        </span>
+                    </div>
+                </>
+            ) : (
+                <>
+                    <div>
+                        <b>{settledCountLabel(variant)}</b>: {settled}
+                        <span style={{ color: '#90a4ae' }}> / {total}</span>
+                    </div>
+                    {search && (
+                        <div>
+                            <b>探す値</b>: {state?.target ?? 0}
+                        </div>
+                    )}
+                    {variant === 'binary' && !state?.finished && (
+                        <div>
+                            <b>まだ見ていない場所</b>: {state?.rangeSize ?? 0}
+                        </div>
+                    )}
+                    {variant === 'binary' && state?.sorted === false && (
+                        <div style={{ color: '#e67e22' }}>
+                            入力が昇順に並んでいません。二分探索は並んでいることを前提にしています
+                        </div>
+                    )}
+                    {variant === 'quick' && !state?.finished && (
+                        <div>
+                            <b>まだ並べていない範囲</b>: {pending}
+                        </div>
+                    )}
+                    {variant === 'merge' && !state?.finished && (
+                        <div>
+                            <b>まだ片付けていない範囲</b>: {state?.pendingTasks ?? 0}
+                        </div>
+                    )}
+                </>
             )}
             <div style={{ marginTop: '6px', fontWeight: 'bold',
                           color: state?.finished ? '#27ae60' : '#78909c' }}>
@@ -126,7 +168,13 @@ export const ArrayPanel: React.FC<Props> = ({
 
     const legend = (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px' }}>
-            {search ? (
+            {ops ? (
+                <>
+                    <Swatch color={NODE_STROKE[1]} label="次に出る値" />
+                    <Swatch color={NODE_STROKE[4]} label="今動かした値" />
+                    <Swatch color={NODE_STROKE[3]} label="もう出た値" />
+                </>
+            ) : search ? (
                 <>
                     {variant === 'binary' && (
                         <Swatch color={NODE_STROKE[6]} label="探す範囲" />
@@ -165,7 +213,7 @@ export const ArrayPanel: React.FC<Props> = ({
                     <Swatch color={NODE_STROKE[4]} label="入れ替えた2つ" />
                 </>
             )}
-            <Swatch color={NODE_STROKE[3]} label={settledLabel(variant)} />
+            {!ops && <Swatch color={NODE_STROKE[3]} label={settledLabel(variant)} />}
         </div>
     );
 

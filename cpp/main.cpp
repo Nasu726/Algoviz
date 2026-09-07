@@ -20,6 +20,7 @@
 #include "include/MergeSortVisualizer.hpp"
 #include "include/LinearSearchVisualizer.hpp"
 #include "include/BinarySearchVisualizer.hpp"
+#include "include/DequeVisualizer.hpp"
 
 using namespace emscripten;
 
@@ -72,6 +73,12 @@ public:
             currentAlgo = std::make_unique<LinearSearchVisualizer>();
         } else if (name == "binary") {
             currentAlgo = std::make_unique<BinarySearchVisualizer>();
+        } else if (name == "stack") {
+            currentAlgo = std::make_unique<DequeVisualizer>(DequeVisualizer::Stack);
+        } else if (name == "queue") {
+            currentAlgo = std::make_unique<DequeVisualizer>(DequeVisualizer::Queue);
+        } else if (name == "deque") {
+            currentAlgo = std::make_unique<DequeVisualizer>(DequeVisualizer::Deque);
         } else {
             std::cerr << "Unknown algorithm: " << name << std::endl;
         }

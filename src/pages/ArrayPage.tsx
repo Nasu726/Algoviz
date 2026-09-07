@@ -63,7 +63,8 @@ export const ArrayPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         // 生成された値を入力欄にも反映する
         const s = engine.getState<GraphState>({});
         setState(s);
-        setValueText((s.values ?? []).join(' '));
+        // 操作の並びを入れるものは、値ではなく操作を入力欄に戻す
+        setValueText((s.ops ?? s.values ?? []).join(' '));
     };
 
     useEffect(() => {
@@ -94,7 +95,7 @@ export const ArrayPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     });
 
     const compact = tier === 'narrow';
-    const maxValues = state?.maxValues ?? 20;
+    const maxValues = state?.maxOps ?? state?.maxValues ?? 20;
 
     return (
         <VisualizerShell

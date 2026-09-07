@@ -169,6 +169,16 @@ export interface GraphState {
     /** 二分探索: 今見ている真ん中と、まだ見ていない場所の数 */
     midIndex?: number;
     rangeSize?: number;
+    /** スタック / キュー / デック: 操作の並びと、次に実行する位置 */
+    ops?: string[];
+    opIndex?: number;
+    /** 入っている数 / 出した数 */
+    heldCount?: number;
+    poppedCount?: number;
+    /** 空なのに取り出そうとした / 枠が足りずに入らなかった */
+    emptyPop?: boolean;
+    overflowed?: boolean;
+    maxOps?: number;
 
     /** BstVisualizer のときだけ */
     values?: number[];

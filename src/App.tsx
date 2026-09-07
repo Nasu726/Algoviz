@@ -194,6 +194,15 @@ function App() {
         <Route path="/array/binary" element={
           <EngineGate>{(engine) => <ArrayWrapper engine={engine} variant="binary" />}</EngineGate>
         } />
+        <Route path="/array/stack" element={
+          <EngineGate>{(engine) => <ArrayWrapper engine={engine} variant="stack" />}</EngineGate>
+        } />
+        <Route path="/array/queue" element={
+          <EngineGate>{(engine) => <ArrayWrapper engine={engine} variant="queue" />}</EngineGate>
+        } />
+        <Route path="/array/deque" element={
+          <EngineGate>{(engine) => <ArrayWrapper engine={engine} variant="deque" />}</EngineGate>
+        } />
 
         {/* 描くだけのページ。メニューには載せないが、レイアウトとパッキングの
             回帰を目視確認する手段としてルートは残す */}
