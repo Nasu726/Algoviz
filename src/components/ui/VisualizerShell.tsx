@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { Popup } from './popup';
 
 interface Props {
@@ -31,9 +31,9 @@ const page: React.CSSProperties = {
 export const VisualizerShell: React.FC<Props> = ({
     title, compact, onBack, backConfirm, isHelpOpen, setIsHelpOpen, help, children,
 }) => {
-    const backToMenu = () => {
+    const backToMenu = useCallback(() => {
         if (!backConfirm || window.confirm(backConfirm)) onBack();
-    };
+    }, [backConfirm, onBack]);
 
     // Esc もヘッダの「戻る」と同じ経路を通す。これで確認の有無がページごとに揃う。
     useEffect(() => {
@@ -44,7 +44,7 @@ export const VisualizerShell: React.FC<Props> = ({
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isHelpOpen, backConfirm, onBack]);
+    }, [isHelpOpen, backToMenu]);
 
     const buttonFont = compact ? '12px' : '16px';
 
