@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Popup } from './popup';
 
 interface Props {
@@ -7,8 +7,8 @@ interface Props {
     /** 狭い幅。文字を小さくする */
     compact?: boolean;
     onBack: () => void;
-    /** 戻るときの確認文。ページによって失うものが違う */
-    backConfirm: string;
+    /** 戻るときに確認が必要なページだけ渡す */
+    backConfirm?: string;
     /**
      * ヘルプの開閉はページ側が持つ。
      * ショートカットの「ヘルプが開いていたら効かせない」ガードがページ側にあるため。
@@ -32,8 +32,19 @@ export const VisualizerShell: React.FC<Props> = ({
     title, compact, onBack, backConfirm, isHelpOpen, setIsHelpOpen, help, children,
 }) => {
     const backToMenu = () => {
-        if (window.confirm(backConfirm)) onBack();
+        if (!backConfirm || window.confirm(backConfirm)) onBack();
     };
+
+    // Esc もヘッダの「戻る」と同じ経路を通す。これで確認の有無がページごとに揃う。
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape' || isHelpOpen) return;
+            event.preventDefault();
+            backToMenu();
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isHelpOpen, backConfirm, onBack]);
 
     const buttonFont = compact ? '12px' : '16px';
 
