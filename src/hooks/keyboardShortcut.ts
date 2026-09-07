@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
 
 interface ShortcutHandlers {
-  onEsc?: () => void;        // Esc (ビジュアライザ選択画面へ戻る)
+  // Esc は VisualizerShell が「戻る」ボタンと同じ経路で処理する。
+  // 既存ページの呼び出しを単純に保つため互換用に残している。
+  onEsc?: () => void;
   onSave?: () => void;      // Ctrl+S (Load/Reset)
   onSaveFile?: () => void;      // Ctrl+Alt+S (Save code as a File)
   onFocus?: () => void;      // Ctrl+F (Focus)
@@ -18,12 +20,6 @@ export const useKeyboardShortcuts = (handlers: ShortcutHandlers) => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ctrl (Command) キーが押されているか
       const isCtrl = e.ctrlKey || e.metaKey;
-
-      // Esc: ビジュアライザ選択画面へ戻る
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        handlers.onEsc?.();
-      }
 
       // Ctrl + H: ヘルプ
       if (isCtrl && e.key === 'h') {
