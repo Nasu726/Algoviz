@@ -237,7 +237,6 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
             title={VARIANT_TITLE[variant]}
             compact={compact}
             onBack={onBack}
-            backConfirm="ビジュアライザ一覧へ戻りますか？"
             isHelpOpen={isHelpOpen}
             setIsHelpOpen={setIsHelpOpen}
             help={<GraphHelp variant={variant} maxNodes={maxNodes} />}
