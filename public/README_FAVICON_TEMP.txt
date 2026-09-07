@@ -1,1 +1,0 @@
-binary favicon is added through Git data in the next step; remove this temp file before merge
