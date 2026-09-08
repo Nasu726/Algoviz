@@ -35,6 +35,11 @@ public:
     // 10 フレームで外へ出る動きの9割まで進むので、動きは見えたまま間が空く
     static constexpr int EXIT_FRAMES = 10;
 
+    // 画面に収める幅を、はじめからこの数だけ入る広さにしておく。
+    // **これを超えるまで拡大率が変わらない。** 1手ごとに変えると、マスの
+    // 大きさが毎回変わって読みづらい
+    static constexpr int VIEW_MIN_CELLS = 5;
+
 private:
     struct Op {
         bool push = true;  // 入れるか出すか
@@ -299,10 +304,20 @@ public:
         // 今いる場所ではなく**目標**で決める。毎フレーム今の場所に合わせ直すと、
         // マスが1つ入るあいだ画面全体が横へ流れ続け、出し入れの動きと紛れる。
         // 目標なら変わるのは手が進んだ瞬間だけなので、1回ずれて止まる
+        //
+        // 幅は VIEW_MIN_CELLS 個ぶんを下限にする。中身が少ないうちに幅を詰めると、
+        // 1手ごとに拡大率が変わってマスの大きさが安定しない
+        float lo = line->targetXOf(handL()), hi = line->targetXOf(handR());
+        float mid = (lo + hi) / 2.0f;
+        float cellStep = CELL_HALF_WIDTH * 2 + LineLayout::CELL_GAP;
+        float leastHalf = cellStep + LineLayout::OUTSIDE_GAP +
+                          (VIEW_MIN_CELLS - 1) * cellStep / 2.0f;
+        float half = std::max((hi - lo) / 2.0f, leastHalf);
+
         emscripten::val bounds = emscripten::val::array();
-        bounds.call<void>("push", line->targetXOf(handL()));
+        bounds.call<void>("push", mid - half);
         bounds.call<void>("push", 0.0f);
-        bounds.call<void>("push", line->targetXOf(handR()));
+        bounds.call<void>("push", mid + half);
         bounds.call<void>("push", 0.0f);
         state.set("viewBounds", bounds);
         return state;

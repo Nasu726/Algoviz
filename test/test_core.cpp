@@ -4847,6 +4847,33 @@ static void testViewKeepsTheHeldCellsCentered() {
     }
 }
 
+static void testViewSizeHoldsForSmallContainers() {
+    beginTest("5個までは、画面に収める幅が変わらない");
+
+    // 1手ごとに拡大率が変わると、マスの大きさが毎回変わって読みづらい。
+    // はじめから5個ぶんの広さを取っておき、超えたときだけ広げる
+    DequeVisualizer b(DequeVisualizer::Stack);
+    b.load("setValues", "push 1 push 2 push 3 push 4 push 5 push 6 push 7");
+
+    float first = 0.0f;
+    for (int n = 1; n <= 7; n++) {
+        b.step();
+        val box = b.getState(val::object())["viewBounds"];
+        float width = box[2].as<float>() - box[0].as<float>();
+        if (n == 1) first = width;
+
+        if (n <= 5) {
+            CHECK_NEAR(width, first, 0.01f);
+        } else {
+            g_checks++;
+            if (width <= first + 1.0f) {
+                reportFailure(std::to_string(n) +
+                              " 個入っても幅が広がらない (入り切らない)");
+            }
+        }
+    }
+}
+
 static void testPoppedCellLeavesTheScreen() {
     beginTest("取り出したマスは、出ていく動きを見せてから消える");
 
@@ -5166,6 +5193,7 @@ int main(int argc, char** argv) {
     testCellsEnterAndLeaveFromOutside();
     testOutsideSitsJustBeyondTheHeldCells();
     testViewKeepsTheHeldCellsCentered();
+    testViewSizeHoldsForSmallContainers();
     testPoppedCellLeavesTheScreen();
     testEmptyPopDoesNothing();
     testNodesFitTheOperations();
