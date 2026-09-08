@@ -68,15 +68,17 @@ export const MenuPage: React.FC = () => {
                 アルゴリズムやデータ構造の動きを、一手ずつ観察するビジュアライザ。
             </p>
 
+            {/* 段組みにして上に詰める。ジャンルごとに項目の数が違うので、
+                横に並べると短い枠の下に高さのぶんだけ空きができる */}
             <div style={{
-                display: 'flex', flexWrap: 'wrap', justifyContent: 'center',
-                alignItems: 'flex-start', gap: '20px', width: '100%', maxWidth: '1000px',
+                columns: '300px', columnGap: '20px',
+                width: '100%', maxWidth: '1000px',
             }}>
                 {GENRES.map((genre) => (
                     <fieldset key={genre.name} style={{
                         border: '1px solid #b0bec5', borderRadius: '8px',
-                        padding: '12px 16px 16px', margin: 0,
-                        minWidth: '260px', flex: '0 1 300px', textAlign: 'left',
+                        padding: '12px 16px 16px', margin: '0 0 20px',
+                        breakInside: 'avoid', textAlign: 'left',
                     }}>
                         <legend style={{ padding: '0 8px', fontWeight: 'bold', color: '#37474f' }}>
                             {genre.name}
