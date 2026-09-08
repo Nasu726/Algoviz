@@ -292,6 +292,19 @@ public:
             if (!isDrawn(i)) hidden.call<void>("push", i);
         }
         state.set("hiddenSlots", hidden);
+
+        // 画面に収める範囲。**外のマスまで入れるので、入れ物は必ず真ん中に来る。**
+        // 左右の外は入れ物から同じだけ離れているので、両端を取れば中心が合う。
+        //
+        // 今いる場所ではなく**目標**で決める。毎フレーム今の場所に合わせ直すと、
+        // マスが1つ入るあいだ画面全体が横へ流れ続け、出し入れの動きと紛れる。
+        // 目標なら変わるのは手が進んだ瞬間だけなので、1回ずれて止まる
+        emscripten::val bounds = emscripten::val::array();
+        bounds.call<void>("push", line->targetXOf(handL()));
+        bounds.call<void>("push", 0.0f);
+        bounds.call<void>("push", line->targetXOf(handR()));
+        bounds.call<void>("push", 0.0f);
+        state.set("viewBounds", bounds);
         return state;
     }
 };

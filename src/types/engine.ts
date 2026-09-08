@@ -130,6 +130,8 @@ export interface GraphState {
     emptySlots?: number[];
     /** 無いものとして扱うマス。描かない (スタック / キュー / デック) */
     hiddenSlots?: number[];
+    /** 画面に収める範囲 [minX, minY, maxX, maxY]。節点の目標の座標で決める */
+    viewBounds?: number[];
     /** 配列そのものの長さ。作業用のマスはこの後ろに並ぶ */
     rowSize?: number;
     /** 選択ソート: 今のところ最小の値がある位置 / 次の手で入れ替えるか */

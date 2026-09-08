@@ -70,6 +70,11 @@ public:
         stable = true;
     }
 
+    // 節点が落ち着く先。今いる場所ではないので、動いている間も変わらない
+    float targetXOf(int i) const {
+        return i >= 0 && i < (int)targetX.size() ? targetX[i] : 0.0f;
+    }
+
     // 節点の数を変えずに目標だけ決め直す。並べ方が途中で変わるものが使う
     // (rebuildLayout と違い、隣接リストや世代番号には触らない)
     void retarget(GraphData* graph) {

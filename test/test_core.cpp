@@ -4820,6 +4820,33 @@ static void testOutsideSitsJustBeyondTheHeldCells() {
     }
 }
 
+static void testViewKeepsTheHeldCellsCentered() {
+    beginTest("画面に収める範囲の真ん中に、入れ物が来る");
+
+    // 中心が動かないと、マスが増えたぶんだけ端が画面からはみ出す。
+    // 幅の狭い画面では、入れたばかりのマスが見切れていた
+    DequeVisualizer b(DequeVisualizer::Deque);
+    b.load("setValues", "pushR 5 pushL 2 pushR 9 popL popR popL");
+
+    for (int n = 0; n < 6; n++) {
+        b.step();
+        for (int i = 0; i < 300 && !b.prepare(); i++) {}
+
+        val s = b.getState(val::object());
+        std::vector<int> shown = drawnCells(s);
+        if (shown.empty()) continue;
+
+        float cellLo = stateX(s, shown.front()), cellHi = cellLo;
+        for (int node : shown) {
+            cellLo = std::min(cellLo, stateX(s, node));
+            cellHi = std::max(cellHi, stateX(s, node));
+        }
+        val box = s["viewBounds"];
+        float boxMid = (box[0].as<float>() + box[2].as<float>()) / 2.0f;
+        CHECK_NEAR(boxMid, (cellLo + cellHi) / 2.0f, 0.01f);
+    }
+}
+
 static void testPoppedCellLeavesTheScreen() {
     beginTest("取り出したマスは、出ていく動きを見せてから消える");
 
@@ -5138,6 +5165,7 @@ int main(int argc, char** argv) {
     testOnlyTheHeldCellsAreDrawn();
     testCellsEnterAndLeaveFromOutside();
     testOutsideSitsJustBeyondTheHeldCells();
+    testViewKeepsTheHeldCellsCentered();
     testPoppedCellLeavesTheScreen();
     testEmptyPopDoesNothing();
     testNodesFitTheOperations();
