@@ -15,7 +15,7 @@
 // 出入りする端の違いだけを見比べられなくなる。
 //
 // **出入りするのはマスごと。** 入れ物は今入っている数だけ並び、入れる操作で
-// マスが1つ外から入り、取り出す操作でマスが1つ外へ出て、次の手で消える。
+// マスが1つ外から入り、取り出す操作でマスが1つ外へ出て、動き切ったところで消える。
 // 空のマスを先に並べておくと、入れ物の大きさが最初から決まっているように見える。
 //
 // GraphData に節点を消す口が無いので、節点そのものは要りうる数だけ作っておき、
@@ -193,7 +193,7 @@ protected:
         if (finished) return false;
         emptyPop = false;
         poppedValue = -1;
-        liveHand = -1; // 前の手で出たマスは、ここで画面から消える
+        liveHand = -1; // 動き切る前に次の手が来たときの取りこぼし
 
         if (opIndex >= (int)ops.size()) {
             finished = true;
@@ -240,6 +240,14 @@ protected:
     }
 
 public:
+    // 出たマスは、外へ動き切ったところで消える。**次の手まで残してはいけない。**
+    // 同じ端から次の値が入ってくると、出たマスが戻ってきたように見える
+    bool prepare() override {
+        bool stable = GraphVisualizer::prepare();
+        if (stable) liveHand = -1;
+        return stable;
+    }
+
     explicit DequeVisualizer(Kind k) : kind(k) {
         setOpsFrom(k == Deque ? "pushR 5 pushL 2 pushR 9 popL popR popL"
                               : "push 5 push 2 pop push 9 pop pop");

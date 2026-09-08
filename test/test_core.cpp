@@ -4812,31 +4812,46 @@ static void testOutsideSitsJustBeyondTheHeldCells() {
 }
 
 static void testPoppedCellLeavesTheScreen() {
-    beginTest("取り出したマスは次の手で画面から消える");
+    beginTest("取り出したマスは、外へ動き切ったところで消える");
 
-    // 出たマスが残ると「出てきた順」の記録になる。見せたいのは出入りの動きだけ
-    DequeVisualizer q(DequeVisualizer::Queue);
-    q.load("setValues", "push 5 pop push 2");
-    int hL = 0;
+    // 次の手まで残すと、同じ端から入ってくる値と見分けがつかない。
+    // スタックの "pop push 1" で、出たマスが戻ってきたように見えていた
+    DequeVisualizer b(DequeVisualizer::Stack);
+    b.load("setValues", "push 5 pop push 1");
+    int hR = b.getState(val::object())["rowSize"].as<int>() - 1;
 
-    q.step();
-    q.step(); // 5 を左の外へ出す
-    val popped = q.getState(val::object());
+    b.step(); // 5 を入れる
+    // 入れた値を落ち着かせてから出す。動く前の位置が合っていないと、
+    // 出ていく距離が測れない (画面では1手ごとに落ち着く)
+    for (int i = 0; i < 300 && !b.prepare(); i++) {}
+
+    b.step(); // 5 を右の外へ出す
+    val popped = b.getState(val::object());
     CHECK_EQ(popped["poppedValue"].as<int>(), 5);
     std::vector<int> shown = drawnCells(popped);
     g_checks++;
-    if (std::find(shown.begin(), shown.end(), hL) == shown.end()) {
+    if (std::find(shown.begin(), shown.end(), hR) == shown.end()) {
         reportFailure("出たその手なのに、外のマスが描かれていない");
     }
 
-    q.step(); // 次の手は右から入れる。左の外は関係ない
-    val next = q.getState(val::object());
-    CHECK_EQ(next["poppedValue"].as<int>(), -1);
-    shown = drawnCells(next);
+    // 外へ動き切ったら、次の手を待たずに消える。
+    // ただし一瞬で消えると、出ていく動きそのものが見えない
+    int frames = 0;
+    while (frames < 300 && !b.prepare()) frames++;
     g_checks++;
-    if (std::find(shown.begin(), shown.end(), hL) != shown.end()) {
-        reportFailure("出たマスが次の手でも残っている");
+    if (frames < 10) {
+        reportFailure("出ていく動きが " + std::to_string(frames) + " フレームしかない");
     }
+    shown = drawnCells(b.getState(val::object()));
+    g_checks++;
+    if (std::find(shown.begin(), shown.end(), hR) != shown.end()) {
+        reportFailure("動き切ったのに、出たマスが残っている");
+    }
+
+    b.step(); // 次の手で同じ端から入れる
+    val next = b.getState(val::object());
+    CHECK_EQ(next["poppedValue"].as<int>(), -1);
+    CHECK_EQ(next["heldCount"].as<int>(), 1);
 }
 
 static void testEmptyPopDoesNothing() {
