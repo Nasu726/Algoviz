@@ -4715,6 +4715,15 @@ static float stateX(const val& s, int i) {
     return s["nodes"][(std::size_t)i * GraphData::NODE_STRIDE].as<float>();
 }
 
+// そのマスが描かれているか
+static bool isDrawn(DequeVisualizer& b, int node) {
+    val hidden = b.getState(val::object())["hiddenSlots"];
+    for (int i = 0; i < hidden["length"].as<int>(); i++) {
+        if (hidden[i].as<int>() == node) return false;
+    }
+    return true;
+}
+
 // 描かれているマスの番号
 static std::vector<int> drawnCells(const val& s) {
     val hidden = s["hiddenSlots"];
@@ -4812,46 +4821,49 @@ static void testOutsideSitsJustBeyondTheHeldCells() {
 }
 
 static void testPoppedCellLeavesTheScreen() {
-    beginTest("取り出したマスは、外へ動き切ったところで消える");
+    beginTest("取り出したマスは、出ていく動きを見せてから消える");
 
     // 次の手まで残すと、同じ端から入ってくる値と見分けがつかない。
     // スタックの "pop push 1" で、出たマスが戻ってきたように見えていた
     DequeVisualizer b(DequeVisualizer::Stack);
-    b.load("setValues", "push 5 pop push 1");
+    b.load("setValues", "push 5 pop push 1 pop");
     int hR = b.getState(val::object())["rowSize"].as<int>() - 1;
 
-    b.step(); // 5 を入れる
-    // 入れた値を落ち着かせてから出す。動く前の位置が合っていないと、
-    // 出ていく距離が測れない (画面では1手ごとに落ち着く)
-    for (int i = 0; i < 300 && !b.prepare(); i++) {}
+    // 入れる / 取り出す を2回。2回目も同じように消えないと、
+    // 数え直しを忘れていることになる
+    for (int round = 0; round < 2; round++) {
+        b.step(); // 入れる
+        // 入れた値を落ち着かせてから出す。動く前の位置が合っていないと、
+        // 出ていく距離が測れない (画面では1手ごとに落ち着く)
+        for (int i = 0; i < 300 && !b.prepare(); i++) {}
 
-    b.step(); // 5 を右の外へ出す
-    val popped = b.getState(val::object());
-    CHECK_EQ(popped["poppedValue"].as<int>(), 5);
-    std::vector<int> shown = drawnCells(popped);
-    g_checks++;
-    if (std::find(shown.begin(), shown.end(), hR) == shown.end()) {
-        reportFailure("出たその手なのに、外のマスが描かれていない");
+        b.step(); // 右の外へ出す
+        val popped = b.getState(val::object());
+        CHECK_EQ(popped["poppedValue"].as<int>(), round == 0 ? 5 : 1);
+        g_checks++;
+        if (!isDrawn(b, hR)) {
+            reportFailure("出たその手なのに、外のマスが描かれていない");
+        }
+
+        // 消えるまでのフレーム数。**次の手が来る前に消えていないといけない。**
+        // 既定の再生間隔は 300ms で、60fps なら 18 フレームにあたる
+        int frames = 0;
+        while (frames < 300 && isDrawn(b, hR)) {
+            b.prepare();
+            frames++;
+        }
+        g_checks++;
+        if (frames < 5) {
+            reportFailure("出ていく動きが " + std::to_string(frames) + " フレームしかない");
+        }
+        g_checks++;
+        if (frames > 14) {
+            reportFailure("消えるまで " + std::to_string(frames) +
+                          " フレームかかる (再生の間隔 18 フレームに間に合わない)");
+        }
     }
 
-    // 外へ動き切ったら、次の手を待たずに消える。
-    // ただし一瞬で消えると、出ていく動きそのものが見えない
-    int frames = 0;
-    while (frames < 300 && !b.prepare()) frames++;
-    g_checks++;
-    if (frames < 10) {
-        reportFailure("出ていく動きが " + std::to_string(frames) + " フレームしかない");
-    }
-    shown = drawnCells(b.getState(val::object()));
-    g_checks++;
-    if (std::find(shown.begin(), shown.end(), hR) != shown.end()) {
-        reportFailure("動き切ったのに、出たマスが残っている");
-    }
-
-    b.step(); // 次の手で同じ端から入れる
-    val next = b.getState(val::object());
-    CHECK_EQ(next["poppedValue"].as<int>(), -1);
-    CHECK_EQ(next["heldCount"].as<int>(), 1);
+    CHECK_EQ(b.getState(val::object())["poppedCount"].as<int>(), 2);
 }
 
 static void testEmptyPopDoesNothing() {

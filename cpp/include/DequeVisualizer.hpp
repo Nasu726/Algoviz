@@ -15,7 +15,7 @@
 // 出入りする端の違いだけを見比べられなくなる。
 //
 // **出入りするのはマスごと。** 入れ物は今入っている数だけ並び、入れる操作で
-// マスが1つ外から入り、取り出す操作でマスが1つ外へ出て、動き切ったところで消える。
+// マスが1つ外から入り、取り出す操作でマスが1つ外へ出て、間を置いて消える。
 // 空のマスを先に並べておくと、入れ物の大きさが最初から決まっているように見える。
 //
 // GraphData に節点を消す口が無いので、節点そのものは要りうる数だけ作っておき、
@@ -28,6 +28,12 @@ public:
     enum Kind { Stack, Queue, Deque };
 
     static constexpr int MAX_OPS = 20;
+
+    // 出たマスを見せるフレーム数。**再生の間隔より短くする。**
+    // 収束を待つと 21 フレーム (350ms) かかり、既定の間隔 300ms を超えるので、
+    // 消える前に次の手が来て「出たマスが戻ってきた」ように見える。
+    // 10 フレームで外へ出る動きの9割まで進むので、動きは見えたまま間が空く
+    static constexpr int EXIT_FRAMES = 10;
 
 private:
     struct Op {
@@ -45,6 +51,7 @@ private:
     int poppedCount = 0;  // 出した数
     int poppedValue = -1; // 直前の手で出した値。出していなければ -1
     int liveHand = -1;    // 外に出ているマス。無ければ -1
+    int exitFrames = 0;   // そのマスを見せてきたフレーム数
     bool emptyPop = false; // 直前の手が「空なのに取り出そうとした」だった
 
     // 節点は [外] [入れ物 0..slots-1] [外] の並び。
@@ -158,6 +165,7 @@ protected:
         poppedCount = 0;
         poppedValue = -1;
         liveHand = -1;
+        exitFrames = 0;
         emptyPop = false;
         focusA = focusB = -1;
         if (ops.empty()) finished = true;
@@ -234,17 +242,18 @@ protected:
         }
         focusA = hand;
         liveHand = hand;
+        exitFrames = 0;
         poppedCount++;
         count--;
         return true;
     }
 
 public:
-    // 出たマスは、外へ動き切ったところで消える。**次の手まで残してはいけない。**
+    // 出ていく動きを見せたら消す。**次の手まで残してはいけない。**
     // 同じ端から次の値が入ってくると、出たマスが戻ってきたように見える
     bool prepare() override {
         bool stable = GraphVisualizer::prepare();
-        if (stable) liveHand = -1;
+        if (liveHand >= 0 && ++exitFrames >= EXIT_FRAMES) liveHand = -1;
         return stable;
     }
 
