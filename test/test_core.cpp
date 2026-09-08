@@ -39,6 +39,7 @@
 #include "../cpp/include/MergeSortVisualizer.hpp"
 #include "../cpp/include/LinearSearchVisualizer.hpp"
 #include "../cpp/include/BinarySearchVisualizer.hpp"
+#include "../cpp/include/DequeVisualizer.hpp"
 
 using emscripten::val;
 
@@ -4624,6 +4625,377 @@ static void testSearchesStepBackAndHandleTinyInput() {
 }
 
 // ==========================================
+// スタック / キュー / デック
+// ==========================================
+
+// 出てきた値を出た順に集める。取り出した値は画面に残らないので、
+// 1手ずつ進めながら「その手で出た値」を読む
+static std::vector<int> runOps(DequeVisualizer& b, const std::string& ops) {
+    b.load("setValues", ops);
+    std::vector<int> out;
+    for (int i = 0; i < 200 && b.step(); i++) {
+        int v = b.getState(val::object())["poppedValue"].as<int>();
+        if (v >= 0) out.push_back(v);
+    }
+    return out;
+}
+
+// 入れ物の中身を左から読む
+static std::vector<int> readHeld(DequeVisualizer& b) {
+    val held = b.getState(val::object())["held"];
+    std::vector<int> out;
+    for (int i = 0; i < held["length"].as<int>(); i++) {
+        out.push_back(held[i].as<int>());
+    }
+    return out;
+}
+
+static void checkOrder(const char* name, const std::vector<int>& got,
+                       const std::vector<int>& want) {
+    CHECK_EQ((int)got.size(), (int)want.size());
+    for (std::size_t i = 0; i < got.size() && i < want.size(); i++) {
+        g_checks++;
+        if (got[i] != want[i]) {
+            reportFailure(std::string(name) + " の " + std::to_string(i) +
+                          " 番目に出たのが " + std::to_string(got[i]) + " (期待は " +
+                          std::to_string(want[i]) + ")");
+            return;
+        }
+    }
+}
+
+static void testSameOpsGiveDifferentOrder() {
+    beginTest("同じ操作の並びでも、取り出す端が違えば出る順が変わる");
+
+    // ここがこのページの見どころ。出る順を見れば LIFO と FIFO の違いが分かる
+    const char* ops = "push 5 push 2 pop push 9 pop pop";
+
+    DequeVisualizer stack(DequeVisualizer::Stack);
+    checkOrder("スタック", runOps(stack, ops), {2, 9, 5}); // 後に入れたものが先に出る
+
+    DequeVisualizer queue(DequeVisualizer::Queue);
+    checkOrder("キュー", runOps(queue, ops), {5, 2, 9}); // 先に入れたものが先に出る
+}
+
+static void testDequeUsesBothEnds() {
+    beginTest("デックは左右どちらの端からも出し入れできる");
+
+    DequeVisualizer d(DequeVisualizer::Deque);
+    // 入れ終わった時点で中身は [2, 5, 9]
+    checkOrder("デック", runOps(d, "pushR 5 pushL 2 pushR 9 popL popR popL"), {2, 9, 5});
+
+    // 右だけ使えばスタックと同じ、右で入れて左で出せばキューと同じ
+    DequeVisualizer asStack(DequeVisualizer::Deque);
+    checkOrder("右だけ", runOps(asStack, "pushR 1 pushR 2 pushR 3 popR popR popR"),
+               {3, 2, 1});
+    DequeVisualizer asQueue(DequeVisualizer::Deque);
+    checkOrder("右で入れて左で出す",
+               runOps(asQueue, "pushR 1 pushR 2 pushR 3 popL popL popL"), {1, 2, 3});
+}
+
+static void testHeldValuesStayPackedToTheLeft() {
+    beginTest("入れ物の中身が左から詰まっている");
+
+    // 左端から出したあと、残りが左へ詰まる。詰め忘れると空きが挟まる
+    DequeVisualizer q(DequeVisualizer::Queue);
+    q.load("setValues", "push 5 push 2 push 9 pop pop");
+    for (int i = 0; i < 4; i++) q.step();
+    checkOrder("左から出したあと", readHeld(q), {2, 9});
+
+    // 左から入れると、入っていたものが右へずれる
+    DequeVisualizer d(DequeVisualizer::Deque);
+    d.load("setValues", "pushR 5 pushR 2 pushL 9");
+    for (int i = 0; i < 3; i++) d.step();
+    checkOrder("左から入れたあと", readHeld(d), {9, 5, 2});
+}
+
+// 節点が今いる x。入れ替えは今いる座標も入れ替えるので、
+// 動く前にどこに居たかがここに残る
+static float stateX(const val& s, int i) {
+    return s["nodes"][(std::size_t)i * GraphData::NODE_STRIDE].as<float>();
+}
+
+// そのマスが描かれているか
+static bool isDrawn(DequeVisualizer& b, int node) {
+    val hidden = b.getState(val::object())["hiddenSlots"];
+    for (int i = 0; i < hidden["length"].as<int>(); i++) {
+        if (hidden[i].as<int>() == node) return false;
+    }
+    return true;
+}
+
+// 描かれているマスの番号
+static std::vector<int> drawnCells(const val& s) {
+    val hidden = s["hiddenSlots"];
+    std::vector<int> out;
+    for (int i = 0; i < s["rowSize"].as<int>(); i++) {
+        bool skip = false;
+        for (int k = 0; k < hidden["length"].as<int>(); k++) {
+            if (hidden[k].as<int>() == i) skip = true;
+        }
+        if (!skip) out.push_back(i);
+    }
+    return out;
+}
+
+static void testOnlyTheHeldCellsAreDrawn() {
+    beginTest("並んでいるマスの数が、入っている数と一致する");
+
+    // 空のマスを先に並べると、入れ物の大きさが決まっているように見える
+    DequeVisualizer q(DequeVisualizer::Queue);
+    q.load("setValues", "push 5 push 2 push 9 pop");
+    CHECK_EQ((int)drawnCells(q.getState(val::object())).size(), 0); // 最初は空
+
+    for (int i = 1; i <= 3; i++) {
+        q.step();
+        CHECK_EQ((int)drawnCells(q.getState(val::object())).size(), i);
+    }
+
+    q.step(); // 取り出す。出たマスがその手だけ外に見えるので、2 + 1
+    val s = q.getState(val::object());
+    CHECK_EQ(s["heldCount"].as<int>(), 2);
+    CHECK_EQ((int)drawnCells(s).size(), 3);
+}
+
+static void testCellsEnterAndLeaveFromOutside() {
+    beginTest("マスは入れ物の外から入り、外へ出ていく");
+
+    // 中に湧いて消えるのではなく、外から出入りする。ここが見どころ
+    DequeVisualizer q(DequeVisualizer::Queue);
+    q.load("setValues", "push 5 pop");
+    val s0 = q.getState(val::object());
+    int rowSize = s0["rowSize"].as<int>();
+    int hL = 0, hR = rowSize - 1;
+    float outsideRight = stateX(s0, hR);
+    float insideFirst = stateX(s0, 1); // 入れ物の左端
+
+    q.step(); // 右の外から入る
+    CHECK_NEAR(stateX(q.getState(val::object()), 1), outsideRight, 0.01f);
+
+    // 配置を収束させて入れ物へ収める。step だけでは動いた先へ寄らない
+    for (int i = 0; i < 300 && !q.prepare(); i++) {}
+    CHECK_NEAR(stateX(q.getState(val::object()), 1), insideFirst, 0.01f);
+
+    q.step(); // 左の外へ出る
+    val out = q.getState(val::object());
+    CHECK_NEAR(stateX(out, hL), insideFirst, 0.01f); // 入れ物の位置から動き出す
+    for (int i = 0; i < 300 && !q.prepare(); i++) {}
+    // 落ち着く先は入れ物の外。左端より左にある
+    g_checks++;
+    val settled = q.getState(val::object());
+    if (!(stateX(settled, hL) < insideFirst - 1.0f)) {
+        reportFailure("出たマスが入れ物の外へ動いていない");
+    }
+}
+
+// 2つ入れたところまで進めて、配置を落ち着かせる
+static void settleTwoPushes(DequeVisualizer& b, const std::string& ops) {
+    b.load("setValues", ops);
+    b.step();
+    b.step();
+    for (int i = 0; i < 300 && !b.prepare(); i++) {}
+}
+
+static void testOutsideSitsJustBeyondTheHeldCells() {
+    beginTest("入れ物の外は、使っているマスのすぐ外にある");
+
+    // 使っていないマスを畳まないと、外が入れ物の上限のぶんだけ遠くなる。
+    // 遠いと、入ってくるマスがどこから来たのか読めない
+    DequeVisualizer wide(DequeVisualizer::Stack), tight(DequeVisualizer::Stack);
+    settleTwoPushes(wide,  "push 1 push 2 push 3 push 4 pop pop pop"); // 上限4
+    settleTwoPushes(tight, "push 1 push 2 pop pop");                   // 上限2
+
+    val w = wide.getState(val::object()), t = tight.getState(val::object());
+    float wideGap  = stateX(w, w["rowSize"].as<int>() - 1) - stateX(w, 2);
+    float tightGap = stateX(t, t["rowSize"].as<int>() - 1) - stateX(t, 2);
+    CHECK_NEAR(wideGap, tightGap, 0.01f);
+
+    // 外は、隣り合うマスより離れている。同じ間隔だと入れ物の一部に見える
+    float cellStep = stateX(t, 2) - stateX(t, 1);
+    g_checks++;
+    if (!(tightGap > cellStep + 1.0f)) {
+        reportFailure("外のマスが入れ物と同じ間隔で並んでいる (" +
+                      std::to_string(tightGap) + " と " +
+                      std::to_string(cellStep) + ")");
+    }
+}
+
+static void testViewKeepsTheHeldCellsCentered() {
+    beginTest("画面に収める範囲の真ん中に、入れ物が来る");
+
+    // 中心が動かないと、マスが増えたぶんだけ端が画面からはみ出す。
+    // 幅の狭い画面では、入れたばかりのマスが見切れていた
+    DequeVisualizer b(DequeVisualizer::Deque);
+    b.load("setValues", "pushR 5 pushL 2 pushR 9 popL popR popL");
+
+    for (int n = 0; n < 6; n++) {
+        b.step();
+        for (int i = 0; i < 300 && !b.prepare(); i++) {}
+
+        val s = b.getState(val::object());
+        std::vector<int> shown = drawnCells(s);
+        if (shown.empty()) continue;
+
+        float cellLo = stateX(s, shown.front()), cellHi = cellLo;
+        for (int node : shown) {
+            cellLo = std::min(cellLo, stateX(s, node));
+            cellHi = std::max(cellHi, stateX(s, node));
+        }
+        val box = s["viewBounds"];
+        float boxMid = (box[0].as<float>() + box[2].as<float>()) / 2.0f;
+        CHECK_NEAR(boxMid, (cellLo + cellHi) / 2.0f, 0.01f);
+    }
+}
+
+static void testViewSizeHoldsForSmallContainers() {
+    beginTest("5個までは、画面に収める幅が変わらない");
+
+    // 1手ごとに拡大率が変わると、マスの大きさが毎回変わって読みづらい。
+    // はじめから5個ぶんの広さを取っておき、超えたときだけ広げる
+    DequeVisualizer b(DequeVisualizer::Stack);
+    b.load("setValues", "push 1 push 2 push 3 push 4 push 5 push 6 push 7");
+
+    float first = 0.0f;
+    for (int n = 1; n <= 7; n++) {
+        b.step();
+        val box = b.getState(val::object())["viewBounds"];
+        float width = box[2].as<float>() - box[0].as<float>();
+        if (n == 1) first = width;
+
+        if (n <= 5) {
+            CHECK_NEAR(width, first, 0.01f);
+        } else {
+            g_checks++;
+            if (width <= first + 1.0f) {
+                reportFailure(std::to_string(n) +
+                              " 個入っても幅が広がらない (入り切らない)");
+            }
+        }
+    }
+}
+
+static void testPoppedCellLeavesTheScreen() {
+    beginTest("取り出したマスは、出ていく動きを見せてから消える");
+
+    // 次の手まで残すと、同じ端から入ってくる値と見分けがつかない。
+    // スタックの "pop push 1" で、出たマスが戻ってきたように見えていた
+    DequeVisualizer b(DequeVisualizer::Stack);
+    b.load("setValues", "push 5 pop push 1 pop");
+    int hR = b.getState(val::object())["rowSize"].as<int>() - 1;
+
+    // 入れる / 取り出す を2回。2回目も同じように消えないと、
+    // 数え直しを忘れていることになる
+    for (int round = 0; round < 2; round++) {
+        b.step(); // 入れる
+        // 入れた値を落ち着かせてから出す。動く前の位置が合っていないと、
+        // 出ていく距離が測れない (画面では1手ごとに落ち着く)
+        for (int i = 0; i < 300 && !b.prepare(); i++) {}
+
+        b.step(); // 右の外へ出す
+        val popped = b.getState(val::object());
+        CHECK_EQ(popped["poppedValue"].as<int>(), round == 0 ? 5 : 1);
+        g_checks++;
+        if (!isDrawn(b, hR)) {
+            reportFailure("出たその手なのに、外のマスが描かれていない");
+        }
+
+        // 消えるまでのフレーム数。**次の手が来る前に消えていないといけない。**
+        // 既定の再生間隔は 300ms で、60fps なら 18 フレームにあたる
+        int frames = 0;
+        while (frames < 300 && isDrawn(b, hR)) {
+            b.prepare();
+            frames++;
+        }
+        g_checks++;
+        if (frames < 5) {
+            reportFailure("出ていく動きが " + std::to_string(frames) + " フレームしかない");
+        }
+        g_checks++;
+        if (frames > 14) {
+            reportFailure("消えるまで " + std::to_string(frames) +
+                          " フレームかかる (再生の間隔 18 フレームに間に合わない)");
+        }
+    }
+
+    CHECK_EQ(b.getState(val::object())["poppedCount"].as<int>(), 2);
+}
+
+static void testEmptyPopDoesNothing() {
+    beginTest("空なのに取り出そうとしても何も起きない");
+
+    DequeVisualizer b(DequeVisualizer::Stack);
+    b.load("setValues", "pop push 5 pop pop");
+
+    b.step(); // 1手目は空のまま取り出そうとする
+    val s = b.getState(val::object());
+    CHECK(s["emptyPop"].as<bool>());
+    CHECK_EQ(s["poppedCount"].as<int>(), 0);
+    CHECK_EQ(s["heldCount"].as<int>(), 0);
+
+    checkOrder("空の取り出しを含む並び", runOps(b, "pop push 5 pop pop"), {5});
+}
+
+static void testNodesFitTheOperations() {
+    beginTest("節点の数が、同時に入る最大の数に足りている");
+
+    // 節点は消せないので要りうるぶんだけ作る。使わないものは畳んで見せない
+    DequeVisualizer b(DequeVisualizer::Queue);
+    b.load("setValues", "push 1 pop push 2 pop push 3 pop"); // 同時には1個まで
+    CHECK_EQ(b.getState(val::object())["nodeCount"].as<int>(), 3); // 入れ物1つと外2つ
+
+    DequeVisualizer deep(DequeVisualizer::Stack);
+    deep.load("setValues", "push 1 push 2 push 3 push 4 pop"); // 同時に4個
+    CHECK_EQ(deep.getState(val::object())["nodeCount"].as<int>(), 6);
+}
+
+static void testDequeStepMatchesRunToEndAndStepsBack() {
+    beginTest("1手ずつ進めた結果が一気に実行と一致し、1手戻せる");
+
+    const char* ops = "push 5 push 2 pop push 9 pop pop";
+    for (int kind = 0; kind < 3; kind++) {
+        DequeVisualizer::Kind k = kind == 0 ? DequeVisualizer::Stack
+                                 : kind == 1 ? DequeVisualizer::Queue
+                                             : DequeVisualizer::Deque;
+        DequeVisualizer stepwise(k), atOnce(k);
+        stepwise.load("setValues", ops);
+        for (int i = 0; i < 200 && stepwise.step(); i++) {}
+        atOnce.load("setValues", ops);
+        atOnce.runToEnd();
+        val a = stepwise.getState(val::object()), c = atOnce.getState(val::object());
+        CHECK_EQ(a["opIndex"].as<int>(), c["opIndex"].as<int>());
+        CHECK_EQ(a["poppedCount"].as<int>(), c["poppedCount"].as<int>());
+        checkOrder("1手ずつ", readHeld(stepwise), readHeld(atOnce));
+
+        // 1手進めて戻すと元に戻る
+        DequeVisualizer before(k), after(k);
+        before.load("setValues", ops);
+        after.load("setValues", ops);
+        for (int i = 0; i < 3; i++) before.step();
+        for (int i = 0; i < 4; i++) after.step();
+        after.stepBack();
+        val sb = before.getState(val::object()), sa = after.getState(val::object());
+        CHECK_EQ(sb["opIndex"].as<int>(), sa["opIndex"].as<int>());
+        CHECK_EQ(sb["heldCount"].as<int>(), sa["heldCount"].as<int>());
+        checkOrder("戻したあと", readHeld(before), readHeld(after));
+    }
+}
+
+static void testDequeHandlesEmptyInput() {
+    beginTest("操作が1つも無くても落ちない");
+
+    DequeVisualizer b(DequeVisualizer::Deque);
+    b.load("setValues", "");
+    b.runToEnd();
+    val s = b.getState(val::object());
+    CHECK(s["finished"].as<bool>());
+    CHECK_EQ(s["poppedCount"].as<int>(), 0);
+    CHECK_EQ(s["heldCount"].as<int>(), 0);
+
+    b.stepBack(); // 戻せないときに何も壊さない
+    CHECK(b.getState(val::object())["finished"].as<bool>());
+}
+
+// ==========================================
 
 int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
@@ -4813,6 +5185,20 @@ int main(int argc, char** argv) {
     testBinaryLooksAtFewerPlacesThanLinear();
     testBinaryRunsOnUnsortedInput();
     testSearchesStepBackAndHandleTinyInput();
+    beginSection("スタック / キュー / デック");
+    testSameOpsGiveDifferentOrder();
+    testDequeUsesBothEnds();
+    testHeldValuesStayPackedToTheLeft();
+    testOnlyTheHeldCellsAreDrawn();
+    testCellsEnterAndLeaveFromOutside();
+    testOutsideSitsJustBeyondTheHeldCells();
+    testViewKeepsTheHeldCellsCentered();
+    testViewSizeHoldsForSmallContainers();
+    testPoppedCellLeavesTheScreen();
+    testEmptyPopDoesNothing();
+    testNodesFitTheOperations();
+    testDequeStepMatchesRunToEndAndStepsBack();
+    testDequeHandlesEmptyInput();
 
     beginSection("ソート");
     testSortsAscending();

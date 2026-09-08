@@ -85,6 +85,9 @@ export class PixiGraphApp {
     private holeIndex: number = -1;
     // 値の入っていないマス。空の箱として描く (マージソートの作業用の段など)
     private emptySlots: Set<number> = new Set();
+    // 無いものとして扱うマス (スタック / キュー / デック)。使っていない節点は
+    // 描かない。空の箱として描くと、入れ物の大きさが決まっているように見える
+    private hiddenSlots: Set<number> = new Set();
     private helding: boolean = false;
     private dropFrames: number = 0;
     private dropIndex: number = -1;
@@ -97,6 +100,8 @@ export class PixiGraphApp {
 
     // グラフが差し替わったらカメラを合わせ直すための状態
     private lastGeneration = -1;
+    // 直前に合わせた viewBounds。変わったときだけカメラを動かす
+    private lastViewBounds = '';
     private needsFit = false;
     // 利用者が自分でカメラを動かしたか。動かしたなら自動の追従はやめる
     private userAdjusted = false;
@@ -428,7 +433,11 @@ export class PixiGraphApp {
             minY = Math.min(minY, y); maxY = Math.max(maxY, y);
         }
         if (!Number.isFinite(minX)) return;
+        this.fitToBox(minX, minY, maxX, maxY);
+    }
 
+    // 指定した範囲が画面に収まるようにカメラを合わせる
+    private fitToBox(minX: number, minY: number, maxX: number, maxY: number) {
         const pad = this.nodeRadius + 40;
         const w = (maxX - minX) + pad * 2;
         const h = (maxY - minY) + pad * 2;
@@ -622,6 +631,7 @@ export class PixiGraphApp {
             this.lastGeneration = state.generation;
             this.needsFit = true;
             this.userAdjusted = false;
+            this.lastViewBounds = '';
         }
 
         // 収束を待たずに追従させる。木は挿入のたびに形が変わるので、
@@ -630,7 +640,17 @@ export class PixiGraphApp {
         // ただし利用者がカメラを動かしたらそこで追従をやめる。
         // 力学モデルの収束は最大 LAYOUT_FRAME_LIMIT フレームかかるので、
         // 待たずに合わせ続けると、その間ずっとドラッグやホイールが打ち消される。
-        if (this.needsFit && !this.userAdjusted) {
+        // 収める範囲を自分で決めているものは、そちらに従う。
+        // 節点の今いる場所に毎フレーム合わせると、マスが1つ入るあいだ画面全体が
+        // 横へ流れ続け、出し入れの動きと紛れる (スタック / キュー / デック)
+        const box = state.viewBounds;
+        if (box && box.length === 4) {
+            const key = box.join(',');
+            if (key !== this.lastViewBounds && !this.userAdjusted) {
+                this.lastViewBounds = key;
+                this.fitToBox(box[0], box[1], box[2], box[3]);
+            }
+        } else if (this.needsFit && !this.userAdjusted) {
             this.fitToView(nodeArray);
             if (state.layoutStable) this.needsFit = false;
         }
@@ -645,6 +665,7 @@ export class PixiGraphApp {
         this.risingNode = state.risingNode ?? -1;
         this.risingSlot = state.risingSlot ?? -1;
         this.emptySlots = new Set(state.emptySlots ?? []);
+        this.hiddenSlots = new Set(state.hiddenSlots ?? []);
 
         // 節点を描く前に進める。飛んでいる値のマスは節点側で描かない
         if (!this.updateHeldValue(state, nodeArray)) {
@@ -877,7 +898,7 @@ export class PixiGraphApp {
             const x = nodeArray[i], y = nodeArray[i + 1], weight = nodeArray[i + 2], colorId = nodeArray[i + 3];
             const group = this.nodeSprites[nodeIndex];
 
-            if (this.isVisible(x, y)) {
+            if (this.isVisible(x, y) && !this.hiddenSlots.has(nodeIndex)) {
                 group.visible = true;
                 group.x = x; group.y = y;
 

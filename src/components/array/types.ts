@@ -3,10 +3,15 @@
 
 export type ArrayVariant =
     'bubble' | 'selection' | 'insertion' | 'shaker' | 'quick' | 'merge'
-    | 'linear' | 'binary';
+    | 'linear' | 'binary'
+    | 'stack' | 'queue' | 'deque';
 
 /** 値を並べ替えるものか、値を探すものか。入力欄と凡例の言葉が変わる */
 export const isSearch = (v: ArrayVariant): boolean => v === 'linear' || v === 'binary';
+
+/** 値の並びではなく、操作の並びを入れるものか */
+export const usesOps = (v: ArrayVariant): boolean =>
+    v === 'stack' || v === 'queue' || v === 'deque';
 
 export const ARRAY_TITLE: Record<ArrayVariant, string> = {
     bubble: 'バブルソート',
@@ -17,6 +22,9 @@ export const ARRAY_TITLE: Record<ArrayVariant, string> = {
     merge: 'マージソート',
     linear: '線形探索',
     binary: '二分探索',
+    stack: 'スタック',
+    queue: 'キュー',
+    deque: 'デック',
 };
 
 /** C++ 側の setAlgorithm へ渡す名前 */
@@ -57,10 +65,14 @@ export const defaultValues: Record<ArrayVariant, string> = {
     linear: '5 2 9 1 7 3 8 4',
     // 二分探索は並んでいることが前提
     binary: '1 2 3 4 5 7 8 9',
+    stack: 'push 5 push 2 pop push 9 pop pop',
+    queue: 'push 5 push 2 pop push 9 pop pop',
+    deque: 'pushR 5 pushL 2 pushR 9 popL popR popL',
 };
 
 /** 探すものの既定の値。値の中に在るものにしてある */
 export const defaultTarget: Record<ArrayVariant, string> = {
     bubble: '', selection: '', insertion: '', shaker: '', quick: '', merge: '',
     linear: '7', binary: '7',
+    stack: '', queue: '', deque: '',
 };

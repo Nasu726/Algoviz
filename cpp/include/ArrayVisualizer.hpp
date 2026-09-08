@@ -135,11 +135,15 @@ protected:
         emptySlot.assign(total, 0);
         for (int i = rowSize(); i < total; i++) emptySlot[i] = 1;
 
-        if (line) line->setPerRow(rowSize());
+        if (line) configureCells();
         rebuildLayout();
         // 作り直した直後は動かさない。左から流れ込んでくる必要は無い
         layout->finish(graph.get());
     }
+
+    // 箱の並べ方。既定は配列そのものを1段に並べる。
+    // buildArray が節点を作ったあと、配置を組む前に呼ぶ
+    virtual void configureCells() { line->setPerRow(rowSize()); }
 
     void resetRun() {
         buildArray();
