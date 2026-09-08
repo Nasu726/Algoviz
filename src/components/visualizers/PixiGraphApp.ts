@@ -85,9 +85,9 @@ export class PixiGraphApp {
     private holeIndex: number = -1;
     // 値の入っていないマス。空の箱として描く (マージソートの作業用の段など)
     private emptySlots: Set<number> = new Set();
-    // 入れ物の外のマス (スタック / キュー / デック)。空のときは何も描かない。
-    // 空の箱として描くと、入れ物が両端に伸びているように見える
-    private outsideSlots: Set<number> = new Set();
+    // 無いものとして扱うマス (スタック / キュー / デック)。使っていない節点は
+    // 描かない。空の箱として描くと、入れ物の大きさが決まっているように見える
+    private hiddenSlots: Set<number> = new Set();
     private helding: boolean = false;
     private dropFrames: number = 0;
     private dropIndex: number = -1;
@@ -648,7 +648,7 @@ export class PixiGraphApp {
         this.risingNode = state.risingNode ?? -1;
         this.risingSlot = state.risingSlot ?? -1;
         this.emptySlots = new Set(state.emptySlots ?? []);
-        this.outsideSlots = new Set(state.outsideSlots ?? []);
+        this.hiddenSlots = new Set(state.hiddenSlots ?? []);
 
         // 節点を描く前に進める。飛んでいる値のマスは節点側で描かない
         if (!this.updateHeldValue(state, nodeArray)) {
@@ -881,11 +881,7 @@ export class PixiGraphApp {
             const x = nodeArray[i], y = nodeArray[i + 1], weight = nodeArray[i + 2], colorId = nodeArray[i + 3];
             const group = this.nodeSprites[nodeIndex];
 
-            // 外のマスは、値が入っているときだけ見せる
-            const outsideEmpty = this.outsideSlots.has(nodeIndex) &&
-                                 this.emptySlots.has(nodeIndex);
-
-            if (this.isVisible(x, y) && !outsideEmpty) {
+            if (this.isVisible(x, y) && !this.hiddenSlots.has(nodeIndex)) {
                 group.visible = true;
                 group.x = x; group.y = y;
 
@@ -900,19 +896,13 @@ export class PixiGraphApp {
                 } else {
                     bg.circle(0, 0, this.nodeRadius);
                 }
-                // 入れ物の外のマスは枠を描かない。箱を描くと入れ物の一部に見える
-                if (!this.outsideSlots.has(nodeIndex)) {
-                    bg.fill(nodeFill(colorId)).stroke({ width: 3, color: borderColor });
-                }
+                bg.fill(nodeFill(colorId)).stroke({ width: 3, color: borderColor });
 
                 
                 // labelText のみを取得してテキストを更新する
                 const labelText = group.getChildByLabel("labelText") as PIXI.Text;
                 if (labelText) {
                     labelText.visible = readable;
-                    // 枠が無いぶん、出入りの色は数字に乗せる
-                    labelText.style.fill =
-                        this.outsideSlots.has(nodeIndex) ? borderColor : 0x333333;
                     // 何を表示名にするかは分類で決まる (C++ 側 labelMode)。
                     // グラフの頂点は 0,1,2、オートマトンの状態は q₀,q₁,q₂、木は節点の値。
                     labelText.text =

@@ -40,7 +40,6 @@ const statusOf = (variant: ArrayVariant, state: GraphState | null): string => {
     if (usesOps(variant)) {
         if (state?.finished) return '操作の並びを流し終えました';
         if (state?.emptyPop) return '空なので、取り出せませんでした';
-        if (state?.overflowed) return '枠が足りないので、入りませんでした';
         const done = state?.opIndex ?? 0;
         const op = (state?.ops ?? [])[done - 1];
         if (!op) return '操作の並びを頭から流します';
@@ -122,7 +121,6 @@ export const ArrayPanel: React.FC<Props> = ({
                     {opQueue}
                     <div>
                         <b>入っている数</b>: {state?.heldCount ?? 0}
-                        <span style={{ color: '#90a4ae' }}> / {state?.capacity ?? 0}</span>
                         <span style={{ color: '#90a4ae' }}>
                             {'　'}出した数: {state?.poppedCount ?? 0}
                         </span>

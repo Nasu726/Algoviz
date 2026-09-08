@@ -70,6 +70,14 @@ public:
         stable = true;
     }
 
+    // 節点の数を変えずに目標だけ決め直す。並べ方が途中で変わるものが使う
+    // (rebuildLayout と違い、隣接リストや世代番号には触らない)
+    void retarget(GraphData* graph) {
+        if (nodeSize == 0) return;
+        computeTargets(graph);
+        stable = false;
+    }
+
     bool isStable() const override { return stable; }
     void invalidate() override { stable = false; }
 };

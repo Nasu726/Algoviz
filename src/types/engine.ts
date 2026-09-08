@@ -128,8 +128,8 @@ export interface GraphState {
     settledCount?: number;
     /** まだ値の入っていないマス。描画側が空の箱にする */
     emptySlots?: number[];
-    /** 入れ物の外のマス。空なら描かない (スタック / キュー / デック) */
-    outsideSlots?: number[];
+    /** 無いものとして扱うマス。描かない (スタック / キュー / デック) */
+    hiddenSlots?: number[];
     /** 配列そのものの長さ。作業用のマスはこの後ろに並ぶ */
     rowSize?: number;
     /** 選択ソート: 今のところ最小の値がある位置 / 次の手で入れ替えるか */
@@ -174,16 +174,14 @@ export interface GraphState {
     /** スタック / キュー / デック: 操作の並びと、次に実行する位置 */
     ops?: string[];
     opIndex?: number;
-    /** 入れ物の中身と、入る数の上限 */
+    /** 入れ物の中身 */
     held?: number[];
     heldCount?: number;
-    capacity?: number;
     /** 出した数と、直前の手で出した値 (出していなければ -1) */
     poppedCount?: number;
     poppedValue?: number;
-    /** 空なのに取り出そうとした / 枠が足りずに入らなかった */
+    /** 空なのに取り出そうとした */
     emptyPop?: boolean;
-    overflowed?: boolean;
     maxOps?: number;
 
     /** BstVisualizer のときだけ */
