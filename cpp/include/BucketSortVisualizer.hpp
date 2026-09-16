@@ -27,6 +27,10 @@ public:
     static constexpr int BUCKETS = 5;
     static constexpr int BUCKET_WIDTH = (MAX_VALUE + 1) / BUCKETS;
 
+    // 段の間隔。挿入ソートの持ち上げ (描画側の HELD_LIFT = 58) が上の段の箱に
+    // 重ならないだけ空ける: 58 + 箱の半分 20 < 100 - 20
+    static constexpr float ROW_GAP_TALL = 100.0f;
+
 private:
     enum Phase { Scatter, SortBuckets, Gather };
 
@@ -68,7 +72,7 @@ private:
         int v = valueAt(next);
         int b = bucketOf(v);
         int dest = slotOf(b, fill[b]);
-        moveValue(next, dest); // 配列のマスが空く
+        carryValue(next, dest); // 配列のマスが空く。動くのは値だけ
         fill[b]++;
         focusA = dest;
         acted = b;
@@ -105,7 +109,7 @@ private:
 
     void gatherOne() {
         int src = slotOf(bucket, take);
-        moveValue(src, next);
+        carryValue(src, next);
         focusA = next;
         acted = bucket;
         gathered = true;
@@ -118,6 +122,11 @@ private:
 protected:
     // バケットの段は配列と同じ長さ (全部が1つのバケットに入ることがある)
     int extraSlots() const override { return rowSize() * BUCKETS; }
+
+    void configureCells() override {
+        line->setPerRow(rowSize());
+        line->setRowGap(ROW_GAP_TALL);
+    }
 
     void resetAlgorithm() override {
         phase = Scatter;
@@ -219,8 +228,9 @@ public:
         state.set("gathered", gathered);
         state.set("visitedEmpty", visitedEmpty);
 
+        // バケットに今入っている数。集めた分は減る
         emscripten::val fills = emscripten::val::array();
-        for (int b = 0; b < BUCKETS; b++) fills.call<void>("push", fill[b]);
+        for (int b = 0; b < BUCKETS; b++) fills.call<void>("push", fill[b] - takenOf(b));
         state.set("bucketFill", fills);
 
         // 持ち上げている値と空いたマス。描画側が段の上に浮かせる
@@ -239,7 +249,7 @@ public:
         for (int b = 0; b < BUCKETS; b++) {
             emscripten::val l = emscripten::val::object();
             l.set("x", -14.0f);
-            l.set("y", (float)(b + 1) * LineLayout::ROW_GAP);
+            l.set("y", (float)(b + 1) * line->getRowGap());
             l.set("text", std::to_string(b * BUCKET_WIDTH) + "–" +
                           std::to_string((b + 1) * BUCKET_WIDTH - 1));
             labels.call<void>("push", l);

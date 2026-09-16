@@ -81,6 +81,17 @@ protected:
         if (to >= 0 && to < (int)emptySlot.size()) emptySlot[to] = 0;
     }
 
+    // 値を別のマスへ移し、**動くのは行き先だけ**にする。moveValue は座標も
+    // 入れ替えるので、空いた元のマスが行き先の位置から戻ってくるように見える。
+    // 元のマスが空の箱として残るとき (バケットソートの配列) はこちらを使う
+    void carryValue(int from, int to) {
+        std::size_t o = (std::size_t)from * GraphData::NODE_STRIDE;
+        float x = graph->nodeData[o], y = graph->nodeData[o + 1];
+        moveValue(from, to);
+        graph->nodeData[o] = x;
+        graph->nodeData[o + 1] = y;
+    }
+
     void markSettled(int from, int to) {
         for (int i = std::max(0, from); i <= to && i < (int)settled.size(); i++) settled[i] = 1;
     }

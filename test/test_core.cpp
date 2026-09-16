@@ -5124,6 +5124,24 @@ static void testBucketDrawsOnlyHeldCells() {
     }
 }
 
+static void testBucketMovesOnlyTheValue() {
+    beginTest("配るとき、動くのは値だけで空いたマスは動かない");
+
+    // 座標まで入れ替えると、空の箱がバケットの位置から戻ってくるように見える
+    BucketSortVisualizer b;
+    b.load("setValues", "42 7");
+    val before = b.getState(val::object());
+    float cellX = stateX(before, 0);
+    float cellY = before["nodes"][1].as<float>();
+
+    b.step(); // 42 を 40–59 へ
+    val after = b.getState(val::object());
+    CHECK_NEAR(stateX(after, 0), cellX, 0.01f);              // 元のマスはその場
+    CHECK_NEAR(after["nodes"][1].as<float>(), cellY, 0.01f);
+    int dest = 2 * 3; // 配列2つ。バケット 40–59 (3段目) の先頭
+    CHECK_NEAR(stateX(after, dest), cellX, 0.01f);           // 値は元のマスの位置から動き出す
+}
+
 static void testBucketLabelsShowTheRanges() {
     beginTest("段の左に、バケットの範囲が5つ出る");
 
@@ -5132,8 +5150,10 @@ static void testBucketLabelsShowTheRanges() {
     CHECK_EQ(labels["length"].as<int>(), BucketSortVisualizer::BUCKETS);
     CHECK_EQ(std::string(labels[0]["text"].as<std::string>()), std::string("0–19"));
     CHECK_EQ(std::string(labels[4]["text"].as<std::string>()), std::string("80–99"));
-    // 段の y と揃っている
-    CHECK_NEAR(labels[1]["y"].as<float>(), 2.0f * LineLayout::ROW_GAP, 0.01f);
+    // 段の y と揃っている (2段目のバケットの先頭 = 節点 2 * rowSize)
+    val s = b.getState(val::object());
+    int n = s["rowSize"].as<int>();
+    CHECK_NEAR(labels[1]["y"].as<float>(), s["nodes"][(std::size_t)(2 * n) * GraphData::NODE_STRIDE + 1].as<float>(), 0.01f);
 }
 
 static void testBucketSortsSkewedInput() {
@@ -5369,6 +5389,7 @@ int main(int argc, char** argv) {
     testBucketVisitsEmptyBucketsToo();
     testBucketGathersInBucketOrder();
     testBucketDrawsOnlyHeldCells();
+    testBucketMovesOnlyTheValue();
     testBucketLabelsShowTheRanges();
     testBucketSortsSkewedInput();
     testMergeUsesTheWorkRow();

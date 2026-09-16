@@ -457,6 +457,13 @@ export class PixiGraphApp {
             minY = Math.min(minY, y); maxY = Math.max(maxY, y);
         }
         if (!Number.isFinite(minX)) return;
+
+        // 節点に属さない文字も収める。段の左に書く範囲は節点より左に出る
+        if (this.labelLayer.children.length > 0) {
+            const lb = this.labelLayer.getLocalBounds();
+            minX = Math.min(minX, lb.x); maxX = Math.max(maxX, lb.x + lb.width);
+            minY = Math.min(minY, lb.y); maxY = Math.max(maxY, lb.y + lb.height);
+        }
         this.fitToBox(minX, minY, maxX, maxY);
     }
 
