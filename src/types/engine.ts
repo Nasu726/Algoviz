@@ -168,6 +168,15 @@ export interface GraphState {
     /** マージソート: まだ片付けていない仕事の数 */
     pendingTasks?: number;
 
+    /** バケットソート: 局面 / 直前の手を打ったバケット (-1 なら無し) / バケットごとの数 */
+    phase?: 'scatter' | 'sort' | 'gather';
+    bucket?: number;
+    bucketFill?: number[];
+    /** バケットソート: 直前の手が 配った / 集めた / 空のバケットを見た */
+    scattered?: boolean;
+    gathered?: boolean;
+    visitedEmpty?: boolean;
+
     /** 探索: 探す値 / 見つけた位置 (-1 なら見つかっていない) / 入力が昇順か */
     target?: number;
     foundAt?: number;

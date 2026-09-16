@@ -272,6 +272,35 @@ const MergeHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
     </>
 );
 
+const BucketHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
+    <>
+        <Screen>
+            <li><b>下の5段がバケット</b>。段の左に書いてある範囲の値が入る</li>
+            <li>バケットの段は、入っている数だけマスが並ぶ</li>
+            <li>紫色が今並べているバケット。赤色が取り出して空いたマス</li>
+            <li>灰色は位置が確定した値</li>
+        </Screen>
+
+        <h3>2. 3つの局面</h3>
+        <ul>
+            <li><b>配る</b>：配列の左から1つずつ、値の範囲のバケットへ移す</li>
+            <li><b>バケットの中を並べる</b>：バケットを上から順に見て、
+                挿入ソートと同じ3手 (取り出す / ずらす / 差し込む) で並べる。
+                空のバケットも1手かけて見る</li>
+            <li><b>集める</b>：バケットを上から順に、先頭から配列へ戻す</li>
+        </ul>
+
+        <h3>3. 入力の散らばり方で変わる</h3>
+        <p>
+            値が範囲に散らばっていれば、どのバケットも小さく、中の並べ替えはすぐ済みます。
+            <b>全部が同じ範囲の入力</b> (例: <code>19 3 11 7 15 1 9 5</code>) を入れると
+            1つのバケットに集まり、そこの並べ替えが長くなります。見比べてください。
+        </p>
+
+        <Common maxValues={maxValues} sample="42 7 88 23 65 51 19 94 36 70" heading={4} />
+    </>
+);
+
 // 探すページ用。値の入れ方の言葉が並べ替えとは違う
 const SearchCommon: React.FC<{ maxValues: number; sample: string; heading: number;
                                sortedNote?: boolean }> =
@@ -439,6 +468,7 @@ export const ArrayHelp: React.FC<{ variant: ArrayVariant; maxValues: number }> =
         : variant === 'linear' ? <LinearHelp maxValues={maxValues} />
         : variant === 'binary' ? <BinaryHelp maxValues={maxValues} />
         : variant === 'merge' ? <MergeHelp maxValues={maxValues} />
+        : variant === 'bucket' ? <BucketHelp maxValues={maxValues} />
         : variant === 'quick' ? <QuickHelp maxValues={maxValues} />
         : variant === 'selection' ? <SelectionHelp maxValues={maxValues} />
         : variant === 'insertion' ? <InsertionHelp maxValues={maxValues} />
