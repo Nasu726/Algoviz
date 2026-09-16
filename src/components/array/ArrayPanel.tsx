@@ -66,6 +66,14 @@ const statusOf = (variant: ArrayVariant, state: GraphState | null): string => {
         if (state?.swapped) return '基準より小さいので、左の並びへ入れました';
         return '基準の値と比べています';
     }
+    if (variant === 'radix') {
+        const place = `下から ${(state?.pass ?? 0) + 1} ビット目`;
+        const b = state?.bucket ?? -1;
+        if (state?.scattered) return `${place}が ${b} なので、${b} のバケットへ入れました`;
+        if (state?.gathered) return `${b} のバケットから配列へ戻しました`;
+        if (state?.sawEmpty) return `${b} のバケットは空です`;
+        return `${place}で配ります`;
+    }
     if (variant === 'bucket') {
         if ((state?.counted ?? -1) >= 0) return `${state?.counted} を数えました (頻度 +1)`;
         if ((state?.written ?? -1) >= 0) return `${state?.written} を配列へ書き出しました`;
@@ -169,6 +177,14 @@ export const ArrayPanel: React.FC<Props> = ({
                             <span style={{ color: '#90a4ae' }}> / {total}</span>
                         </div>
                     )}
+                    {variant === 'radix' && !state?.finished && (
+                        <div>
+                            <b>今のビット</b>: 下から {(state?.pass ?? 0) + 1} ビット目
+                            <span style={{ color: '#90a4ae' }}>
+                                {' '}({(state?.pass ?? 0) + 1} / {state?.digits ?? 4} 回目)
+                            </span>
+                        </div>
+                    )}
                 </>
             )}
             <div style={{ marginTop: '6px', fontWeight: 'bold',
@@ -222,6 +238,12 @@ export const ArrayPanel: React.FC<Props> = ({
                 <>
                     <Swatch color={NODE_STROKE[2]} label="今見ている頻度" />
                     <Swatch color={NODE_STROKE[4]} label="今増やした頻度 / 書き出した値" />
+                </>
+            ) : variant === 'radix' ? (
+                <>
+                    <Swatch color={NODE_STROKE[1]} label="今のビット (下線)" />
+                    <Swatch color={NODE_STROKE[2]} label="今見ているバケット (見出し)" />
+                    <Swatch color={NODE_STROKE[4]} label="動かした値" />
                 </>
             ) : (
                 <>

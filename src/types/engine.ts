@@ -134,8 +134,9 @@ export interface GraphState {
     viewBounds?: number[];
     /** 節点に属さない文字。世界座標。既定は右端を x に揃え、center なら中央 (見出し) */
     labels?: { x: number; y: number; text: string; align?: 'right' | 'center'; color?: number }[];
-    /** 値を何桁で書くか (0 埋め)。下線を引く桁 (右から 0 始まり、-1 なら無し) */
+    /** 値を何桁で書くか (0 埋め) と基数。下線を引く桁 (右から 0 始まり、-1 なら無し) */
     digitCount?: number;
+    digitBase?: number;
     digitFocus?: number;
     /** 配列そのものの長さ。作業用のマスはこの後ろに並ぶ */
     rowSize?: number;
@@ -172,7 +173,7 @@ export interface GraphState {
     pendingTasks?: number;
 
     /** バケットソート: 局面 / 値の範囲 (0..range-1) */
-    phase?: 'count' | 'expand';
+    phase?: 'count' | 'expand' | 'scatter' | 'gather';
     range?: number;
     /** バケットソート: 直前の手で数えた値 / 書き出した値 (-1 なら無し) / 頻度 0 を見た */
     counted?: number;
@@ -181,6 +182,15 @@ export interface GraphState {
     /** バケットソート: 展開中に見ている添字 (-1 なら展開中でない) / 数え終えた数 */
     expandAt?: number;
     countedTotal?: number;
+
+    /** 基数ソート: 今の桁 (0 が1の位) / 桁の数 / 直前の手で 配った・集めた・空を見た */
+    pass?: number;
+    digits?: number;
+    /** 基数ソート: 直前の手を打ったバケット (-1 なら無し) */
+    bucket?: number;
+    scattered?: boolean;
+    gathered?: boolean;
+    sawEmpty?: boolean;
 
     /** 探索: 探す値 / 見つけた位置 (-1 なら見つかっていない) / 入力が昇順か */
     target?: number;

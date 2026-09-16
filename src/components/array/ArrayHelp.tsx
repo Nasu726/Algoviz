@@ -305,6 +305,38 @@ const BucketHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
     </>
 );
 
+const RadixHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
+    <>
+        <Screen>
+            <li>値は <b>4 ビットの2進</b>で書く (5 なら <code>0101</code>)。
+                <b>今見ているビットに下線</b>が付く</li>
+            <li><b>下に 0 と 1 のバケット</b>が列として並ぶ。上に書いてある数がバケットの番号</li>
+            <li>赤い見出しが、集めるときに今見ているバケット</li>
+            <li>灰色は位置が確定した値 (最後のビットを集めるときだけ)</li>
+        </Screen>
+
+        <h3>2. ビットごとに4回まわす</h3>
+        <ul>
+            <li><b>配る</b>：配列の左から1つ取り、今のビットが 0 か 1 かでバケットの下へ入れる</li>
+            <li><b>集める</b>：バケット 0、1 の順に、上から1つずつ配列へ戻す。
+                空のバケットも1手かけて見る</li>
+            <li>下のビットから順に4回。全部の値が同じビットでも4回まわす</li>
+        </ul>
+
+        <h3>3. 順が崩れない</h3>
+        <p>
+            バケットは上から順に取るので、<b>同じビットの値どうしは入れた順のまま</b>並びます。
+            上のビットでまわしたあと、同じビットの中で下のビットの順が保たれているのを
+            見てください。前の回で決めた順が、次の回で壊れません。
+        </p>
+
+        <h3>4. 値の範囲</h3>
+        <p>値は <b>0〜15</b> です。外れた値は端に寄せます。ランダム生成は同じ値が混ざります。</p>
+
+        <Common maxValues={maxValues} sample="5 12 3 10 7 1 14 6 9 2" heading={5} />
+    </>
+);
+
 // 探すページ用。値の入れ方の言葉が並べ替えとは違う
 const SearchCommon: React.FC<{ maxValues: number; sample: string; heading: number;
                                sortedNote?: boolean }> =
@@ -473,6 +505,7 @@ export const ArrayHelp: React.FC<{ variant: ArrayVariant; maxValues: number }> =
         : variant === 'binary' ? <BinaryHelp maxValues={maxValues} />
         : variant === 'merge' ? <MergeHelp maxValues={maxValues} />
         : variant === 'bucket' ? <BucketHelp maxValues={maxValues} />
+        : variant === 'radix' ? <RadixHelp maxValues={maxValues} />
         : variant === 'quick' ? <QuickHelp maxValues={maxValues} />
         : variant === 'selection' ? <SelectionHelp maxValues={maxValues} />
         : variant === 'insertion' ? <InsertionHelp maxValues={maxValues} />

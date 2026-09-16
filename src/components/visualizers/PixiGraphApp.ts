@@ -96,6 +96,7 @@ export class PixiGraphApp {
     // 基数ソートが「今見ている桁」を示すのに使う
     private digitCount = 0;
     private digitFocus = -1;
+    private digitBase = 10;
     private helding: boolean = false;
     private dropFrames: number = 0;
     private dropIndex: number = -1;
@@ -432,10 +433,11 @@ export class PixiGraphApp {
         return nodeGroup;
     }
 
-    // マスの中の値。桁数が決まっているときは 0 で埋める (基数ソートの 07 など)
+    // マスの中の値。桁数が決まっているときは、その基数で書いて 0 で埋める
+    // (基数ソートの 0101 など)
     private formatCellValue(v: number): string {
-        const s = formatNodeValue(v);
-        return this.digitCount > 0 && Number.isFinite(v) ? s.padStart(this.digitCount, '0') : s;
+        if (!Number.isFinite(v) || this.digitCount <= 0) return formatNodeValue(v);
+        return Math.trunc(v).toString(this.digitBase).padStart(this.digitCount, '0');
     }
 
     // 節点に属さない文字を置き直す。既定は右端を x に揃える (段の左に書く用途)。
@@ -713,6 +715,7 @@ export class PixiGraphApp {
         this.hiddenSlots = new Set(state.hiddenSlots ?? []);
         this.digitCount = state.digitCount ?? 0;
         this.digitFocus = state.digitFocus ?? -1;
+        this.digitBase = state.digitBase ?? 10;
         this.updateLabels(state.labels ?? []);
 
         // 節点を描く前に進める。飛んでいる値のマスは節点側で描かない
