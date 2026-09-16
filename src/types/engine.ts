@@ -133,7 +133,10 @@ export interface GraphState {
     /** 画面に収める範囲 [minX, minY, maxX, maxY]。節点の目標の座標で決める */
     viewBounds?: number[];
     /** 節点に属さない文字。世界座標。既定は右端を x に揃え、center なら中央 (見出し) */
-    labels?: { x: number; y: number; text: string; align?: 'right' | 'center' }[];
+    labels?: { x: number; y: number; text: string; align?: 'right' | 'center'; color?: number }[];
+    /** 値を何桁で書くか (0 埋め)。下線を引く桁 (右から 0 始まり、-1 なら無し) */
+    digitCount?: number;
+    digitFocus?: number;
     /** 配列そのものの長さ。作業用のマスはこの後ろに並ぶ */
     rowSize?: number;
     /** 選択ソート: 今のところ最小の値がある位置 / 次の手で入れ替えるか */
