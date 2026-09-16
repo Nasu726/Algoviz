@@ -188,9 +188,6 @@ function App() {
         <Route path="/array/merge" element={
           <EngineGate>{(engine) => <ArrayWrapper engine={engine} variant="merge" />}</EngineGate>
         } />
-        <Route path="/array/bucket" element={
-          <EngineGate>{(engine) => <ArrayWrapper engine={engine} variant="bucket" />}</EngineGate>
-        } />
         <Route path="/array/linear" element={
           <EngineGate>{(engine) => <ArrayWrapper engine={engine} variant="linear" />}</EngineGate>
         } />
