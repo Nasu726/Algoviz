@@ -80,6 +80,10 @@ export class PixiGraphApp {
     private flyY: number = 0;
     private flyGeneration: number = -1;
     private flySprite!: PIXI.Container;
+    // 節点に属さない文字 (バケットの範囲など)。世界座標に置く。
+    // 文字列が変わったときだけ作り直す
+    private labelLayer!: PIXI.Container;
+    private labelKey = '';
     // 配列から取り出して持ち上げている値 (挿入ソート)。空になるマスと、
     // 差し込むときに上から落ちる動き
     private holeIndex: number = -1;
@@ -349,6 +353,9 @@ export class PixiGraphApp {
         this.flySprite.addChild(flyLabel);
         this.world.addChild(this.flySprite);
 
+        this.labelLayer = new PIXI.Container();
+        this.world.addChild(this.labelLayer);
+
         if (import.meta.env.DEV) {
             this.fpsText = new PIXI.Text({ text: 'FPS: 0', style: { fontSize: 16, fill: 0x000000 } });
             this.fpsText.x = 10;
@@ -421,6 +428,24 @@ export class PixiGraphApp {
         return nodeGroup;
     }
 
+    // 節点に属さない文字を置き直す。既定は右端を x に揃える (段の左に書く用途)。
+    // 見出しとして列の上に置くときは中央に揃える
+    private updateLabels(labels: { x: number; y: number; text: string; align?: string }[]) {
+        const key = labels.map((l) => `${l.x},${l.y},${l.text},${l.align ?? ''}`).join('|');
+        if (key === this.labelKey) return;
+        this.labelKey = key;
+
+        this.labelLayer.removeChildren().forEach((c) => c.destroy());
+        for (const l of labels) {
+            const t = new PIXI.Text({
+                text: l.text, style: { fontSize: 14, fill: 0x546e7a, fontWeight: 'bold' },
+            });
+            t.anchor.set(l.align === 'center' ? 0.5 : 1, 0.5);
+            t.position.set(l.x, l.y);
+            this.labelLayer.addChild(t);
+        }
+    }
+
     // グラフ全体が画面に収まるようにカメラを合わせる
     private fitToView(nodeArray: Float32Array) {
         if (nodeArray.length === 0) return;
@@ -433,6 +458,13 @@ export class PixiGraphApp {
             minY = Math.min(minY, y); maxY = Math.max(maxY, y);
         }
         if (!Number.isFinite(minX)) return;
+
+        // 節点に属さない文字も収める。段の左に書く範囲は節点より左に出る
+        if (this.labelLayer.children.length > 0) {
+            const lb = this.labelLayer.getLocalBounds();
+            minX = Math.min(minX, lb.x); maxX = Math.max(maxX, lb.x + lb.width);
+            minY = Math.min(minY, lb.y); maxY = Math.max(maxY, lb.y + lb.height);
+        }
         this.fitToBox(minX, minY, maxX, maxY);
     }
 
@@ -666,6 +698,7 @@ export class PixiGraphApp {
         this.risingSlot = state.risingSlot ?? -1;
         this.emptySlots = new Set(state.emptySlots ?? []);
         this.hiddenSlots = new Set(state.hiddenSlots ?? []);
+        this.updateLabels(state.labels ?? []);
 
         // 節点を描く前に進める。飛んでいる値のマスは節点側で描かない
         if (!this.updateHeldValue(state, nodeArray)) {
