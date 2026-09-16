@@ -37,6 +37,7 @@
 #include "../cpp/include/ShakerSortVisualizer.hpp"
 #include "../cpp/include/QuickSortVisualizer.hpp"
 #include "../cpp/include/MergeSortVisualizer.hpp"
+#include "../cpp/include/BucketSortVisualizer.hpp"
 #include "../cpp/include/LinearSearchVisualizer.hpp"
 #include "../cpp/include/BinarySearchVisualizer.hpp"
 #include "../cpp/include/DequeVisualizer.hpp"
@@ -4047,6 +4048,7 @@ static std::vector<std::pair<const char*, MakeSort>> allSorts() {
         {"シェーカー", [] { return std::unique_ptr<ArrayVisualizer>(new ShakerSortVisualizer()); }},
         {"クイック",   [] { return std::unique_ptr<ArrayVisualizer>(new QuickSortVisualizer()); }},
         {"マージ",     [] { return std::unique_ptr<ArrayVisualizer>(new MergeSortVisualizer()); }},
+        {"バケット",   [] { return std::unique_ptr<ArrayVisualizer>(new BucketSortVisualizer()); }},
     };
 }
 
@@ -4995,6 +4997,187 @@ static void testDequeHandlesEmptyInput() {
     CHECK(b.getState(val::object())["finished"].as<bool>());
 }
 
+
+// ==========================================
+// バケットソート
+// ==========================================
+
+// 頻度配列を読む。2段目の先頭から RANGE 個。1段の幅は配列の数と RANGE の大きい方
+static int bucketWidth(const val& s) {
+    return std::max(s["rowSize"].as<int>(), BucketSortVisualizer::RANGE);
+}
+
+// 頻度配列の先頭の節点。配列の下の真ん中に来るよう、余りを左にも置いてある
+static int bucketCountStart(const val& s) {
+    int width = bucketWidth(s);
+    return width + (width - BucketSortVisualizer::RANGE) / 2;
+}
+
+static std::vector<int> readCounts(BucketSortVisualizer& b) {
+    val s = b.getState(val::object());
+    val nodes = s["nodes"];
+    int start = bucketCountStart(s);
+    std::vector<int> out;
+    for (int v = 0; v < BucketSortVisualizer::RANGE; v++) {
+        out.push_back((int)nodes[(std::size_t)(start + v) * GraphData::NODE_STRIDE + 2]
+                          .as<float>());
+    }
+    return out;
+}
+
+static void testBucketCountsMoreValuesThanTheRange() {
+    beginTest("配列の数が値の範囲より多くても、全部数える");
+
+    // 配列の数と値の範囲は無関係。1段の幅を範囲に固定すると、範囲より長い配列の
+    // 後半に頻度配列が重なり、後半が数えられない
+    BucketSortVisualizer b;
+    std::string values;
+    for (int i = 0; i < 20; i++) values += std::to_string((i * 7) % 10) + " "; // 各値が2つ
+    b.load("setValues", values);
+    // 2段ぶんの節点がある (幅を範囲に固定すると、2段目が無くなる)
+    val s0 = b.getState(val::object());
+    CHECK_EQ(s0["nodeCount"].as<int>(), 2 * bucketWidth(s0));
+    if (s0["nodeCount"].as<int>() != 2 * bucketWidth(s0)) return;
+    for (int i = 0; i < 20; i++) b.step(); // 数える
+
+    std::vector<int> counts = readCounts(b);
+    int total = 0;
+    for (int c : counts) total += c;
+    CHECK_EQ(total, 20);
+    checkOrder("頻度", counts, {2, 2, 2, 2, 2, 2, 2, 2, 2, 2});
+
+    b.runToEnd();
+    checkOrder("配列", readArray(b), {0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9});
+
+    // 頻度配列は配列の下の真ん中に来る (左に寄らない)
+    val s = b.getState(val::object());
+    float arrayMid = (stateX(s, 0) + stateX(s, 19)) / 2.0f;
+    int start = bucketCountStart(s);
+    float countMid = (stateX(s, start) + stateX(s, start + 9)) / 2.0f;
+    CHECK_NEAR(countMid, arrayMid, 0.01f);
+}
+
+static void testBucketCountsEveryValue() {
+    beginTest("数え終えると、頻度配列が値ごとの個数になる");
+
+    BucketSortVisualizer b;
+    b.load("setValues", "7 3 9 7 0 2 3 5 7 1");
+    for (int i = 0; i < 10; i++) {
+        b.step();
+        val s = b.getState(val::object());
+        CHECK_EQ(s["countedTotal"].as<int>(), i + 1);
+        CHECK_EQ(s["emptySlots"]["length"].as<int>(), i + 1); // 数えたマスは空く
+    }
+    std::vector<int> counts = readCounts(b);
+    std::vector<int> want(BucketSortVisualizer::RANGE, 0);
+    want[7] = 3; want[3] = 2; want[9] = 1; want[0] = 1; want[2] = 1; want[5] = 1; want[1] = 1;
+    checkOrder("頻度", counts, want);
+    CHECK_EQ(std::string(b.getState(val::object())["phase"].as<std::string>()),
+             std::string("count"));
+}
+
+static void testBucketExpandsVisitingEveryIndex() {
+    beginTest("展開は頻度配列を左から1つずつ見て、頻度 0 の添字も1手かける");
+
+    // 見た添字を飛ばすと、走査していることが分からない
+    BucketSortVisualizer b;
+    b.load("setValues", "7 3 7");
+    for (int i = 0; i < 3; i++) b.step(); // 数える
+
+    int zeros = 0, writes = 0, lastAt = -1;
+    std::vector<int> outOrder;
+    while (b.step()) {
+        val s = b.getState(val::object());
+        int at = s["expandAt"].as<int>();
+        g_checks++;
+        if (at >= 0 && at < lastAt) reportFailure("添字が戻った");
+        if (at >= 0) lastAt = at;
+        if (s["sawZero"].as<bool>()) zeros++;
+        if (s["written"].as<int>() >= 0) { writes++; outOrder.push_back(s["written"].as<int>()); }
+    }
+    CHECK_EQ(writes, 3);
+    CHECK_EQ(zeros, BucketSortVisualizer::RANGE - 2); // 3 と 7 以外の 8 個
+    checkOrder("書き出した順", outOrder, {3, 7, 7});
+    checkOrder("配列", readArray(b), {3, 7, 7});
+}
+
+static void testBucketNeverCompares() {
+    beginTest("比べる手が1つも無い");
+
+    // 入れ替えが起きたら、それは比較で並べている
+    BucketSortVisualizer b;
+    b.load("setValues", "9 3 1 7 5 1 9 5 5 5");
+    int steps = 0;
+    while (steps < 500 && b.step()) {
+        steps++;
+        val s = b.getState(val::object());
+        g_checks++;
+        if (s["swapped"].as<bool>() && (s["counted"].as<int>() < 0 && s["written"].as<int>() < 0)) {
+            reportFailure("値を入れ替えている");
+            break;
+        }
+    }
+    // 手数は 数える n + 展開で見る添字 RANGE + 書き出し n - 頻度 0 でない添字の数
+    // = 10 + 10 + 10 - 5 = 25 (違う値は 1 3 5 7 9 の 5 種類)
+    CHECK_EQ(steps, 25);
+}
+
+static void testBucketSettlesAsItWrites() {
+    beginTest("書き出した範囲が左から確定していく");
+
+    BucketSortVisualizer b;
+    b.load("setValues", "2 0 2 1");
+    for (int i = 0; i < 4; i++) b.step();
+    int settledBefore = b.getState(val::object())["settledCount"].as<int>();
+    CHECK_EQ(settledBefore, 0);
+
+    int written = 0;
+    while (b.step()) {
+        val s = b.getState(val::object());
+        if (s["written"].as<int>() >= 0) written++;
+        CHECK_EQ(s["settledCount"].as<int>(), written);
+    }
+    CHECK_EQ(written, 4);
+}
+
+static void testBucketClampsOutOfRange() {
+    beginTest("範囲の外の値は端に寄せる");
+
+    // 頻度配列に置き場が無いので、そのままでは数えられない
+    BucketSortVisualizer b;
+    checkOrder("端に寄せる", sortWith(b, "42 -5 3 100"), {0, 3, 9, 9});
+}
+
+static void testBucketLabelsAreTheIndices() {
+    beginTest("頻度配列の上に、添字 0〜9 の見出しが出る");
+
+    BucketSortVisualizer b;
+    val s = b.getState(val::object());
+    val labels = s["labels"];
+    CHECK_EQ(labels["length"].as<int>(), BucketSortVisualizer::RANGE);
+    CHECK_EQ(std::string(labels[0]["text"].as<std::string>()), std::string("0"));
+    CHECK_EQ(std::string(labels[9]["text"].as<std::string>()), std::string("9"));
+    // 見出しの x は、その添字のマスの x と揃う
+    int slot = bucketCountStart(s) + 5;
+    CHECK_NEAR(labels[5]["x"].as<float>(),
+               s["nodes"][(std::size_t)slot * GraphData::NODE_STRIDE].as<float>(), 0.01f);
+}
+
+static void testBucketRandomAllowsDuplicates() {
+    beginTest("ランダム生成は同じ値が混ざる");
+
+    // 20 個を 0〜9 から選ぶ。重複しない生成では作れない数
+    BucketSortVisualizer b;
+    bool duplicated = false;
+    for (int trial = 0; trial < 20 && !duplicated; trial++) {
+        b.load("genRandom", "20");
+        std::vector<int> vs = readArray(b);
+        std::sort(vs.begin(), vs.end());
+        duplicated = std::adjacent_find(vs.begin(), vs.end()) != vs.end();
+    }
+    CHECK(duplicated);
+}
+
 // ==========================================
 
 int main(int argc, char** argv) {
@@ -5213,6 +5396,14 @@ int main(int argc, char** argv) {
     testQuickSplitsAroundThePivot();
     testQuickTakesEmptyRangesToo();
     testMergeProducesSortedRuns();
+    testBucketCountsEveryValue();
+    testBucketCountsMoreValuesThanTheRange();
+    testBucketExpandsVisitingEveryIndex();
+    testBucketNeverCompares();
+    testBucketSettlesAsItWrites();
+    testBucketClampsOutOfRange();
+    testBucketLabelsAreTheIndices();
+    testBucketRandomAllowsDuplicates();
     testMergeUsesTheWorkRow();
     testInsertionHoldsTheValueInTheHole();
     testShakerCarriesASmallValueLeftInOneScan();

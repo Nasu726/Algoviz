@@ -272,6 +272,39 @@ const MergeHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
     </>
 );
 
+const BucketHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
+    <>
+        <Screen>
+            <li><b>下の段が頻度配列</b>。上に書いてある数がその添字で、マスの中が頻度</li>
+            <li>数えた値は配列のマスから消え、展開すると戻ってくる</li>
+            <li>赤色が今見ている頻度。緑色が今増やした頻度、または書き出した値</li>
+            <li>灰色は位置が確定した値</li>
+        </Screen>
+
+        <h3>2. 2つの局面</h3>
+        <ul>
+            <li><b>数える</b>：配列の左から1つ見て、その値の頻度を +1</li>
+            <li><b>展開する</b>：頻度配列を左から1つずつ見て、頻度のぶんだけその添字を
+                配列へ書き出す。頻度が 0 の添字も1手かけて見る</li>
+        </ul>
+
+        <h3>3. 比べる手が無い</h3>
+        <p>
+            どの手でも2つの値を比べていません。値そのものが頻度配列の置き場を決めます。
+            同じ値がいくつあっても、頻度が1つ増えるだけです。
+        </p>
+
+        <h3>4. 値の範囲</h3>
+        <p>
+            値は <b>0〜9</b> です。頻度配列は値の数だけ横に並ぶので、画面で数字が
+            読める幅に絞ってあります。外れた値は端に寄せます。
+            ランダム生成は同じ値が混ざるように作ります。
+        </p>
+
+        <Common maxValues={maxValues} sample="7 3 9 7 0 2 3 5 7 1" heading={5} />
+    </>
+);
+
 // 探すページ用。値の入れ方の言葉が並べ替えとは違う
 const SearchCommon: React.FC<{ maxValues: number; sample: string; heading: number;
                                sortedNote?: boolean }> =
@@ -439,6 +472,7 @@ export const ArrayHelp: React.FC<{ variant: ArrayVariant; maxValues: number }> =
         : variant === 'linear' ? <LinearHelp maxValues={maxValues} />
         : variant === 'binary' ? <BinaryHelp maxValues={maxValues} />
         : variant === 'merge' ? <MergeHelp maxValues={maxValues} />
+        : variant === 'bucket' ? <BucketHelp maxValues={maxValues} />
         : variant === 'quick' ? <QuickHelp maxValues={maxValues} />
         : variant === 'selection' ? <SelectionHelp maxValues={maxValues} />
         : variant === 'insertion' ? <InsertionHelp maxValues={maxValues} />

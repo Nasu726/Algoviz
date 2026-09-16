@@ -79,7 +79,7 @@ export const ArraySetupPanel: React.FC<Props> = ({
                     ? (deque
                         ? `pushL / pushR に続けて値、popL / popR と書きます。上限は ${maxValues} 個です。`
                         : `push に続けて値、pop と書きます。上限は ${maxValues} 個です。`)
-                    : `値は左から順に並びます。上限は ${maxValues} 個です。${variant === 'binary' ? ' ランダム生成は昇順で作ります。' : ''}`}
+                    : `値は左から順に並びます。上限は ${maxValues} 個です。${variant === 'binary' ? ' ランダム生成は昇順で作ります。' : ''}${variant === 'bucket' ? ' 値は 0〜9 です (外れた値は端に寄せます)。' : ''}`}
             </p>
         </div>
     );
