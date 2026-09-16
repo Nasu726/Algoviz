@@ -5002,168 +5002,137 @@ static void testDequeHandlesEmptyInput() {
 // バケットソート
 // ==========================================
 
-// バケット b の中身を左から読む。節点の番号は 配列の数 × (b + 1) から
-static std::vector<int> readBucket(BucketSortVisualizer& b, int bucket) {
+// 頻度配列を読む。節点は RANGE から RANGE 個
+static std::vector<int> readCounts(BucketSortVisualizer& b) {
     val s = b.getState(val::object());
-    int n = s["rowSize"].as<int>();
-    int count = s["bucketFill"][bucket].as<int>();
     val nodes = s["nodes"];
     std::vector<int> out;
-    for (int i = 0; i < count; i++) {
-        out.push_back((int)nodes[(std::size_t)(n * (bucket + 1) + i) * GraphData::NODE_STRIDE + 2]
-                          .as<float>());
+    for (int v = 0; v < BucketSortVisualizer::RANGE; v++) {
+        out.push_back((int)nodes[(std::size_t)(BucketSortVisualizer::RANGE + v) *
+                                 GraphData::NODE_STRIDE + 2].as<float>());
     }
     return out;
 }
 
-static int drawnCount(BucketSortVisualizer& b) {
-    val s = b.getState(val::object());
-    return s["nodeCount"].as<int>() - s["hiddenSlots"]["length"].as<int>();
+static void testBucketCountsEveryValue() {
+    beginTest("数え終えると、頻度配列が値ごとの個数になる");
+
+    BucketSortVisualizer b;
+    b.load("setValues", "7 3 9 7 0 2 3 5 7 1");
+    for (int i = 0; i < 10; i++) {
+        b.step();
+        val s = b.getState(val::object());
+        CHECK_EQ(s["countedTotal"].as<int>(), i + 1);
+        CHECK_EQ(s["emptySlots"]["length"].as<int>(), i + 1); // 数えたマスは空く
+    }
+    std::vector<int> counts = readCounts(b);
+    std::vector<int> want(BucketSortVisualizer::RANGE, 0);
+    want[7] = 3; want[3] = 2; want[9] = 1; want[0] = 1; want[2] = 1; want[5] = 1; want[1] = 1;
+    checkOrder("頻度", counts, want);
+    CHECK_EQ(std::string(b.getState(val::object())["phase"].as<std::string>()),
+             std::string("count"));
 }
 
-static void testBucketScattersByRange() {
-    beginTest("配ったあと、各値は値の範囲のバケットに居る");
+static void testBucketExpandsVisitingEveryIndex() {
+    beginTest("展開は頻度配列を左から1つずつ見て、頻度 0 の添字も1手かける");
 
-    // 範囲を間違えると、集めたときに並ばない
+    // 見た添字を飛ばすと、走査していることが分からない
     BucketSortVisualizer b;
-    b.load("setValues", "42 7 88 23 65 51 19 94 36 70");
-    for (int i = 0; i < 10; i++) b.step(); // 10個を配り終える
+    b.load("setValues", "7 3 7");
+    for (int i = 0; i < 3; i++) b.step(); // 数える
 
-    val s = b.getState(val::object());
-    CHECK_EQ(std::string(s["phase"].as<std::string>()), std::string("scatter"));
-    for (int bucket = 0; bucket < BucketSortVisualizer::BUCKETS; bucket++) {
-        for (int v : readBucket(b, bucket)) {
-            g_checks++;
-            if (v / BucketSortVisualizer::BUCKET_WIDTH != bucket) {
-                reportFailure(std::to_string(v) + " がバケット " + std::to_string(bucket) +
-                              " に入っている");
-            }
+    int zeros = 0, writes = 0, lastAt = -1;
+    std::vector<int> outOrder;
+    while (b.step()) {
+        val s = b.getState(val::object());
+        int at = s["expandAt"].as<int>();
+        g_checks++;
+        if (at >= 0 && at < lastAt) reportFailure("添字が戻った");
+        if (at >= 0) lastAt = at;
+        if (s["sawZero"].as<bool>()) zeros++;
+        if (s["written"].as<int>() >= 0) { writes++; outOrder.push_back(s["written"].as<int>()); }
+    }
+    CHECK_EQ(writes, 3);
+    CHECK_EQ(zeros, BucketSortVisualizer::RANGE - 2); // 3 と 7 以外の 8 個
+    checkOrder("書き出した順", outOrder, {3, 7, 7});
+    checkOrder("配列", readArray(b), {3, 7, 7});
+}
+
+static void testBucketNeverCompares() {
+    beginTest("比べる手が1つも無い");
+
+    // 入れ替えが起きたら、それは比較で並べている
+    BucketSortVisualizer b;
+    b.load("setValues", "9 3 1 7 5 1 9 5 5 5");
+    int steps = 0;
+    while (steps < 500 && b.step()) {
+        steps++;
+        val s = b.getState(val::object());
+        g_checks++;
+        if (s["swapped"].as<bool>() && (s["counted"].as<int>() < 0 && s["written"].as<int>() < 0)) {
+            reportFailure("値を入れ替えている");
+            break;
         }
     }
-    // 入れた順のまま並んでいる (まだ並べていない)
-    checkOrder("40–59", readBucket(b, 2), {42, 51});
-    checkOrder("0–19", readBucket(b, 0), {7, 19});
+    // 手数は 数える n + 展開で見る添字 RANGE + 書き出し n - 頻度 0 でない添字の数
+    // = 10 + 10 + 10 - 5 = 25 (違う値は 1 3 5 7 9 の 5 種類)
+    CHECK_EQ(steps, 25);
 }
 
-static void testBucketSortsEachBucketByInsertion() {
-    beginTest("バケットの中は挿入ソートの3手で並ぶ");
+static void testBucketSettlesAsItWrites() {
+    beginTest("書き出した範囲が左から確定していく");
 
-    // 3個が逆順に入ったバケット。取り出す3 / ずらす3 / 差し込む3 の9手
     BucketSortVisualizer b;
-    b.load("setValues", "9 5 1");
-    for (int i = 0; i < 3; i++) b.step(); // 配る
-    checkOrder("配った直後", readBucket(b, 0), {9, 5, 1});
+    b.load("setValues", "2 0 2 1");
+    for (int i = 0; i < 4; i++) b.step();
+    int settledBefore = b.getState(val::object())["settledCount"].as<int>();
+    CHECK_EQ(settledBefore, 0);
 
-    int lifts = 0, shifts = 0, drops = 0;
-    for (int i = 0; i < 9; i++) {
-        b.step();
+    int written = 0;
+    while (b.step()) {
         val s = b.getState(val::object());
-        if (s["droppedAt"].as<int>() >= 0) drops++;
-        else if (s["swapped"].as<bool>()) shifts++;
-        else if (s["holeIndex"].as<int>() >= 0) lifts++;
+        if (s["written"].as<int>() >= 0) written++;
+        CHECK_EQ(s["settledCount"].as<int>(), written);
     }
-    CHECK_EQ(lifts, 3);
-    CHECK_EQ(shifts, 3);
-    CHECK_EQ(drops, 3);
-    checkOrder("並べたあと", readBucket(b, 0), {1, 5, 9});
-    CHECK_EQ(std::string(b.getState(val::object())["phase"].as<std::string>()),
-             std::string("sort"));
+    CHECK_EQ(written, 4);
 }
 
-static void testBucketVisitsEmptyBucketsToo() {
-    beginTest("空のバケットも1手かけて見る");
+static void testBucketClampsOutOfRange() {
+    beginTest("範囲の外の値は端に寄せる");
 
-    // ループは全部のバケットを訪れる。飛ばすと「見た」ことが分からない
+    // 頻度配列に置き場が無いので、そのままでは数えられない
     BucketSortVisualizer b;
-    b.load("setValues", "42 45"); // 40–59 だけに入る
-    for (int i = 0; i < 2; i++) b.step();
-
-    int emptyVisits = 0, sortMoves = 0;
-    while (true) {
-        b.step();
-        val s = b.getState(val::object());
-        if (std::string(s["phase"].as<std::string>()) != "sort") break;
-        if (s["visitedEmpty"].as<bool>()) emptyVisits++;
-        else sortMoves++;
-    }
-    CHECK_EQ(emptyVisits, BucketSortVisualizer::BUCKETS - 1);
-    CHECK_EQ(sortMoves, 4); // 2個: 取り出す / 差し込む が2回ずつ
+    checkOrder("端に寄せる", sortWith(b, "42 -5 3 100"), {0, 3, 9, 9});
 }
 
-static void testBucketGathersInBucketOrder() {
-    beginTest("バケット順に集め、戻した範囲が確定していく");
+static void testBucketLabelsAreTheIndices() {
+    beginTest("頻度配列の上に、添字 0〜9 の見出しが出る");
 
     BucketSortVisualizer b;
-    b.load("setValues", "88 7 42");
-    // 配る3 + 見る (0–19: 2手, 20–39: 空, 40–59: 2手, 60–79: 空, 80–99: 2手) 8 = 11
-    for (int i = 0; i < 11; i++) b.step();
-
-    std::vector<int> gathered;
-    for (int i = 0; i < 3; i++) {
-        b.step();
-        val s = b.getState(val::object());
-        CHECK(s["gathered"].as<bool>());
-        CHECK_EQ(s["settledCount"].as<int>(), i + 1);
-        gathered.push_back(s["bucket"].as<int>());
-    }
-    checkOrder("集めたバケットの順", gathered, {0, 2, 4});
-    checkOrder("配列", readArray(b), {7, 42, 88});
-    CHECK(b.getState(val::object())["finished"].as<bool>());
-}
-
-static void testBucketDrawsOnlyHeldCells() {
-    beginTest("描かれるマスは、配列の数とバケットに入っている数の和");
-
-    // 空のマスを先に並べると、バケットの大きさが決まっているように見える
-    BucketSortVisualizer b;
-    b.load("setValues", "42 7 88 23");
-    CHECK_EQ(drawnCount(b), 4); // 配列だけ
-    for (int i = 1; i <= 4; i++) {
-        b.step();
-        CHECK_EQ(drawnCount(b), 4 + i); // 配列 (空の箱も描く) + 配った数
-    }
-}
-
-static void testBucketMovesOnlyTheValue() {
-    beginTest("配るとき、動くのは値だけで空いたマスは動かない");
-
-    // 座標まで入れ替えると、空の箱がバケットの位置から戻ってくるように見える
-    BucketSortVisualizer b;
-    b.load("setValues", "42 7");
-    val before = b.getState(val::object());
-    float cellX = stateX(before, 0);
-    float cellY = before["nodes"][1].as<float>();
-
-    b.step(); // 42 を 40–59 へ
-    val after = b.getState(val::object());
-    CHECK_NEAR(stateX(after, 0), cellX, 0.01f);              // 元のマスはその場
-    CHECK_NEAR(after["nodes"][1].as<float>(), cellY, 0.01f);
-    int dest = 2 * 3; // 配列2つ。バケット 40–59 (3段目) の先頭
-    CHECK_NEAR(stateX(after, dest), cellX, 0.01f);           // 値は元のマスの位置から動き出す
-}
-
-static void testBucketLabelsShowTheRanges() {
-    beginTest("段の左に、バケットの範囲が5つ出る");
-
-    BucketSortVisualizer b;
-    val labels = b.getState(val::object())["labels"];
-    CHECK_EQ(labels["length"].as<int>(), BucketSortVisualizer::BUCKETS);
-    CHECK_EQ(std::string(labels[0]["text"].as<std::string>()), std::string("0–19"));
-    CHECK_EQ(std::string(labels[4]["text"].as<std::string>()), std::string("80–99"));
-    // 段の y と揃っている (2段目のバケットの先頭 = 節点 2 * rowSize)
     val s = b.getState(val::object());
-    int n = s["rowSize"].as<int>();
-    CHECK_NEAR(labels[1]["y"].as<float>(), s["nodes"][(std::size_t)(2 * n) * GraphData::NODE_STRIDE + 1].as<float>(), 0.01f);
+    val labels = s["labels"];
+    CHECK_EQ(labels["length"].as<int>(), BucketSortVisualizer::RANGE);
+    CHECK_EQ(std::string(labels[0]["text"].as<std::string>()), std::string("0"));
+    CHECK_EQ(std::string(labels[9]["text"].as<std::string>()), std::string("9"));
+    // 見出しの x は、その添字のマスの x と揃う
+    int slot = BucketSortVisualizer::RANGE + 5;
+    CHECK_NEAR(labels[5]["x"].as<float>(),
+               s["nodes"][(std::size_t)slot * GraphData::NODE_STRIDE].as<float>(), 0.01f);
 }
 
-static void testBucketSortsSkewedInput() {
-    beginTest("偏った入力でも並ぶ (全部が1つのバケットに入る)");
+static void testBucketRandomAllowsDuplicates() {
+    beginTest("ランダム生成は同じ値が混ざる");
 
-    // バケットの中を並べ忘れると、ここで初めて崩れる
+    // 20 個を 0〜9 から選ぶ。重複しない生成では作れない数
     BucketSortVisualizer b;
-    checkOrder("全部 0–19", sortWith(b, "19 3 11 7 15 1 9 5"), {1, 3, 5, 7, 9, 11, 15, 19});
-    BucketSortVisualizer c;
-    checkOrder("端の外", sortWith(c, "150 -5 99 0"), {-5, 0, 99, 150}); // 範囲外は端のバケット
+    bool duplicated = false;
+    for (int trial = 0; trial < 20 && !duplicated; trial++) {
+        b.load("genRandom", "20");
+        std::vector<int> vs = readArray(b);
+        std::sort(vs.begin(), vs.end());
+        duplicated = std::adjacent_find(vs.begin(), vs.end()) != vs.end();
+    }
+    CHECK(duplicated);
 }
 
 // ==========================================
@@ -5384,14 +5353,13 @@ int main(int argc, char** argv) {
     testQuickSplitsAroundThePivot();
     testQuickTakesEmptyRangesToo();
     testMergeProducesSortedRuns();
-    testBucketScattersByRange();
-    testBucketSortsEachBucketByInsertion();
-    testBucketVisitsEmptyBucketsToo();
-    testBucketGathersInBucketOrder();
-    testBucketDrawsOnlyHeldCells();
-    testBucketMovesOnlyTheValue();
-    testBucketLabelsShowTheRanges();
-    testBucketSortsSkewedInput();
+    testBucketCountsEveryValue();
+    testBucketExpandsVisitingEveryIndex();
+    testBucketNeverCompares();
+    testBucketSettlesAsItWrites();
+    testBucketClampsOutOfRange();
+    testBucketLabelsAreTheIndices();
+    testBucketRandomAllowsDuplicates();
     testMergeUsesTheWorkRow();
     testInsertionHoldsTheValueInTheHole();
     testShakerCarriesASmallValueLeftInOneScan();

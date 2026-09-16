@@ -67,14 +67,10 @@ const statusOf = (variant: ArrayVariant, state: GraphState | null): string => {
         return '基準の値と比べています';
     }
     if (variant === 'bucket') {
-        const range = (state?.labels ?? [])[state?.bucket ?? -1]?.text ?? '';
-        if (state?.scattered) return `${range} のバケットへ入れました`;
-        if (state?.visitedEmpty) return `${range} のバケットは空でした`;
-        if (state?.gathered) return `${range} のバケットから配列へ戻しました`;
-        if ((state?.droppedAt ?? -1) >= 0) return '入る場所が見つかったので差し込みました';
-        if (state?.swapped) return '左隣の方が大きいので、右へずらしました';
-        if ((state?.heldValue ?? -1) >= 0) return '次の値を取り出しました';
-        return '配列の左から順に、値の範囲のバケットへ配ります';
+        if ((state?.counted ?? -1) >= 0) return `${state?.counted} を数えました (頻度 +1)`;
+        if ((state?.written ?? -1) >= 0) return `${state?.written} を配列へ書き出しました`;
+        if (state?.sawZero) return `${state?.expandAt} の頻度は 0 なので、何も書きません`;
+        return '配列の左から順に、値を数えます';
     }
     if (variant === 'merge') {
         if (state?.leafRange) return '1つ以下になったので、この範囲は並んでいます';
@@ -169,15 +165,8 @@ export const ArrayPanel: React.FC<Props> = ({
                     )}
                     {variant === 'bucket' && (
                         <div>
-                            <b>バケットの中身</b>:{' '}
-                            {(state?.bucketFill ?? []).map((n, i) => (
-                                <span key={i} style={{ marginRight: '8px' }}>
-                                    <span style={{ color: '#90a4ae' }}>
-                                        {(state?.labels ?? [])[i]?.text}
-                                    </span>
-                                    {' '}{n}
-                                </span>
-                            ))}
+                            <b>数えた個数</b>: {state?.countedTotal ?? 0}
+                            <span style={{ color: '#90a4ae' }}> / {total}</span>
                         </div>
                     )}
                 </>
@@ -231,9 +220,8 @@ export const ArrayPanel: React.FC<Props> = ({
                 </>
             ) : variant === 'bucket' ? (
                 <>
-                    <Swatch color={NODE_STROKE[6]} label="今並べているバケット" />
-                    <Swatch color={NODE_STROKE[2]} label="取り出して空いたマス" />
-                    <Swatch color={NODE_STROKE[4]} label="動かした値" />
+                    <Swatch color={NODE_STROKE[2]} label="今見ている頻度" />
+                    <Swatch color={NODE_STROKE[4]} label="今増やした頻度 / 書き出した値" />
                 </>
             ) : (
                 <>

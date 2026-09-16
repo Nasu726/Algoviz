@@ -63,8 +63,8 @@ export const defaultValues: Record<ArrayVariant, string> = {
     shaker: '2 3 4 5 6 7 8 1',
     quick: '5 2 9 1 7 3 8 4',
     merge: '5 2 9 1 7 3 8 4',
-    // 範囲に散らばる並び。全部が 0–19 だとバケットの意味が見えない
-    bucket: '42 7 88 23 65 51 19 94 36 70',
+    // 同じ値を混ぜてある。頻度が 2 以上になるところが見どころ
+    bucket: '7 3 9 7 0 2 3 5 7 1',
     linear: '5 2 9 1 7 3 8 4',
     // 二分探索は並んでいることが前提
     binary: '1 2 3 4 5 7 8 9',

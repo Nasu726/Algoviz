@@ -132,8 +132,8 @@ export interface GraphState {
     hiddenSlots?: number[];
     /** 画面に収める範囲 [minX, minY, maxX, maxY]。節点の目標の座標で決める */
     viewBounds?: number[];
-    /** 節点に属さない文字。世界座標で、右端を x に揃えて置く (バケットの範囲など) */
-    labels?: { x: number; y: number; text: string }[];
+    /** 節点に属さない文字。世界座標。既定は右端を x に揃え、center なら中央 (見出し) */
+    labels?: { x: number; y: number; text: string; align?: 'right' | 'center' }[];
     /** 配列そのものの長さ。作業用のマスはこの後ろに並ぶ */
     rowSize?: number;
     /** 選択ソート: 今のところ最小の値がある位置 / 次の手で入れ替えるか */
@@ -168,14 +168,16 @@ export interface GraphState {
     /** マージソート: まだ片付けていない仕事の数 */
     pendingTasks?: number;
 
-    /** バケットソート: 局面 / 直前の手を打ったバケット (-1 なら無し) / バケットごとの数 */
-    phase?: 'scatter' | 'sort' | 'gather';
-    bucket?: number;
-    bucketFill?: number[];
-    /** バケットソート: 直前の手が 配った / 集めた / 空のバケットを見た */
-    scattered?: boolean;
-    gathered?: boolean;
-    visitedEmpty?: boolean;
+    /** バケットソート: 局面 / 値の範囲 (0..range-1) */
+    phase?: 'count' | 'expand';
+    range?: number;
+    /** バケットソート: 直前の手で数えた値 / 書き出した値 (-1 なら無し) / 頻度 0 を見た */
+    counted?: number;
+    written?: number;
+    sawZero?: boolean;
+    /** バケットソート: 展開中に見ている添字 (-1 なら展開中でない) / 数え終えた数 */
+    expandAt?: number;
+    countedTotal?: number;
 
     /** 探索: 探す値 / 見つけた位置 (-1 なら見つかっていない) / 入力が昇順か */
     target?: number;

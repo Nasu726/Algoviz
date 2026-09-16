@@ -22,11 +22,6 @@ public:
     // 1段に並べる数。0 なら段に分けず全部を1列にする
     void setPerRow(int count) { perRow = count; }
 
-    // 段と段の間隔。段の中で値を持ち上げるもの (バケットソート) は、
-    // 持ち上げた値が上の段に重ならないだけ広く取る
-    void setRowGap(float gap) { rowGap = gap; }
-    float getRowGap() const { return rowGap; }
-
     // 場所を取らないマス。数が増減するもの (スタック / キュー / デック) が、
     // 使っていないマスを畳んで「今ある数だけ並んでいる」形にするために使う
     void setCollapsed(std::vector<char> mask) { collapsed = std::move(mask); }
@@ -37,7 +32,6 @@ public:
 
 private:
     int perRow = 0;
-    float rowGap = ROW_GAP;
     int outsideL = -1, outsideR = -1;
     std::vector<char> collapsed;
 
@@ -59,7 +53,7 @@ protected:
             int column = i % width;
             if (column == 0) x = 0.0f;
             float half = graph->halfWidthOf(i);
-            targetY[i] = (float)(i / width) * rowGap;
+            targetY[i] = (float)(i / width) * ROW_GAP;
 
             // 畳んだマスは場所を取らない。目標だけは今の位置に置いておく
             if (isCollapsed(i)) {

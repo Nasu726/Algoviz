@@ -2,141 +2,104 @@
 #include "ArrayVisualizer.hpp"
 #include "GraphColors.hpp"
 #include <algorithm>
+#include <sstream>
 #include <string>
 #include <vector>
 
 // バケットソートのビジュアライザ。
 //
-// **上の段が配列、その下がバケット。** 値の範囲でバケットが決まる。
-// 3つの局面を順にたどる。
+// **日本語で言うバケットソート**: 値ごとの置き場 (頻度配列) を用意し、値を数えて
+// から添字の順に展開する。比べる手は1つも無い。英語圏で counting sort と呼ばれる
+// もので、英語圏の bucket sort (範囲で分けて中を挿入ソート) とは別物。
+// このアプリは日本語 UI なので、名前は日本語の慣習に合わせる。
 //
-//   配る               … 配列の左から1つ取り、範囲のバケットの末尾へ移す
-//   バケットの中を並べる … バケットを順に見て、挿入ソートと同じ3手で並べる
-//                        (取り出す / ずらす / 差し込む)。空のバケットも1手かけて見る
-//   集める             … バケットを順に、先頭から配列へ戻す。戻した範囲が確定
+// **上の段が配列、下の段が頻度配列。** 頻度配列の添字がそのまま値で、上に見出しを
+// 書く。値の範囲は 0〜9 に絞る。頻度配列は値の数だけ横に並ぶので、これ以上広いと
+// 画面に収めたときに数字が読めなくなる。
 //
-// バケットの段は**入っている数だけ**マスが並ぶ。使っていないマスは描かない。
-// 段は左から詰めるので、畳んで場所を詰める必要は無い (デックと違う点)。
-// 配列の段は空いたマスを空の箱として残す。値がそこへ戻ってくるので、形は保っておく。
-//
-// 集めるときも、取ったマスは消すだけ。残りを左へ詰めると動いて見え、
-// 取った動きと紛れる。
+// 2つの局面を順にたどる。
+//   数える   … 配列の左から1つ見て、その値の頻度を +1。数えたマスは空く
+//   展開する … 頻度配列を左から1つずつ見て、頻度のぶんだけ値を配列へ書き出す。
+//              頻度が 0 の添字も1手かけて見る (ループは全部の添字を訪れる)
 class BucketSortVisualizer : public ArrayVisualizer {
 public:
-    // 値の上限が 99 なので、幅 20 のバケット5つで全部入る
-    static constexpr int BUCKETS = 5;
-    static constexpr int BUCKET_WIDTH = (MAX_VALUE + 1) / BUCKETS;
-
-    // 段の間隔。挿入ソートの持ち上げ (描画側の HELD_LIFT = 58) が上の段の箱に
-    // 重ならないだけ空ける: 58 + 箱の半分 20 < 100 - 20
-    static constexpr float ROW_GAP_TALL = 100.0f;
+    static constexpr int RANGE = 10; // 値は 0 〜 RANGE-1
 
 private:
-    enum Phase { Scatter, SortBuckets, Gather };
+    enum Phase { Count, Expand };
 
-    Phase phase = Scatter;
-    int next = 0;          // 配る: 次に取る配列の位置 / 集める: 次に戻す位置
-    int bucket = 0;        // 並べる / 集める: 今のバケット
-    int take = 0;          // 集める: 今のバケットの次に取る位置
-    std::vector<int> fill; // バケットごとの入っている数
-
-    // 挿入ソートの3手。hole は節点の番号、sortNext はバケットの中の位置
-    int sortNext = 0;
-    int hole = -1;
-    int held = -1;
-    int droppedAt = -1;
+    Phase phase = Count;
+    int next = 0;        // 数える: 次に見る配列の位置 / 展開する: 次に書く位置
+    int cursor = 0;      // 展開する: 今見ている頻度配列の添字
+    int remain = 0;      // 展開する: 今の添字であと何個書くか
+    bool looked = false; // 展開する: 今の添字を1手以上見たか
 
     // 直前の手が何だったか
-    int acted = -1;            // 手を打ったバケット。無ければ -1
-    bool scattered = false;
-    bool gathered = false;
-    bool visitedEmpty = false;
+    int counted = -1;     // 数えた値。無ければ -1
+    int written = -1;     // 書き出した値。無ければ -1
+    bool sawZero = false; // 頻度 0 の添字を見た
 
-    int slotOf(int b, int i) const { return rowSize() * (b + 1) + i; }
-    int bucketOf(int v) const { return std::clamp(v / BUCKET_WIDTH, 0, BUCKETS - 1); }
+    // 節点は [配列 0..n-1] [余り n..RANGE-1 (描かない)] [頻度 0..RANGE-1]。
+    // 1段の幅を RANGE に揃えると、頻度配列がちょうど2段目に並ぶ
+    int countSlot(int v) const { return RANGE + v; }
+    int countOf(int v) const { return valueAt(countSlot(v)); }
+    void setCount(int v, int c) { setValueAt(countSlot(v), c); }
 
-    // 集めるときに、そのバケットから取り終えた数
-    int takenOf(int b) const {
-        if (phase != Gather) return 0;
-        return b < bucket ? fill[b] : b == bucket ? take : 0;
-    }
+    // 範囲の外の値は端に寄せる。頻度配列に置き場が無い
+    static int clampValue(int v) { return std::clamp(v, 0, RANGE - 1); }
 
-    // そのマスを描くか。配列は常に、バケットは入っていてまだ取っていないものだけ
-    bool isDrawn(int node) const {
-        if (node < rowSize()) return true;
-        int b = node / rowSize() - 1, i = node % rowSize();
-        return i < fill[b] && i >= takenOf(b);
-    }
-
-    void scatterOne() {
+    void countOne() {
         int v = valueAt(next);
-        int b = bucketOf(v);
-        int dest = slotOf(b, fill[b]);
-        carryValue(next, dest); // 配列のマスが空く。動くのは値だけ
-        fill[b]++;
-        focusA = dest;
-        acted = b;
-        scattered = true;
+        setCount(v, countOf(v) + 1);
+        emptySlot[next] = 1; // 数えた値は頻度に吸われて、マスが空く
+        counted = v;
+        focusA = countSlot(v);
+        justSwapped = true; // 増えたマスを緑で塗る
         next++;
     }
 
-    // 挿入ソートと同じ3手を、今のバケットの中だけで打つ
-    void insertionMove() {
-        int base = slotOf(bucket, 0);
-        acted = bucket;
-
-        // 取り出す
-        if (hole < 0) {
-            hole = base + sortNext;
-            held = valueAt(hole);
-            return;
-        }
-
-        // 左隣の方が大きいので、それを右へずらして空きを左へ移す
-        if (hole > base && valueAt(hole - 1) > held) {
-            focusA = hole;
-            swapValues(hole, hole - 1);
-            hole--;
-            return;
-        }
-
-        // 左隣以上なので、ここが入る場所
-        droppedAt = hole;
-        hole = -1;
-        held = -1;
-        sortNext++;
-    }
-
-    void gatherOne() {
-        int src = slotOf(bucket, take);
-        carryValue(src, next);
+    void writeOne() {
+        setValueAt(next, cursor);
+        emptySlot[next] = 0;
+        setCount(cursor, countOf(cursor) - 1);
+        written = cursor;
         focusA = next;
-        acted = bucket;
-        gathered = true;
-        take++;
+        justSwapped = true;
+        remain--;
+        looked = true;
         next++;
         markSettled(0, next - 1);
-        if (next >= rowSize()) finished = true;
+    }
+
+    // 最後の添字まで見終えたら終わり。全部書き出していても、残りの添字は見る
+    // (ループは全部の添字を訪れる)
+    void finishIfLastIndex() {
+        if (cursor == RANGE - 1 && remain == 0) finished = true;
+    }
+
+    void enterCursor(int v) {
+        cursor = v;
+        remain = v < RANGE ? countOf(v) : 0;
+        looked = false;
     }
 
 protected:
-    // バケットの段は配列と同じ長さ (全部が1つのバケットに入ることがある)
-    int extraSlots() const override { return rowSize() * BUCKETS; }
+    // 1段目の余りと、頻度配列 RANGE 個
+    int extraSlots() const override { return (RANGE - rowSize()) + RANGE; }
 
-    void configureCells() override {
-        line->setPerRow(rowSize());
-        line->setRowGap(ROW_GAP_TALL);
-    }
+    void configureCells() override { line->setPerRow(RANGE); }
 
     void resetAlgorithm() override {
-        phase = Scatter;
-        next = bucket = take = 0;
-        fill.assign(BUCKETS, 0);
-        sortNext = 0;
-        hole = held = droppedAt = -1;
-        acted = -1;
-        scattered = gathered = visitedEmpty = false;
+        phase = Count;
+        next = 0;
+        cursor = remain = 0;
+        looked = false;
+        counted = written = -1;
+        sawZero = false;
         focusA = focusB = -1;
+        // 配列より後ろのマスは「空」ではない。余りは描かず、頻度は 0 が入っている
+        for (int i = rowSize(); i < (int)emptySlot.size(); i++) emptySlot[i] = 0;
+        for (int v = 0; v < RANGE; v++) setCount(v, 0);
         if (rowSize() <= 0) finished = true;
     }
 
@@ -144,114 +107,110 @@ protected:
         if (!graph) return;
         graph->resetColors();
         paintSettled();
-        // 今並べているバケット
-        if (!finished && phase == SortBuckets && bucket < BUCKETS) {
-            for (int i = 0; i < fill[bucket]; i++) {
-                graph->setNodeColor(slotOf(bucket, i), NODE_RANGE);
-            }
-        }
         paintFocus();
         if (finished) return;
-        if (hole >= 0) graph->setNodeColor(hole, NODE_VISITING);
-        if (droppedAt >= 0) graph->setNodeColor(droppedAt, NODE_PATH);
+        // 展開中に見ている添字
+        if (phase == Expand && cursor < RANGE) {
+            graph->setNodeColor(countSlot(cursor), NODE_VISITING);
+        }
+    }
+
+    bool handleCommand(const std::string& source, const std::string& input) override {
+        // 値を範囲に寄せてから受け取る
+        if (source == "setValues") {
+            values.clear();
+            std::istringstream iss(input);
+            int v;
+            while (iss >> v && (int)values.size() < MAX_VALUES) values.push_back(clampValue(v));
+            resetRun();
+            return true;
+        }
+        // 同じ値が何個あっても頻度が増えるだけ、を見せたいので重複を許す
+        if (source == "genRandom") {
+            int count = 12;
+            std::istringstream iss(input);
+            iss >> count;
+            count = std::clamp(count, 1, MAX_VALUES);
+            values.clear();
+            for (int i = 0; i < count; i++) values.push_back(randInt(RANGE));
+            resetRun();
+            return true;
+        }
+        return ArrayVisualizer::handleCommand(source, input);
     }
 
     bool advance() override {
         if (finished) return false;
-        acted = -1;
-        scattered = gathered = visitedEmpty = false;
-        droppedAt = -1;
+        counted = written = -1;
+        sawZero = false;
         focusA = focusB = -1;
 
         // 局面の切り替えは手を消費しない。見えることが起きる手まで進める
         for (;;) {
             switch (phase) {
-            case Scatter:
-                if (next < rowSize()) { scatterOne(); return true; }
-                phase = SortBuckets;
-                bucket = 0;
-                sortNext = 0;
+            case Count:
+                if (next < rowSize()) { countOne(); return true; }
+                phase = Expand;
+                next = 0;
+                enterCursor(0);
                 break;
 
-            case SortBuckets:
-                if (bucket >= BUCKETS) {
-                    phase = Gather;
-                    next = bucket = take = 0;
-                    break;
-                }
-                // 空のバケットも見る。ループは全部のバケットを訪れる
-                if (fill[bucket] == 0) {
-                    acted = bucket;
-                    visitedEmpty = true;
-                    bucket++;
-                    return true;
-                }
-                if (hole < 0 && sortNext >= fill[bucket]) {
-                    bucket++;
-                    sortNext = 0;
-                    break;
-                }
-                insertionMove();
-                return true;
-
-            case Gather:
-                if (bucket >= BUCKETS) {
-                    // 全部戻し終えている。gatherOne が finished を立てるので、
-                    // ここへ来るのは配列が空のときだけ
+            case Expand:
+                if (cursor >= RANGE) {
+                    // finishIfLastIndex が先に立てるので、ここへ来るのは配列が空のときだけ
                     finished = true;
                     syncVisuals();
                     return false;
                 }
-                if (take >= fill[bucket]) {
-                    bucket++;
-                    take = 0;
-                    break;
+                if (remain > 0) {
+                    writeOne();
+                    finishIfLastIndex();
+                    return true;
                 }
-                gatherOne();
-                return true;
+                if (!looked) {
+                    // 頻度 0 の添字を見る。何も書かないが、1手かける
+                    looked = true;
+                    sawZero = true;
+                    finishIfLastIndex();
+                    return true;
+                }
+                enterCursor(cursor + 1);
+                break;
             }
         }
     }
 
 public:
     BucketSortVisualizer() {
-        // 範囲に散らばる並び。全部が 0–19 だとバケットの意味が見えない
-        setValuesFrom("42 7 88 23 65 51 19 94 36 70");
+        // 同じ値を混ぜてある。頻度が 2 以上になるところが見どころ
+        setValuesFrom("7 3 9 7 0 2 3 5 7 1");
     }
 
     emscripten::val getState(emscripten::val params) override {
         emscripten::val state = ArrayVisualizer::getState(params);
 
-        state.set("phase", phase == Scatter ? "scatter" : phase == SortBuckets ? "sort" : "gather");
-        state.set("bucket", acted);
-        state.set("scattered", scattered);
-        state.set("gathered", gathered);
-        state.set("visitedEmpty", visitedEmpty);
+        state.set("phase", phase == Count ? "count" : "expand");
+        state.set("range", RANGE);
+        state.set("counted", counted);
+        state.set("written", written);
+        state.set("sawZero", sawZero);
+        state.set("expandAt", phase == Expand && !finished ? cursor : -1);
+        state.set("countedTotal", phase == Count ? next : rowSize());
 
-        // バケットに今入っている数。集めた分は減る
-        emscripten::val fills = emscripten::val::array();
-        for (int b = 0; b < BUCKETS; b++) fills.call<void>("push", fill[b] - takenOf(b));
-        state.set("bucketFill", fills);
-
-        // 持ち上げている値と空いたマス。描画側が段の上に浮かせる
-        state.set("heldValue", held);
-        state.set("holeIndex", hole);
-        state.set("droppedAt", droppedAt);
-
+        // 1段目の余りは無いものとして扱う
         emscripten::val hidden = emscripten::val::array();
-        for (int i = 0; graph && i < graph->nodeCount(); i++) {
-            if (!isDrawn(i)) hidden.call<void>("push", i);
-        }
+        for (int i = rowSize(); i < RANGE; i++) hidden.call<void>("push", i);
         state.set("hiddenSlots", hidden);
 
-        // 段の左に書く範囲。この段が何を指すかは画面に要る
+        // 頻度配列の見出し。添字がそのまま値
         emscripten::val labels = emscripten::val::array();
-        for (int b = 0; b < BUCKETS; b++) {
+        for (int v = 0; v < RANGE; v++) {
             emscripten::val l = emscripten::val::object();
-            l.set("x", -14.0f);
-            l.set("y", (float)(b + 1) * line->getRowGap());
-            l.set("text", std::to_string(b * BUCKET_WIDTH) + "–" +
-                          std::to_string((b + 1) * BUCKET_WIDTH - 1));
+            std::size_t o = (std::size_t)countSlot(v) * GraphData::NODE_STRIDE;
+            l.set("x", graph->nodeData[o]);
+            l.set("y", LineLayout::ROW_GAP - CELL_HALF_WIDTH - 12.0f);
+            l.set("text", std::to_string(v));
+            l.set("align", "center");
             labels.call<void>("push", l);
         }
         state.set("labels", labels);
