@@ -6,133 +6,90 @@
 #include <string>
 #include <vector>
 
-// 基数ソート (LSD) のビジュアライザ。
+// 基数ソート (LSD、2進) のビジュアライザ。
 //
-// 値は 0〜99 の2桁。**桁ごとに 1の位 → 10の位 の順で、2回まわす。** 1回は2つの局面。
-//   配る   … 配列の左から1つ取り、今の桁の値のバケットの下端へ移す
-//   集める … バケットを 0 から順に、上から1つずつ配列へ戻す。空のバケットも1手見る
+// 値は 0〜15 の 4 ビットで、**マスには2進で書く。** ビットごとに下から順に
+// 4 回まわす。1回は3つの局面で、**別配列に配置してから元に戻す**。
+//   数える   … 元の配列を左から見て、今のビットが 0 の値を数える
+//   配置する … 元の配列を左から見て、ビットが 0 なら別配列の前から、1 なら
+//              「0 の個数」の位置から後ろへ、それぞれ詰めて置く
+//   戻す     … 別配列を左から元の配列へ戻す
 //
-// 比べる手は無い。**安定**なのが見どころで、バケットは上から順に取るので、
-// 同じ桁の値どうしは入れた順のまま並ぶ。10の位でまわしても1の位の順が崩れない。
-// 全部1桁の入力でも2回まわす (ループは全部の桁を訪れる)。
+// 比べる手は無い。**安定**なのが見どころで、左から走査して前から詰めるので、
+// 同じビットの値どうしは入れた順のまま並ぶ。上のビットでまわしても、下のビットで
+// 決めた順が崩れない。全部の値が同じビットでも 4 回まわす (ループは全部のビットを
+// 訪れる)。
 //
-// **上の段が配列、その下に 0〜9 のバケットが列として並ぶ。** 節点は
-//   1段目:   [配列 0..n-1] [余り]
-//   k+1段目: 列 d の深さ k のマス = W*(k+1) + pad + d
-// 1段の幅 W は配列の数と 10 の大きい方。余りを両側に分けて列を配列の下の
-// 真ん中に置く。深さは最大 n。使っていないマスは描かない。
+// 1つの配列で済ませる方法 (radix exchange sort: 上のビットから両端で入れ替えて分ける)
+// は安定でない。安定に並べるには別の置き場が要るので、その形をそのまま見せる。
 //
-// 配列のマスは空の箱で残し、値だけ動かす (carryValue)。
+// 10進でなく2進なのは、桁の数が少ないほど「桁ごとに分ける」が読めるため。
+// 4 ビットなら文字がマスに収まる。
+//
+// **上の段が元の配列、下の段が別配列。** 値は carryValue で動かし、
+// 空いたマスは空の箱で残す (次の局面で戻ってくる)。
 class RadixSortVisualizer : public ArrayVisualizer {
 public:
     static constexpr int DIGITS = 4;   // ビットの数
-    static constexpr int BASE = 2;
     static constexpr int MAX_RADIX_VALUE = (1 << DIGITS) - 1; // 15
 
-    // 画面に収める深さの下限。バケットが深くなるたびに拡大率が変わると
-    // マスの大きさが安定しないので、はじめからこの段数ぶん取っておく
-    static constexpr int VIEW_MIN_DEPTH = 4;
-
 private:
-    enum Phase { Scatter, Gather };
+    enum Phase { Count, Place, CopyBack };
 
-    Phase phase = Scatter;
-    int pass = 0;          // 今の桁。0 が1の位
-    int next = 0;          // 配る: 次に取る位置 / 集める: 次に戻す位置
-    int bucket = 0;        // 集める: 今見ているバケット
-    int take = 0;          // 集める: そのバケットの次に取る位置
-    bool looked = false;   // 集める: 今のバケットを1手以上見たか
-    std::vector<int> fill; // バケットごとの数
+    Phase phase = Count;
+    int pass = 0;      // 今のビット。0 が下から1ビット目
+    int next = 0;      // 各局面で、次に見る元の配列 (戻すときは別配列) の位置
+    int zeros = 0;     // 数える: ここまでの 0 の数。配置する: 0 の個数 (= 1 を置き始める位置)
+    int putZero = 0;   // 配置する: 次に 0 を置く位置
+    int putOne = 0;    // 配置する: 次に 1 を置く位置
 
     // 直前の手が何だったか
-    int acted = -1;        // 手を打ったバケット。無ければ -1
-    bool scattered = false;
-    bool gathered = false;
-    bool sawEmpty = false;
+    int bit = -1;         // 見た / 置いた値のビット。無ければ -1
+    bool counted = false;
+    bool placed = false;
+    bool copied = false;
 
     static int clampValue(int v) { return std::clamp(v, 0, MAX_RADIX_VALUE); }
+    int bitOf(int v) const { return (v >> pass) & 1; }
+    int workOf(int i) const { return rowSize() + i; } // 別配列の同じ位置
 
-    int digitOf(int v) const {
-        int d = v;
-        for (int i = 0; i < pass; i++) d /= BASE;
-        return d % BASE;
-    }
-
-    int width() const { return std::max(rowSize(), BASE); }
-    int pad() const { return (width() - BASE) / 2; }
-    int slotOf(int d, int k) const { return width() * (k + 1) + pad() + d; }
-
-    // 今いちばん深いバケットの段。空なら 0 (配列の段だけ)
-    int deepest() const {
-        int d = 0;
-        for (int b = 0; b < BASE; b++) d = std::max(d, fill[b]);
-        return d;
-    }
-
-    // 集めるときに、そのバケットから取り終えた数
-    int takenOf(int b) const {
-        if (phase != Gather) return 0;
-        return b < bucket ? fill[b] : b == bucket ? take : 0;
-    }
-
-    bool isDrawn(int node) const {
-        if (node < rowSize()) return true;
-        int row = node / width(), col = node % width() - pad();
-        if (row < 1 || col < 0 || col >= BASE) return false;
-        int k = row - 1;
-        return k < fill[col] && k >= takenOf(col);
-    }
-
-    void scatterOne() {
-        int v = valueAt(next);
-        int d = digitOf(v);
-        int dest = slotOf(d, fill[d]);
-        carryValue(next, dest); // 配列のマスは空の箱で残る
-        fill[d]++;
-        focusA = dest;
-        acted = d;
-        scattered = true;
+    void countOne() {
+        bit = bitOf(valueAt(next));
+        if (bit == 0) zeros++;
+        focusA = next; // 見ている値。動かさないので赤
+        counted = true;
         next++;
     }
 
-    void gatherOne() {
-        int src = slotOf(bucket, take);
-        carryValue(src, next);
+    void placeOne() {
+        bit = bitOf(valueAt(next));
+        int dest = bit == 0 ? putZero++ : putOne++;
+        carryValue(next, workOf(dest)); // 元のマスは空の箱で残る
+        focusA = workOf(dest);
+        placed = true;
+        next++;
+    }
+
+    void copyOne() {
+        carryValue(workOf(next), next);
         focusA = next;
-        acted = bucket;
-        gathered = true;
-        looked = true;
-        take++;
+        copied = true;
+        // 最後のビットを戻しているときだけ、戻した範囲が確定
+        if (pass == DIGITS - 1) markSettled(0, next);
         next++;
-        // 最後の桁を集めているときだけ、戻した範囲が確定
-        if (pass == DIGITS - 1) markSettled(0, next - 1);
     }
-
-    void enterBucket(int b) {
-        bucket = b;
-        take = 0;
-        looked = false;
-    }
-
-    bool lastBucketOfLastPass() const { return bucket == BASE - 1 && pass == DIGITS - 1; }
 
 protected:
-    // 深さは最大 n。1段目の余りも含めて、2段目から n 段
-    int extraSlots() const override { return width() * (rowSize() + 1) - rowSize(); }
-
-    void configureCells() override { line->setPerRow(width()); }
+    // 下の段が別配列。長さは元と同じ
+    int extraSlots() const override { return rowSize(); }
 
     void resetAlgorithm() override {
-        phase = Scatter;
+        phase = Count;
         pass = 0;
-        next = 0;
-        fill.assign(BASE, 0);
-        enterBucket(0);
-        acted = -1;
-        scattered = gathered = sawEmpty = false;
+        next = zeros = putZero = putOne = 0;
+        bit = -1;
+        counted = placed = copied = false;
         focusA = focusB = -1;
-        // 配列より後ろのマスは空ではなく、描かないだけ
-        for (int i = rowSize(); i < (int)emptySlot.size(); i++) emptySlot[i] = 0;
         if (rowSize() <= 0) finished = true;
     }
 
@@ -140,7 +97,9 @@ protected:
         if (!graph) return;
         graph->resetColors();
         paintSettled();
-        paintFocus();
+        if (finished) return;
+        // 数えるときは見ただけ (赤)、置く / 戻すときは動かした (緑)
+        graph->setNodeColor(focusA, counted ? NODE_VISITING : NODE_PATH);
     }
 
     bool handleCommand(const std::string& source, const std::string& input) override {
@@ -169,50 +128,42 @@ protected:
 
     bool advance() override {
         if (finished) return false;
-        acted = -1;
-        scattered = gathered = sawEmpty = false;
+        bit = -1;
+        counted = placed = copied = false;
         focusA = focusB = -1;
 
-        // 局面の切り替えは手を消費しない。見えることが起きる手まで進める
+        // 局面の切り替えは手を消費しない
         for (;;) {
+            if (next < rowSize()) {
+                switch (phase) {
+                case Count:    countOne(); return true;
+                case Place:    placeOne(); return true;
+                case CopyBack: copyOne();
+                    if (next >= rowSize() && pass == DIGITS - 1) finished = true;
+                    return true;
+                }
+            }
+            // この局面を終えた
+            next = 0;
             switch (phase) {
-            case Scatter:
-                if (next < rowSize()) { scatterOne(); return true; }
-                phase = Gather;
-                next = 0;
-                enterBucket(0);
+            case Count:
+                phase = Place;
+                putZero = 0;
+                putOne = zeros; // 1 は 0 の後ろから
                 break;
-
-            case Gather:
-                if (bucket >= BASE) {
-                    // この桁を集め終えた。次の桁へ。全部の桁を見たら終わり
-                    // (最後の桁の最後のバケットで finished を立てるので、
-                    //  ここへ来るのは配列が空のときだけ)
-                    pass++;
-                    if (pass >= DIGITS) {
-                        finished = true;
-                        syncVisuals();
-                        return false;
-                    }
-                    phase = Scatter;
-                    next = 0;
-                    fill.assign(BASE, 0);
-                    break;
+            case Place:
+                phase = CopyBack;
+                break;
+            case CopyBack:
+                pass++;
+                if (pass >= DIGITS) {
+                    // 最後の戻すで finished を立てるので、ここへ来るのは配列が空のときだけ
+                    finished = true;
+                    syncVisuals();
+                    return false;
                 }
-                if (take < fill[bucket]) {
-                    gatherOne();
-                    if (take >= fill[bucket] && lastBucketOfLastPass()) finished = true;
-                    return true;
-                }
-                if (!looked) {
-                    // 空のバケットを見る。何も動かないが、1手かける
-                    looked = true;
-                    sawEmpty = true;
-                    acted = bucket;
-                    if (lastBucketOfLastPass()) finished = true;
-                    return true;
-                }
-                enterBucket(bucket + 1);
+                phase = Count;
+                zeros = 0;
                 break;
             }
         }
@@ -229,44 +180,17 @@ public:
 
         state.set("pass", pass);
         state.set("digits", DIGITS);
-        state.set("phase", phase == Scatter ? "scatter" : "gather");
-        state.set("bucket", acted);
-        state.set("scattered", scattered);
-        state.set("gathered", gathered);
-        state.set("sawEmpty", sawEmpty);
+        state.set("phase", phase == Count ? "count" : phase == Place ? "place" : "copy");
+        state.set("bit", bit);
+        state.set("zeros", zeros);
+        state.set("looked", counted);
+        state.set("placed", placed);
+        state.set("copied", copied);
 
         // 値は常に 4 ビットの2進で書き、今のビットに下線を引く
-        state.set("digitBase", BASE);
+        state.set("digitBase", 2);
         state.set("digitCount", DIGITS);
         state.set("digitFocus", finished ? -1 : pass);
-
-        emscripten::val hidden = emscripten::val::array();
-        for (int i = 0; graph && i < graph->nodeCount(); i++) {
-            if (!isDrawn(i)) hidden.call<void>("push", i);
-        }
-        state.set("hiddenSlots", hidden);
-
-        // 列の見出し 0 と 1。集めるときに見ている列は赤
-        int looking = (phase == Gather && !finished && bucket < BASE) ? bucket : -1;
-        emscripten::val labels = emscripten::val::array();
-        for (int d = 0; d < BASE; d++) {
-            emscripten::val l = emscripten::val::object();
-            l.set("x", line->targetXOf(slotOf(d, 0)));
-            l.set("y", LineLayout::ROW_GAP - CELL_HALF_WIDTH - 12.0f);
-            l.set("text", std::to_string(d));
-            l.set("align", "center");
-            if (d == looking) l.set("color", 0xe74c3c);
-            labels.call<void>("push", l);
-        }
-        state.set("labels", labels);
-
-        // 深さ n の段まで節点があるので、今使っている段までを画面に収める
-        emscripten::val bounds = emscripten::val::array();
-        bounds.call<void>("push", line->targetXOf(0));
-        bounds.call<void>("push", 0.0f);
-        bounds.call<void>("push", line->targetXOf(width() - 1));
-        bounds.call<void>("push", (float)std::max(deepest(), VIEW_MIN_DEPTH) * LineLayout::ROW_GAP);
-        state.set("viewBounds", bounds);
         return state;
     }
 };

@@ -442,18 +442,15 @@ export class PixiGraphApp {
 
     // 節点に属さない文字を置き直す。既定は右端を x に揃える (段の左に書く用途)。
     // 見出しとして列の上に置くときは中央に揃える
-    private updateLabels(labels: { x: number; y: number; text: string; align?: string;
-                                   color?: number }[]) {
-        const key = labels.map((l) => `${l.x},${l.y},${l.text},${l.align ?? ''},${l.color ?? ''}`)
-                          .join('|');
+    private updateLabels(labels: { x: number; y: number; text: string; align?: string }[]) {
+        const key = labels.map((l) => `${l.x},${l.y},${l.text},${l.align ?? ''}`).join('|');
         if (key === this.labelKey) return;
         this.labelKey = key;
 
         this.labelLayer.removeChildren().forEach((c) => c.destroy());
         for (const l of labels) {
             const t = new PIXI.Text({
-                text: l.text,
-                style: { fontSize: 14, fill: l.color ?? 0x546e7a, fontWeight: 'bold' },
+                text: l.text, style: { fontSize: 14, fill: 0x546e7a, fontWeight: 'bold' },
             });
             t.anchor.set(l.align === 'center' ? 0.5 : 1, 0.5);
             t.position.set(l.x, l.y);

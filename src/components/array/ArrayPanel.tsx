@@ -68,11 +68,14 @@ const statusOf = (variant: ArrayVariant, state: GraphState | null): string => {
     }
     if (variant === 'radix') {
         const place = `下から ${(state?.pass ?? 0) + 1} ビット目`;
-        const b = state?.bucket ?? -1;
-        if (state?.scattered) return `${place}が ${b} なので、${b} のバケットへ入れました`;
-        if (state?.gathered) return `${b} のバケットから配列へ戻しました`;
-        if (state?.sawEmpty) return `${b} のバケットは空です`;
-        return `${place}で配ります`;
+        const bit = state?.bit ?? -1;
+        if (state?.looked) return bit === 0 ? `${place}が 0 なので数えました` : `${place}は 1 です`;
+        if (state?.placed) {
+            return bit === 0 ? '0 なので、別配列の前から詰めて置きました'
+                             : '1 なので、別配列の 0 の後ろから詰めて置きました';
+        }
+        if (state?.copied) return '別配列から元の配列へ戻しました';
+        return `${place}が 0 の値を数えます`;
     }
     if (variant === 'bucket') {
         if ((state?.counted ?? -1) >= 0) return `${state?.counted} を数えました (頻度 +1)`;
@@ -183,6 +186,8 @@ export const ArrayPanel: React.FC<Props> = ({
                             <span style={{ color: '#90a4ae' }}>
                                 {' '}({(state?.pass ?? 0) + 1} / {state?.digits ?? 4} 回目)
                             </span>
+                            <br />
+                            <b>0 の個数</b>: {state?.zeros ?? 0}
                         </div>
                     )}
                 </>
@@ -242,7 +247,7 @@ export const ArrayPanel: React.FC<Props> = ({
             ) : variant === 'radix' ? (
                 <>
                     <Swatch color={NODE_STROKE[1]} label="今のビット (下線)" />
-                    <Swatch color={NODE_STROKE[2]} label="今見ているバケット (見出し)" />
+                    <Swatch color={NODE_STROKE[2]} label="今見ている値" />
                     <Swatch color={NODE_STROKE[4]} label="動かした値" />
                 </>
             ) : (

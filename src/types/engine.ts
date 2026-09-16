@@ -133,7 +133,7 @@ export interface GraphState {
     /** 画面に収める範囲 [minX, minY, maxX, maxY]。節点の目標の座標で決める */
     viewBounds?: number[];
     /** 節点に属さない文字。世界座標。既定は右端を x に揃え、center なら中央 (見出し) */
-    labels?: { x: number; y: number; text: string; align?: 'right' | 'center'; color?: number }[];
+    labels?: { x: number; y: number; text: string; align?: 'right' | 'center' }[];
     /** 値を何桁で書くか (0 埋め) と基数。下線を引く桁 (右から 0 始まり、-1 なら無し) */
     digitCount?: number;
     digitBase?: number;
@@ -173,7 +173,7 @@ export interface GraphState {
     pendingTasks?: number;
 
     /** バケットソート: 局面 / 値の範囲 (0..range-1) */
-    phase?: 'count' | 'expand' | 'scatter' | 'gather';
+    phase?: 'count' | 'expand' | 'place' | 'copy';
     range?: number;
     /** バケットソート: 直前の手で数えた値 / 書き出した値 (-1 なら無し) / 頻度 0 を見た */
     counted?: number;
@@ -183,14 +183,16 @@ export interface GraphState {
     expandAt?: number;
     countedTotal?: number;
 
-    /** 基数ソート: 今の桁 (0 が1の位) / 桁の数 / 直前の手で 配った・集めた・空を見た */
+    /** 基数ソート: 今のビット (0 が下から1ビット目) / ビットの数 / 見た・置いた値のビット */
     pass?: number;
     digits?: number;
-    /** 基数ソート: 直前の手を打ったバケット (-1 なら無し) */
-    bucket?: number;
-    scattered?: boolean;
-    gathered?: boolean;
-    sawEmpty?: boolean;
+    bit?: number;
+    /** 基数ソート: 0 の個数 (数えている途中はここまでの数) */
+    zeros?: number;
+    /** 基数ソート: 直前の手が 数えるために見た / 別配列に置いた / 元に戻した */
+    looked?: boolean;
+    placed?: boolean;
+    copied?: boolean;
 
     /** 探索: 探す値 / 見つけた位置 (-1 なら見つかっていない) / 入力が昇順か */
     target?: number;
