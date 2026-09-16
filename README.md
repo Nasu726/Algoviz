@@ -34,6 +34,9 @@
 - [バケットソート](https://algoviz.nasu.uk/array/bucket)
 - [線形探索](https://algoviz.nasu.uk/array/linear)
 - [二分探索](https://algoviz.nasu.uk/array/binary)
+
+**データ構造**
+
 - [スタック](https://algoviz.nasu.uk/array/stack)
 - [キュー](https://algoviz.nasu.uk/array/queue)
 - [デック](https://algoviz.nasu.uk/array/deque)
