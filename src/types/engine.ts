@@ -212,6 +212,21 @@ export interface GraphState {
     poppedValue?: number;
     /** 空なのに取り出そうとした */
     emptyPop?: boolean;
+
+    /** Union-Find: 親と大きさ / 要素の数 / 集合の数 */
+    parent?: number[];
+    size?: number[];
+    elements?: number;
+    setCount?: number;
+    /** Union-Find: 直前の手 (無ければ -1)。上がった元と先 / 見つけた根 / 圧縮した節点 / 付けた子と根 */
+    climbedFrom?: number;
+    climbedTo?: number;
+    foundRoot?: number;
+    compressed?: number;
+    linkedChild?: number;
+    linkedRoot?: number;
+    /** Union-Find: 根が同じだった */
+    sameSet?: boolean;
     maxOps?: number;
 
     /** BstVisualizer のときだけ */

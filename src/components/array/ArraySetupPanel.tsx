@@ -30,6 +30,7 @@ export const ArraySetupPanel: React.FC<Props> = ({
     const search = isSearch(variant);
     const ops = usesOps(variant);
     const deque = variant === 'deque';
+    const unionFind = variant === 'unionfind';
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', fontSize }}>
@@ -57,7 +58,8 @@ export const ArraySetupPanel: React.FC<Props> = ({
                         fontFamily: 'monospace', resize: 'vertical', boxSizing: 'border-box',
                     }}
                     placeholder={ops
-                        ? (deque ? 'pushR 5 pushL 2 popL popR' : 'push 5 push 2 pop pop')
+                        ? (unionFind ? 'union 0 1 union 2 3 find 3'
+                            : deque ? 'pushR 5 pushL 2 popL popR' : 'push 5 push 2 pop pop')
                         : '5 2 9 1 7 3 8 4'}
                 />
                 <button onClick={onApply} style={button}>
@@ -76,7 +78,9 @@ export const ArraySetupPanel: React.FC<Props> = ({
 
             <p style={{ margin: 0, fontSize: '12px', color: '#78909c', lineHeight: 1.6 }}>
                 {ops
-                    ? (deque
+                    ? (unionFind
+                        ? `union に続けて2つの番号、find に続けて1つの番号と書きます (番号は 0 始まり、19 まで)。上限は ${maxValues} 個です。`
+                        : deque
                         ? `pushL / pushR に続けて値、popL / popR と書きます。上限は ${maxValues} 個です。`
                         : `push に続けて値、pop と書きます。上限は ${maxValues} 個です。`)
                     : `値は左から順に並びます。上限は ${maxValues} 個です。${variant === 'binary' ? ' ランダム生成は昇順で作ります。' : ''}${variant === 'bucket' ? ' 値は 0〜9 です (外れた値は端に寄せます)。' : ''}${variant === 'radix' ? ' 値は 0〜15 です (外れた値は端に寄せます)。' : ''}`}

@@ -209,6 +209,9 @@ function App() {
         <Route path="/array/deque" element={
           <EngineGate>{(engine) => <ArrayWrapper engine={engine} variant="deque" />}</EngineGate>
         } />
+        <Route path="/array/unionfind" element={
+          <EngineGate>{(engine) => <ArrayWrapper engine={engine} variant="unionfind" />}</EngineGate>
+        } />
 
         {/* 描くだけのページ。メニューには載せないが、レイアウトとパッキングの
             回帰を目視確認する手段としてルートは残す */}

@@ -4,14 +4,14 @@
 export type ArrayVariant =
     'bubble' | 'selection' | 'insertion' | 'shaker' | 'quick' | 'merge' | 'bucket' | 'radix'
     | 'linear' | 'binary'
-    | 'stack' | 'queue' | 'deque';
+    | 'stack' | 'queue' | 'deque' | 'unionfind';
 
 /** 値を並べ替えるものか、値を探すものか。入力欄と凡例の言葉が変わる */
 export const isSearch = (v: ArrayVariant): boolean => v === 'linear' || v === 'binary';
 
 /** 値の並びではなく、操作の並びを入れるものか */
 export const usesOps = (v: ArrayVariant): boolean =>
-    v === 'stack' || v === 'queue' || v === 'deque';
+    v === 'stack' || v === 'queue' || v === 'deque' || v === 'unionfind';
 
 export const ARRAY_TITLE: Record<ArrayVariant, string> = {
     bubble: 'バブルソート',
@@ -27,6 +27,7 @@ export const ARRAY_TITLE: Record<ArrayVariant, string> = {
     stack: 'スタック',
     queue: 'キュー',
     deque: 'デック',
+    unionfind: 'Union-Find',
 };
 
 /** C++ 側の setAlgorithm へ渡す名前 */
@@ -74,6 +75,8 @@ export const defaultValues: Record<ArrayVariant, string> = {
     stack: 'push 5 push 2 pop push 9 pop pop',
     queue: 'push 5 push 2 pop push 9 pop pop',
     deque: 'pushR 5 pushL 2 pushR 9 popL popR popL',
+    // 同じ大きさどうしを付けてから合わせると、find で圧縮する節点が出る
+    unionfind: 'union 0 1 union 2 3 union 1 3 find 0 union 4 5 union 3 5 find 4',
 };
 
 /** 探すものの既定の値。値の中に在るものにしてある */
@@ -81,5 +84,5 @@ export const defaultTarget: Record<ArrayVariant, string> = {
     bubble: '', selection: '', insertion: '', shaker: '', quick: '', merge: '', bucket: '',
     radix: '',
     linear: '7', binary: '7',
-    stack: '', queue: '', deque: '',
+    stack: '', queue: '', deque: '', unionfind: '',
 };
