@@ -5007,13 +5007,19 @@ static int bucketWidth(const val& s) {
     return std::max(s["rowSize"].as<int>(), BucketSortVisualizer::RANGE);
 }
 
+// 頻度配列の先頭の節点。配列の下の真ん中に来るよう、余りを左にも置いてある
+static int bucketCountStart(const val& s) {
+    int width = bucketWidth(s);
+    return width + (width - BucketSortVisualizer::RANGE) / 2;
+}
+
 static std::vector<int> readCounts(BucketSortVisualizer& b) {
     val s = b.getState(val::object());
     val nodes = s["nodes"];
-    int width = bucketWidth(s);
+    int start = bucketCountStart(s);
     std::vector<int> out;
     for (int v = 0; v < BucketSortVisualizer::RANGE; v++) {
-        out.push_back((int)nodes[(std::size_t)(width + v) * GraphData::NODE_STRIDE + 2]
+        out.push_back((int)nodes[(std::size_t)(start + v) * GraphData::NODE_STRIDE + 2]
                           .as<float>());
     }
     return out;
@@ -5042,6 +5048,13 @@ static void testBucketCountsMoreValuesThanTheRange() {
 
     b.runToEnd();
     checkOrder("配列", readArray(b), {0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9});
+
+    // 頻度配列は配列の下の真ん中に来る (左に寄らない)
+    val s = b.getState(val::object());
+    float arrayMid = (stateX(s, 0) + stateX(s, 19)) / 2.0f;
+    int start = bucketCountStart(s);
+    float countMid = (stateX(s, start) + stateX(s, start + 9)) / 2.0f;
+    CHECK_NEAR(countMid, arrayMid, 0.01f);
 }
 
 static void testBucketCountsEveryValue() {
@@ -5145,7 +5158,7 @@ static void testBucketLabelsAreTheIndices() {
     CHECK_EQ(std::string(labels[0]["text"].as<std::string>()), std::string("0"));
     CHECK_EQ(std::string(labels[9]["text"].as<std::string>()), std::string("9"));
     // 見出しの x は、その添字のマスの x と揃う
-    int slot = bucketWidth(s) + 5;
+    int slot = bucketCountStart(s) + 5;
     CHECK_NEAR(labels[5]["x"].as<float>(),
                s["nodes"][(std::size_t)slot * GraphData::NODE_STRIDE].as<float>(), 0.01f);
 }

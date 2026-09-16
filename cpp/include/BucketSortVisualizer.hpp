@@ -41,11 +41,12 @@ private:
 
     // 節点は2段。1段の幅は配列の数と RANGE の大きい方で、余りは描かない。
     //   1段目: [配列 0..n-1] [余り]
-    //   2段目: [頻度 0..RANGE-1] [余り]
+    //   2段目: [余り] [頻度 0..RANGE-1] [余り]   … 余りを両側に分けて配列の下の真ん中に置く
     // **配列の数と値の範囲は無関係。** 幅を RANGE に固定すると、配列が RANGE より
     // 長いときに頻度配列の節点が配列の後半に重なる
     int width() const { return std::max(rowSize(), RANGE); }
-    int countSlot(int v) const { return width() + v; }
+    int countPad() const { return (width() - RANGE) / 2; }
+    int countSlot(int v) const { return width() + countPad() + v; }
     int countOf(int v) const { return valueAt(countSlot(v)); }
     void setCount(int v, int c) { setValueAt(countSlot(v), c); }
 
@@ -204,7 +205,8 @@ public:
         // 各段の余りは無いものとして扱う
         emscripten::val hidden = emscripten::val::array();
         for (int i = rowSize(); i < width(); i++) hidden.call<void>("push", i);
-        for (int i = width() + RANGE; i < 2 * width(); i++) hidden.call<void>("push", i);
+        for (int i = width(); i < countSlot(0); i++) hidden.call<void>("push", i);
+        for (int i = countSlot(RANGE - 1) + 1; i < 2 * width(); i++) hidden.call<void>("push", i);
         state.set("hiddenSlots", hidden);
 
         // 頻度配列の見出し。添字がそのまま値
