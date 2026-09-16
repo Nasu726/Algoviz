@@ -134,6 +134,10 @@ export interface GraphState {
     viewBounds?: number[];
     /** 節点に属さない文字。世界座標。既定は右端を x に揃え、center なら中央 (見出し) */
     labels?: { x: number; y: number; text: string; align?: 'right' | 'center' }[];
+    /** 値を何桁で書くか (0 埋め) と基数。下線を引く桁 (右から 0 始まり、-1 なら無し) */
+    digitCount?: number;
+    digitBase?: number;
+    digitFocus?: number;
     /** 配列そのものの長さ。作業用のマスはこの後ろに並ぶ */
     rowSize?: number;
     /** 選択ソート: 今のところ最小の値がある位置 / 次の手で入れ替えるか */
@@ -169,7 +173,7 @@ export interface GraphState {
     pendingTasks?: number;
 
     /** バケットソート: 局面 / 値の範囲 (0..range-1) */
-    phase?: 'count' | 'expand';
+    phase?: 'count' | 'expand' | 'zeros' | 'ones' | 'copy';
     range?: number;
     /** バケットソート: 直前の手で数えた値 / 書き出した値 (-1 なら無し) / 頻度 0 を見た */
     counted?: number;
@@ -178,6 +182,17 @@ export interface GraphState {
     /** バケットソート: 展開中に見ている添字 (-1 なら展開中でない) / 数え終えた数 */
     expandAt?: number;
     countedTotal?: number;
+
+    /** 基数ソート: 今のビット (0 が下から1ビット目) / ビットの数 / 見た・置いた値のビット */
+    pass?: number;
+    digits?: number;
+    bit?: number;
+    /** 基数ソート: ここまでに見つけた 0 の数 */
+    zeros?: number;
+    /** 基数ソート: 直前の手が 見て残した / 別配列に置いた / まとめて元に戻した */
+    looked?: boolean;
+    placed?: boolean;
+    copied?: boolean;
 
     /** 探索: 探す値 / 見つけた位置 (-1 なら見つかっていない) / 入力が昇順か */
     target?: number;

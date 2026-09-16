@@ -92,6 +92,11 @@ export class PixiGraphApp {
     // 無いものとして扱うマス (スタック / キュー / デック)。使っていない節点は
     // 描かない。空の箱として描くと、入れ物の大きさが決まっているように見える
     private hiddenSlots: Set<number> = new Set();
+    // 値を何桁で書くか (0 埋め) と、下線を引く桁 (右から数えて 0 始まり、-1 なら無し)。
+    // 基数ソートが「今見ている桁」を示すのに使う
+    private digitCount = 0;
+    private digitFocus = -1;
+    private digitBase = 10;
     private helding: boolean = false;
     private dropFrames: number = 0;
     private dropIndex: number = -1;
@@ -428,6 +433,13 @@ export class PixiGraphApp {
         return nodeGroup;
     }
 
+    // マスの中の値。桁数が決まっているときは、その基数で書いて 0 で埋める
+    // (基数ソートの 0101 など)
+    private formatCellValue(v: number): string {
+        if (!Number.isFinite(v) || this.digitCount <= 0) return formatNodeValue(v);
+        return Math.trunc(v).toString(this.digitBase).padStart(this.digitCount, '0');
+    }
+
     // 節点に属さない文字を置き直す。既定は右端を x に揃える (段の左に書く用途)。
     // 見出しとして列の上に置くときは中央に揃える
     private updateLabels(labels: { x: number; y: number; text: string; align?: string }[]) {
@@ -698,6 +710,9 @@ export class PixiGraphApp {
         this.risingSlot = state.risingSlot ?? -1;
         this.emptySlots = new Set(state.emptySlots ?? []);
         this.hiddenSlots = new Set(state.hiddenSlots ?? []);
+        this.digitCount = state.digitCount ?? 0;
+        this.digitFocus = state.digitFocus ?? -1;
+        this.digitBase = state.digitBase ?? 10;
         this.updateLabels(state.labels ?? []);
 
         // 節点を描く前に進める。飛んでいる値のマスは節点側で描かない
@@ -963,12 +978,22 @@ export class PixiGraphApp {
                             ? (nodeIndex === this.holeIndex ||
                                this.emptySlots.has(nodeIndex) ||
                                (this.dropFrames > 0 && nodeIndex === this.dropIndex)
-                                ? '' : formatNodeValue(nodeArray[i + 2]))
+                                ? '' : this.formatCellValue(nodeArray[i + 2]))
                         // ハフマン木の葉は文字、内部の節点は空
                         : this.labelMode === 'text' ? (this.nodeLabels[nodeIndex] ?? '')
                         // trie の節点には名前が無い。根からの道がその接頭辞を表す
                         : this.labelMode === 'none' ? ''
                         : `${nodeIndex}`;
+
+                    // 今見ている桁の下線 (基数ソート)。文字は中央揃えなので、
+                    // 右から k 桁目の中心は (桁数/2 - k - 0.5) × 1文字の幅
+                    const shown = labelText.text;
+                    if (this.digitFocus >= 0 && this.labelMode === 'value' && readable &&
+                        shown.length > this.digitFocus) {
+                        const cx = (shown.length / 2 - this.digitFocus - 0.5) * DIGIT_W;
+                        bg.moveTo(cx - DIGIT_W / 2 + 1, 12).lineTo(cx + DIGIT_W / 2 - 1, 12)
+                          .stroke({ width: 2.5, color: NODE_STROKE[1] });
+                    }
                 }
 
                 // 値を並べる節点 (B木) は値ごとにセルへ区切る。1つの文字列を

@@ -38,6 +38,7 @@
 #include "../cpp/include/QuickSortVisualizer.hpp"
 #include "../cpp/include/MergeSortVisualizer.hpp"
 #include "../cpp/include/BucketSortVisualizer.hpp"
+#include "../cpp/include/RadixSortVisualizer.hpp"
 #include "../cpp/include/LinearSearchVisualizer.hpp"
 #include "../cpp/include/BinarySearchVisualizer.hpp"
 #include "../cpp/include/DequeVisualizer.hpp"
@@ -4049,6 +4050,7 @@ static std::vector<std::pair<const char*, MakeSort>> allSorts() {
         {"クイック",   [] { return std::unique_ptr<ArrayVisualizer>(new QuickSortVisualizer()); }},
         {"マージ",     [] { return std::unique_ptr<ArrayVisualizer>(new MergeSortVisualizer()); }},
         {"バケット",   [] { return std::unique_ptr<ArrayVisualizer>(new BucketSortVisualizer()); }},
+        {"基数",       [] { return std::unique_ptr<ArrayVisualizer>(new RadixSortVisualizer()); }},
     };
 }
 
@@ -5178,6 +5180,196 @@ static void testBucketRandomAllowsDuplicates() {
     CHECK(duplicated);
 }
 
+
+// ==========================================
+// 基数ソート
+// ==========================================
+
+// 別配列 (下の段) を読む
+static std::vector<int> readWork(RadixSortVisualizer& b, int count) {
+    val s = b.getState(val::object());
+    int n = s["rowSize"].as<int>();
+    val nodes = s["nodes"];
+    std::vector<int> out;
+    for (int i = 0; i < count; i++) {
+        out.push_back((int)nodes[(std::size_t)(n + i) * GraphData::NODE_STRIDE + 2].as<float>());
+    }
+    return out;
+}
+
+// 1ビットぶん (0 を移す → 1 を移す → まとめて戻す) 進める。
+// 戻す手でビットが進むので、pass が変わった手 (= 戻した手) で止める
+static void runOnePass(RadixSortVisualizer& b) {
+    int startPass = b.getState(val::object())["pass"].as<int>();
+    for (int i = 0; i < 500 && b.step(); i++) {
+        val s = b.getState(val::object());
+        if (s["finished"].as<bool>() || s["pass"].as<int>() != startPass) return;
+    }
+}
+
+static void testRadixMovesZerosThenOnesStably() {
+    beginTest("0 は見つけたそばから別配列の左へ、残った 1 はその後ろへ、入力の順のまま移す");
+
+    // 安定でなければ 12 10 が 10 12 になりうる。ここが基数ソートの要
+    RadixSortVisualizer b;
+    b.load("setValues", "5 12 3 10 7 1 14 6 9 2");
+    int moved = 0, kept = 0;
+    for (int i = 0; i < 10; i++) {
+        b.step();
+        val s = b.getState(val::object());
+        if (s["placed"].as<bool>()) moved++;
+        if (s["looked"].as<bool>()) kept++;
+    }
+    CHECK_EQ(moved, 5); // 0 はその場で移る
+    CHECK_EQ(kept, 5);  // 1 は残る
+    CHECK_EQ(b.getState(val::object())["zeros"].as<int>(), 5);
+    checkOrder("0 を移したあとの別配列", readWork(b, 5), {12, 10, 14, 6, 2});
+
+    for (int i = 0; i < 5; i++) b.step(); // 残った 1 を移す
+    checkOrder("別配列", readWork(b, 10), {12, 10, 14, 6, 2, 5, 3, 7, 1, 9});
+
+    b.step(); // まとめて戻す (1手)
+    CHECK(b.getState(val::object())["copied"].as<bool>());
+    checkOrder("元の配列", readArray(b), {12, 10, 14, 6, 2, 5, 3, 7, 1, 9});
+}
+
+static void testRadixLaterPassKeepsEarlierOrder() {
+    beginTest("上のビットでまわしても、同じビットの中で下のビットの順が崩れない");
+
+    RadixSortVisualizer b;
+    b.load("setValues", "11 9 15 13");
+    b.runToEnd();
+    checkOrder("最終", readArray(b), {9, 11, 13, 15});
+
+    // 4 つとも下から 4 ビット目が 1。最後の回は全部「残った 1」として、
+    // それまでの順のまま置かれる
+    RadixSortVisualizer c;
+    c.load("setValues", "11 9 15 13");
+    for (int i = 0; i < 3; i++) runOnePass(c);
+    for (int i = 0; i < 8; i++) c.step(); // 見て残す 4 + 1 を移す 4
+    checkOrder("別配列", readWork(c, 4), {9, 11, 13, 15});
+}
+
+static void testRadixRunsEveryBitEvenWhenAllValuesShareIt() {
+    beginTest("全部の値が同じビットでも 4 回まわる");
+
+    // 1回で並んでも、ビットの数だけまわす。飛ばすと「ビットごとにまわす」ことが見えない
+    RadixSortVisualizer b;
+    b.load("setValues", "1 0 1 0");
+    int steps = 0;
+    int lastPass = -1;
+    while (steps < 500 && b.step()) {
+        steps++;
+        lastPass = std::max(lastPass, b.getState(val::object())["pass"].as<int>());
+    }
+    CHECK_EQ(lastPass, RadixSortVisualizer::DIGITS - 1);
+    // 1回の手数 = 見る n + 残った 1 を移す数 + まとめて戻す 1。
+    // 1ビット目は 1 が2つ: 4 + 2 + 1 = 7。残りの3回は全部 0: 4 + 0 + 1 = 5
+    CHECK_EQ(steps, 7 + 5 * 3);
+}
+
+static void testRadixNeverCompares() {
+    beginTest("比べる手が1つも無い");
+
+    // 2つの値を見る手が無い。焦点は常に1つ
+    RadixSortVisualizer b;
+    b.load("setValues", "5 12 3 10 7 1");
+    while (b.step()) {
+        val s = b.getState(val::object());
+        g_checks++;
+        if (s["focusB"].as<int>() >= 0) { reportFailure("2つの値を見ている"); break; }
+    }
+}
+
+static void testRadixSettlesOnlyWhenTheLastPassCopiesBack() {
+    beginTest("確定 (灰) は最後のビットをまとめて戻す1手で全部つく");
+
+    RadixSortVisualizer b;
+    b.load("setValues", "5 12 3");
+    for (int i = 0; i < RadixSortVisualizer::DIGITS - 1; i++) runOnePass(b);
+    CHECK_EQ(b.getState(val::object())["settledCount"].as<int>(), 0);
+
+    // 最後の回。戻す手の直前まで 0 で、戻した手で 3
+    int before = 0;
+    while (b.step()) {
+        val s = b.getState(val::object());
+        if (s["copied"].as<bool>()) {
+            CHECK_EQ(before, 0);
+            CHECK_EQ(s["settledCount"].as<int>(), 3);
+            CHECK(s["finished"].as<bool>());
+            break;
+        }
+        before = s["settledCount"].as<int>();
+    }
+}
+
+static void testRadixDigitFocusFollowsThePass() {
+    beginTest("下線を引くビットが 0 → 1 → 2 → 3 → 無し と移り、2進で書く");
+
+    RadixSortVisualizer b;
+    b.load("setValues", "5 12");
+    val s0 = b.getState(val::object());
+    CHECK_EQ(s0["digitBase"].as<int>(), 2);
+    CHECK_EQ(s0["digitCount"].as<int>(), RadixSortVisualizer::DIGITS);
+    CHECK_EQ(s0["digitFocus"].as<int>(), 0);
+    for (int bit = 1; bit < RadixSortVisualizer::DIGITS; bit++) {
+        runOnePass(b); // 戻した手で次のビットに移る
+        CHECK_EQ(b.getState(val::object())["digitFocus"].as<int>(), bit);
+    }
+    b.runToEnd();
+    CHECK_EQ(b.getState(val::object())["digitFocus"].as<int>(), -1);
+}
+
+static void testRadixMovesOnlyTheValue() {
+    beginTest("配置するとき、動くのは値だけで空いたマスは動かない");
+
+    // 座標まで入れ替えると、空の箱が別配列の位置から戻ってくるように見える
+    RadixSortVisualizer b;
+    b.load("setValues", "12 5");
+    val before = b.getState(val::object());
+    float cellX = stateX(before, 0);
+    float cellY = before["nodes"][1].as<float>();
+
+    b.step(); // 12 (ビット 0) をその場で別配列へ
+    val after = b.getState(val::object());
+    CHECK(after["placed"].as<bool>());
+    CHECK_NEAR(stateX(after, 0), cellX, 0.01f);
+    CHECK_NEAR(after["nodes"][1].as<float>(), cellY, 0.01f);
+}
+
+static void testRadixHandlesTwentyValues() {
+    beginTest("20 個でも全部並ぶ");
+
+    RadixSortVisualizer b;
+    std::string values;
+    for (int i = 0; i < 20; i++) values += std::to_string((i * 7) % 16) + " ";
+    std::vector<int> out = sortWith(b, values);
+    CHECK_EQ((int)out.size(), 20);
+    for (std::size_t i = 1; i < out.size(); i++) {
+        g_checks++;
+        if (out[i - 1] > out[i]) { reportFailure("並んでいない"); break; }
+    }
+}
+
+static void testRadixClampsOutOfRange() {
+    beginTest("範囲の外の値は 0〜15 に寄せる");
+
+    RadixSortVisualizer b;
+    checkOrder("端に寄せる", sortWith(b, "150 -5 4"), {0, 4, 15});
+}
+
+static void testRadixRandomAllowsDuplicates() {
+    beginTest("ランダム生成は同じ値が混ざる");
+
+    // 20 個を 0〜15 から選ぶので、重複しない生成では作れない
+    RadixSortVisualizer b;
+    b.load("genRandom", "20");
+    std::vector<int> vs = readArray(b);
+    CHECK_EQ((int)vs.size(), 20);
+    std::sort(vs.begin(), vs.end());
+    CHECK(std::adjacent_find(vs.begin(), vs.end()) != vs.end());
+}
+
 // ==========================================
 
 int main(int argc, char** argv) {
@@ -5404,6 +5596,16 @@ int main(int argc, char** argv) {
     testBucketClampsOutOfRange();
     testBucketLabelsAreTheIndices();
     testBucketRandomAllowsDuplicates();
+    testRadixMovesZerosThenOnesStably();
+    testRadixLaterPassKeepsEarlierOrder();
+    testRadixRunsEveryBitEvenWhenAllValuesShareIt();
+    testRadixNeverCompares();
+    testRadixSettlesOnlyWhenTheLastPassCopiesBack();
+    testRadixDigitFocusFollowsThePass();
+    testRadixMovesOnlyTheValue();
+    testRadixHandlesTwentyValues();
+    testRadixClampsOutOfRange();
+    testRadixRandomAllowsDuplicates();
     testMergeUsesTheWorkRow();
     testInsertionHoldsTheValueInTheHole();
     testShakerCarriesASmallValueLeftInOneScan();

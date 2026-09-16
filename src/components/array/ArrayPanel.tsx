@@ -66,6 +66,17 @@ const statusOf = (variant: ArrayVariant, state: GraphState | null): string => {
         if (state?.swapped) return '基準より小さいので、左の並びへ入れました';
         return '基準の値と比べています';
     }
+    if (variant === 'radix') {
+        const place = `下から ${(state?.pass ?? 0) + 1} ビット目`;
+        const bit = state?.bit ?? -1;
+        if (state?.looked) return `${place}が 1 なので、残します`;
+        if (state?.placed) {
+            return bit === 0 ? `${place}が 0 なので、別配列の左から詰めました`
+                             : '残った 1 を、別配列の 0 の後ろに詰めました';
+        }
+        if (state?.copied) return '別配列をまとめて元の配列へ戻しました';
+        return `${place}が 0 の値を、見つけたそばから別配列へ移します`;
+    }
     if (variant === 'bucket') {
         if ((state?.counted ?? -1) >= 0) return `${state?.counted} を数えました (頻度 +1)`;
         if ((state?.written ?? -1) >= 0) return `${state?.written} を配列へ書き出しました`;
@@ -169,6 +180,16 @@ export const ArrayPanel: React.FC<Props> = ({
                             <span style={{ color: '#90a4ae' }}> / {total}</span>
                         </div>
                     )}
+                    {variant === 'radix' && !state?.finished && (
+                        <div>
+                            <b>今のビット</b>: 下から {(state?.pass ?? 0) + 1} ビット目
+                            <span style={{ color: '#90a4ae' }}>
+                                {' '}({(state?.pass ?? 0) + 1} / {state?.digits ?? 4} 回目)
+                            </span>
+                            <br />
+                            <b>0 の個数</b>: {state?.zeros ?? 0}
+                        </div>
+                    )}
                 </>
             )}
             <div style={{ marginTop: '6px', fontWeight: 'bold',
@@ -222,6 +243,12 @@ export const ArrayPanel: React.FC<Props> = ({
                 <>
                     <Swatch color={NODE_STROKE[2]} label="今見ている頻度" />
                     <Swatch color={NODE_STROKE[4]} label="今増やした頻度 / 書き出した値" />
+                </>
+            ) : variant === 'radix' ? (
+                <>
+                    <Swatch color={NODE_STROKE[1]} label="今のビット (下線)" />
+                    <Swatch color={NODE_STROKE[2]} label="今見ている値" />
+                    <Swatch color={NODE_STROKE[4]} label="動かした値" />
                 </>
             ) : (
                 <>

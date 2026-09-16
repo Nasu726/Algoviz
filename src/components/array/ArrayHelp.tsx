@@ -305,6 +305,45 @@ const BucketHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
     </>
 );
 
+const RadixHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
+    <>
+        <Screen>
+            <li>値は <b>4 ビットの2進</b>で書く (5 なら <code>0101</code>)。
+                <b>今見ているビットに下線</b>が付く</li>
+            <li><b>下の段が別配列</b>。置き場を計算して、そこへ値を置く</li>
+            <li>赤色が見ただけで残した値。緑色が動かした値</li>
+            <li>灰色は位置が確定した値 (最後のビットを戻すときだけ)</li>
+        </Screen>
+
+        <h3>2. ビットごとに4回まわす</h3>
+        <ul>
+            <li><b>0 を移す</b>：元の配列を左から見て、今のビットが 0 なら見つけたそばから
+                別配列の左へ詰める。1 なら残す</li>
+            <li><b>1 を移す</b>：残った値を左から順に、別配列の 0 の後ろへ詰める</li>
+            <li><b>戻す</b>：別配列をまとめて元の配列へ戻す (1手)</li>
+            <li>下のビットから順に4回。全部の値が同じビットでも4回まわす</li>
+        </ul>
+
+        <h3>3. 順が崩れない</h3>
+        <p>
+            左から走査して前から詰めるので、<b>同じビットの値どうしは入れた順のまま</b>並びます。
+            上のビットでまわしたあと、同じビットの中で下のビットの順が保たれているのを
+            見てください。前の回で決めた順が、次の回で壊れません。
+        </p>
+
+        <h3>4. 別配列が要る</h3>
+        <p>
+            1つの配列の中で入れ替えて分ける形 (上のビットから両端で分ける) もありますが、
+            それだと順が崩れます。順を保つには置き場が別に要るので、その形のまま見せています。
+        </p>
+
+        <h3>5. 値の範囲</h3>
+        <p>値は <b>0〜15</b> です。外れた値は端に寄せます。ランダム生成は同じ値が混ざります。</p>
+
+        <Common maxValues={maxValues} sample="5 12 3 10 7 1 14 6 9 2" heading={6} />
+    </>
+);
+
 // 探すページ用。値の入れ方の言葉が並べ替えとは違う
 const SearchCommon: React.FC<{ maxValues: number; sample: string; heading: number;
                                sortedNote?: boolean }> =
@@ -473,6 +512,7 @@ export const ArrayHelp: React.FC<{ variant: ArrayVariant; maxValues: number }> =
         : variant === 'binary' ? <BinaryHelp maxValues={maxValues} />
         : variant === 'merge' ? <MergeHelp maxValues={maxValues} />
         : variant === 'bucket' ? <BucketHelp maxValues={maxValues} />
+        : variant === 'radix' ? <RadixHelp maxValues={maxValues} />
         : variant === 'quick' ? <QuickHelp maxValues={maxValues} />
         : variant === 'selection' ? <SelectionHelp maxValues={maxValues} />
         : variant === 'insertion' ? <InsertionHelp maxValues={maxValues} />

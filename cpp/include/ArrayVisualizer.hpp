@@ -81,6 +81,17 @@ protected:
         if (to >= 0 && to < (int)emptySlot.size()) emptySlot[to] = 0;
     }
 
+    // 値を別のマスへ移し、**動くのは行き先だけ**にする。moveValue は座標も
+    // 入れ替えるので、空いた元のマスが行き先の位置から戻ってくるように見える。
+    // 元のマスが空の箱として残るとき (基数ソートの配列) はこちらを使う
+    void carryValue(int from, int to) {
+        std::size_t o = (std::size_t)from * GraphData::NODE_STRIDE;
+        float x = graph->nodeData[o], y = graph->nodeData[o + 1];
+        moveValue(from, to);
+        graph->nodeData[o] = x;
+        graph->nodeData[o + 1] = y;
+    }
+
     void markSettled(int from, int to) {
         for (int i = std::max(0, from); i <= to && i < (int)settled.size(); i++) settled[i] = 1;
     }
@@ -124,7 +135,8 @@ protected:
 
     void buildArray() {
         int total = rowSize() + extraSlots();
-        graph = std::make_unique<GraphData>(MAX_VALUES * 2, 0);
+        // 作業用のマスが多いもの (基数ソート) は配列の数倍の節点が要る
+        graph = std::make_unique<GraphData>(std::max(MAX_VALUES * 2, total), 0);
         graph->startNodeIndex = -1;
         for (int i = 0; i < total; i++) {
             float v = i < rowSize() ? (float)values[i] : 0.0f;

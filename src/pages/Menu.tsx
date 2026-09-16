@@ -33,8 +33,15 @@ const GENRES: { name: string; items: { path: string; label: string }[] }[] = [
             { path: '/array/quick', label: 'クイックソート' },
             { path: '/array/merge', label: 'マージソート' },
             { path: '/array/bucket', label: 'バケットソート' },
+            { path: '/array/radix', label: '基数ソート' },
             { path: '/array/linear', label: '線形探索' },
             { path: '/array/binary', label: '二分探索' },
+        ],
+    },
+    {
+        // 並べるものでも探すものでもない。出し入れの仕組みそのものを見せる
+        name: 'データ構造',
+        items: [
             { path: '/array/stack', label: 'スタック' },
             { path: '/array/queue', label: 'キュー' },
             { path: '/array/deque', label: 'デック' },
