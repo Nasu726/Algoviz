@@ -37,6 +37,7 @@
 #include "../cpp/include/ShakerSortVisualizer.hpp"
 #include "../cpp/include/QuickSortVisualizer.hpp"
 #include "../cpp/include/MergeSortVisualizer.hpp"
+#include "../cpp/include/BucketSortVisualizer.hpp"
 #include "../cpp/include/LinearSearchVisualizer.hpp"
 #include "../cpp/include/BinarySearchVisualizer.hpp"
 #include "../cpp/include/DequeVisualizer.hpp"
@@ -4047,6 +4048,7 @@ static std::vector<std::pair<const char*, MakeSort>> allSorts() {
         {"シェーカー", [] { return std::unique_ptr<ArrayVisualizer>(new ShakerSortVisualizer()); }},
         {"クイック",   [] { return std::unique_ptr<ArrayVisualizer>(new QuickSortVisualizer()); }},
         {"マージ",     [] { return std::unique_ptr<ArrayVisualizer>(new MergeSortVisualizer()); }},
+        {"バケット",   [] { return std::unique_ptr<ArrayVisualizer>(new BucketSortVisualizer()); }},
     };
 }
 
@@ -4995,6 +4997,155 @@ static void testDequeHandlesEmptyInput() {
     CHECK(b.getState(val::object())["finished"].as<bool>());
 }
 
+
+// ==========================================
+// バケットソート
+// ==========================================
+
+// バケット b の中身を左から読む。節点の番号は 配列の数 × (b + 1) から
+static std::vector<int> readBucket(BucketSortVisualizer& b, int bucket) {
+    val s = b.getState(val::object());
+    int n = s["rowSize"].as<int>();
+    int count = s["bucketFill"][bucket].as<int>();
+    val nodes = s["nodes"];
+    std::vector<int> out;
+    for (int i = 0; i < count; i++) {
+        out.push_back((int)nodes[(std::size_t)(n * (bucket + 1) + i) * GraphData::NODE_STRIDE + 2]
+                          .as<float>());
+    }
+    return out;
+}
+
+static int drawnCount(BucketSortVisualizer& b) {
+    val s = b.getState(val::object());
+    return s["nodeCount"].as<int>() - s["hiddenSlots"]["length"].as<int>();
+}
+
+static void testBucketScattersByRange() {
+    beginTest("配ったあと、各値は値の範囲のバケットに居る");
+
+    // 範囲を間違えると、集めたときに並ばない
+    BucketSortVisualizer b;
+    b.load("setValues", "42 7 88 23 65 51 19 94 36 70");
+    for (int i = 0; i < 10; i++) b.step(); // 10個を配り終える
+
+    val s = b.getState(val::object());
+    CHECK_EQ(std::string(s["phase"].as<std::string>()), std::string("scatter"));
+    for (int bucket = 0; bucket < BucketSortVisualizer::BUCKETS; bucket++) {
+        for (int v : readBucket(b, bucket)) {
+            g_checks++;
+            if (v / BucketSortVisualizer::BUCKET_WIDTH != bucket) {
+                reportFailure(std::to_string(v) + " がバケット " + std::to_string(bucket) +
+                              " に入っている");
+            }
+        }
+    }
+    // 入れた順のまま並んでいる (まだ並べていない)
+    checkOrder("40–59", readBucket(b, 2), {42, 51});
+    checkOrder("0–19", readBucket(b, 0), {7, 19});
+}
+
+static void testBucketSortsEachBucketByInsertion() {
+    beginTest("バケットの中は挿入ソートの3手で並ぶ");
+
+    // 3個が逆順に入ったバケット。取り出す3 / ずらす3 / 差し込む3 の9手
+    BucketSortVisualizer b;
+    b.load("setValues", "9 5 1");
+    for (int i = 0; i < 3; i++) b.step(); // 配る
+    checkOrder("配った直後", readBucket(b, 0), {9, 5, 1});
+
+    int lifts = 0, shifts = 0, drops = 0;
+    for (int i = 0; i < 9; i++) {
+        b.step();
+        val s = b.getState(val::object());
+        if (s["droppedAt"].as<int>() >= 0) drops++;
+        else if (s["swapped"].as<bool>()) shifts++;
+        else if (s["holeIndex"].as<int>() >= 0) lifts++;
+    }
+    CHECK_EQ(lifts, 3);
+    CHECK_EQ(shifts, 3);
+    CHECK_EQ(drops, 3);
+    checkOrder("並べたあと", readBucket(b, 0), {1, 5, 9});
+    CHECK_EQ(std::string(b.getState(val::object())["phase"].as<std::string>()),
+             std::string("sort"));
+}
+
+static void testBucketVisitsEmptyBucketsToo() {
+    beginTest("空のバケットも1手かけて見る");
+
+    // ループは全部のバケットを訪れる。飛ばすと「見た」ことが分からない
+    BucketSortVisualizer b;
+    b.load("setValues", "42 45"); // 40–59 だけに入る
+    for (int i = 0; i < 2; i++) b.step();
+
+    int emptyVisits = 0, sortMoves = 0;
+    while (true) {
+        b.step();
+        val s = b.getState(val::object());
+        if (std::string(s["phase"].as<std::string>()) != "sort") break;
+        if (s["visitedEmpty"].as<bool>()) emptyVisits++;
+        else sortMoves++;
+    }
+    CHECK_EQ(emptyVisits, BucketSortVisualizer::BUCKETS - 1);
+    CHECK_EQ(sortMoves, 4); // 2個: 取り出す / 差し込む が2回ずつ
+}
+
+static void testBucketGathersInBucketOrder() {
+    beginTest("バケット順に集め、戻した範囲が確定していく");
+
+    BucketSortVisualizer b;
+    b.load("setValues", "88 7 42");
+    // 配る3 + 見る (0–19: 2手, 20–39: 空, 40–59: 2手, 60–79: 空, 80–99: 2手) 8 = 11
+    for (int i = 0; i < 11; i++) b.step();
+
+    std::vector<int> gathered;
+    for (int i = 0; i < 3; i++) {
+        b.step();
+        val s = b.getState(val::object());
+        CHECK(s["gathered"].as<bool>());
+        CHECK_EQ(s["settledCount"].as<int>(), i + 1);
+        gathered.push_back(s["bucket"].as<int>());
+    }
+    checkOrder("集めたバケットの順", gathered, {0, 2, 4});
+    checkOrder("配列", readArray(b), {7, 42, 88});
+    CHECK(b.getState(val::object())["finished"].as<bool>());
+}
+
+static void testBucketDrawsOnlyHeldCells() {
+    beginTest("描かれるマスは、配列の数とバケットに入っている数の和");
+
+    // 空のマスを先に並べると、バケットの大きさが決まっているように見える
+    BucketSortVisualizer b;
+    b.load("setValues", "42 7 88 23");
+    CHECK_EQ(drawnCount(b), 4); // 配列だけ
+    for (int i = 1; i <= 4; i++) {
+        b.step();
+        CHECK_EQ(drawnCount(b), 4 + i); // 配列 (空の箱も描く) + 配った数
+    }
+}
+
+static void testBucketLabelsShowTheRanges() {
+    beginTest("段の左に、バケットの範囲が5つ出る");
+
+    BucketSortVisualizer b;
+    val labels = b.getState(val::object())["labels"];
+    CHECK_EQ(labels["length"].as<int>(), BucketSortVisualizer::BUCKETS);
+    CHECK_EQ(std::string(labels[0]["text"].as<std::string>()), std::string("0–19"));
+    CHECK_EQ(std::string(labels[4]["text"].as<std::string>()), std::string("80–99"));
+    // 段の y と揃っている
+    CHECK_NEAR(labels[1]["y"].as<float>(), 2.0f * LineLayout::ROW_GAP, 0.01f);
+}
+
+static void testBucketSortsSkewedInput() {
+    beginTest("偏った入力でも並ぶ (全部が1つのバケットに入る)");
+
+    // バケットの中を並べ忘れると、ここで初めて崩れる
+    BucketSortVisualizer b;
+    checkOrder("全部 0–19", sortWith(b, "19 3 11 7 15 1 9 5"), {1, 3, 5, 7, 9, 11, 15, 19});
+    BucketSortVisualizer c;
+    checkOrder("端の外", sortWith(c, "150 -5 99 0"), {-5, 0, 99, 150}); // 範囲外は端のバケット
+}
+
 // ==========================================
 
 int main(int argc, char** argv) {
@@ -5213,6 +5364,13 @@ int main(int argc, char** argv) {
     testQuickSplitsAroundThePivot();
     testQuickTakesEmptyRangesToo();
     testMergeProducesSortedRuns();
+    testBucketScattersByRange();
+    testBucketSortsEachBucketByInsertion();
+    testBucketVisitsEmptyBucketsToo();
+    testBucketGathersInBucketOrder();
+    testBucketDrawsOnlyHeldCells();
+    testBucketLabelsShowTheRanges();
+    testBucketSortsSkewedInput();
     testMergeUsesTheWorkRow();
     testInsertionHoldsTheValueInTheHole();
     testShakerCarriesASmallValueLeftInOneScan();
