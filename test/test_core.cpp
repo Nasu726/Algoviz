@@ -5002,16 +5002,46 @@ static void testDequeHandlesEmptyInput() {
 // バケットソート
 // ==========================================
 
-// 頻度配列を読む。節点は RANGE から RANGE 個
+// 頻度配列を読む。2段目の先頭から RANGE 個。1段の幅は配列の数と RANGE の大きい方
+static int bucketWidth(const val& s) {
+    return std::max(s["rowSize"].as<int>(), BucketSortVisualizer::RANGE);
+}
+
 static std::vector<int> readCounts(BucketSortVisualizer& b) {
     val s = b.getState(val::object());
     val nodes = s["nodes"];
+    int width = bucketWidth(s);
     std::vector<int> out;
     for (int v = 0; v < BucketSortVisualizer::RANGE; v++) {
-        out.push_back((int)nodes[(std::size_t)(BucketSortVisualizer::RANGE + v) *
-                                 GraphData::NODE_STRIDE + 2].as<float>());
+        out.push_back((int)nodes[(std::size_t)(width + v) * GraphData::NODE_STRIDE + 2]
+                          .as<float>());
     }
     return out;
+}
+
+static void testBucketCountsMoreValuesThanTheRange() {
+    beginTest("配列の数が値の範囲より多くても、全部数える");
+
+    // 配列の数と値の範囲は無関係。1段の幅を範囲に固定すると、範囲より長い配列の
+    // 後半に頻度配列が重なり、後半が数えられない
+    BucketSortVisualizer b;
+    std::string values;
+    for (int i = 0; i < 20; i++) values += std::to_string((i * 7) % 10) + " "; // 各値が2つ
+    b.load("setValues", values);
+    // 2段ぶんの節点がある (幅を範囲に固定すると、2段目が無くなる)
+    val s0 = b.getState(val::object());
+    CHECK_EQ(s0["nodeCount"].as<int>(), 2 * bucketWidth(s0));
+    if (s0["nodeCount"].as<int>() != 2 * bucketWidth(s0)) return;
+    for (int i = 0; i < 20; i++) b.step(); // 数える
+
+    std::vector<int> counts = readCounts(b);
+    int total = 0;
+    for (int c : counts) total += c;
+    CHECK_EQ(total, 20);
+    checkOrder("頻度", counts, {2, 2, 2, 2, 2, 2, 2, 2, 2, 2});
+
+    b.runToEnd();
+    checkOrder("配列", readArray(b), {0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9});
 }
 
 static void testBucketCountsEveryValue() {
@@ -5115,7 +5145,7 @@ static void testBucketLabelsAreTheIndices() {
     CHECK_EQ(std::string(labels[0]["text"].as<std::string>()), std::string("0"));
     CHECK_EQ(std::string(labels[9]["text"].as<std::string>()), std::string("9"));
     // 見出しの x は、その添字のマスの x と揃う
-    int slot = BucketSortVisualizer::RANGE + 5;
+    int slot = bucketWidth(s) + 5;
     CHECK_NEAR(labels[5]["x"].as<float>(),
                s["nodes"][(std::size_t)slot * GraphData::NODE_STRIDE].as<float>(), 0.01f);
 }
@@ -5354,6 +5384,7 @@ int main(int argc, char** argv) {
     testQuickTakesEmptyRangesToo();
     testMergeProducesSortedRuns();
     testBucketCountsEveryValue();
+    testBucketCountsMoreValuesThanTheRange();
     testBucketExpandsVisitingEveryIndex();
     testBucketNeverCompares();
     testBucketSettlesAsItWrites();

@@ -39,9 +39,13 @@ private:
     int written = -1;     // 書き出した値。無ければ -1
     bool sawZero = false; // 頻度 0 の添字を見た
 
-    // 節点は [配列 0..n-1] [余り n..RANGE-1 (描かない)] [頻度 0..RANGE-1]。
-    // 1段の幅を RANGE に揃えると、頻度配列がちょうど2段目に並ぶ
-    int countSlot(int v) const { return RANGE + v; }
+    // 節点は2段。1段の幅は配列の数と RANGE の大きい方で、余りは描かない。
+    //   1段目: [配列 0..n-1] [余り]
+    //   2段目: [頻度 0..RANGE-1] [余り]
+    // **配列の数と値の範囲は無関係。** 幅を RANGE に固定すると、配列が RANGE より
+    // 長いときに頻度配列の節点が配列の後半に重なる
+    int width() const { return std::max(rowSize(), RANGE); }
+    int countSlot(int v) const { return width() + v; }
     int countOf(int v) const { return valueAt(countSlot(v)); }
     void setCount(int v, int c) { setValueAt(countSlot(v), c); }
 
@@ -84,10 +88,10 @@ private:
     }
 
 protected:
-    // 1段目の余りと、頻度配列 RANGE 個
-    int extraSlots() const override { return (RANGE - rowSize()) + RANGE; }
+    // 2段ぶんから配列の数を引いたもの
+    int extraSlots() const override { return 2 * width() - rowSize(); }
 
-    void configureCells() override { line->setPerRow(RANGE); }
+    void configureCells() override { line->setPerRow(width()); }
 
     void resetAlgorithm() override {
         phase = Count;
@@ -197,9 +201,10 @@ public:
         state.set("expandAt", phase == Expand && !finished ? cursor : -1);
         state.set("countedTotal", phase == Count ? next : rowSize());
 
-        // 1段目の余りは無いものとして扱う
+        // 各段の余りは無いものとして扱う
         emscripten::val hidden = emscripten::val::array();
-        for (int i = rowSize(); i < RANGE; i++) hidden.call<void>("push", i);
+        for (int i = rowSize(); i < width(); i++) hidden.call<void>("push", i);
+        for (int i = width() + RANGE; i < 2 * width(); i++) hidden.call<void>("push", i);
         state.set("hiddenSlots", hidden);
 
         // 頻度配列の見出し。添字がそのまま値
