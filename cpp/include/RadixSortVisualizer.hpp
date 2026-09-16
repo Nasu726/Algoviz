@@ -10,10 +10,10 @@
 //
 // 値は 0〜15 の 4 ビットで、**マスには2進で書く。** ビットごとに下から順に
 // 4 回まわす。1回は3つの局面で、**別配列に配置してから元に戻す**。
-//   数える   … 元の配列を左から見て、今のビットが 0 の値を数える
-//   配置する … 元の配列を左から見て、ビットが 0 なら別配列の前から、1 なら
-//              「0 の個数」の位置から後ろへ、それぞれ詰めて置く
-//   戻す     … 別配列を左から元の配列へ戻す
+//   0 を移す   … 元の配列を左から見て、今のビットが 0 ならその場で別配列の左から詰める。
+//                1 なら残す (見ただけ)
+//   1 を移す   … 残った値を左から順に、別配列の 0 の後ろへ詰める
+//   戻す       … 別配列をまとめて元の配列へ戻す (1手)
 //
 // 比べる手は無い。**安定**なのが見どころで、左から走査して前から詰めるので、
 // 同じビットの値どうしは入れた順のまま並ぶ。上のビットでまわしても、下のビットで
@@ -34,49 +34,60 @@ public:
     static constexpr int MAX_RADIX_VALUE = (1 << DIGITS) - 1; // 15
 
 private:
-    enum Phase { Count, Place, CopyBack };
+    enum Phase { MoveZeros, MoveOnes, CopyBack };
 
-    Phase phase = Count;
+    Phase phase = MoveZeros;
     int pass = 0;      // 今のビット。0 が下から1ビット目
-    int next = 0;      // 各局面で、次に見る元の配列 (戻すときは別配列) の位置
-    int zeros = 0;     // 数える: ここまでの 0 の数。配置する: 0 の個数 (= 1 を置き始める位置)
-    int putZero = 0;   // 配置する: 次に 0 を置く位置
-    int putOne = 0;    // 配置する: 次に 1 を置く位置
+    int next = 0;      // 次に見る元の配列の位置
+    int put = 0;       // 別配列の次に置く位置。0 を左から詰め、その後ろに 1 を詰める
+    int zeros = 0;     // ここまでに見つけた 0 の数
 
     // 直前の手が何だったか
     int bit = -1;         // 見た / 置いた値のビット。無ければ -1
-    bool counted = false;
-    bool placed = false;
-    bool copied = false;
+    bool looked = false;  // 見ただけで残した
+    bool placed = false;  // 別配列へ置いた
+    bool copied = false;  // まとめて戻した
 
     static int clampValue(int v) { return std::clamp(v, 0, MAX_RADIX_VALUE); }
     int bitOf(int v) const { return (v >> pass) & 1; }
     int workOf(int i) const { return rowSize() + i; } // 別配列の同じ位置
 
-    void countOne() {
+    // 今のビットが 0 ならその場で別配列へ、1 なら残す
+    void moveIfZero() {
         bit = bitOf(valueAt(next));
-        if (bit == 0) zeros++;
-        focusA = next; // 見ている値。動かさないので赤
-        counted = true;
+        if (bit == 0) {
+            carryValue(next, workOf(put++)); // 元のマスは空の箱で残る
+            focusA = workOf(put - 1);
+            placed = true;
+            zeros++;
+        } else {
+            focusA = next; // 見ただけ。動かさないので赤
+            looked = true;
+        }
         next++;
     }
 
-    void placeOne() {
+    // 残った値 (ビットが 1) を、別配列の 0 の後ろへ詰める
+    void moveOne() {
         bit = bitOf(valueAt(next));
-        int dest = bit == 0 ? putZero++ : putOne++;
-        carryValue(next, workOf(dest)); // 元のマスは空の箱で残る
-        focusA = workOf(dest);
+        carryValue(next, workOf(put++));
+        focusA = workOf(put - 1);
         placed = true;
         next++;
     }
 
-    void copyOne() {
-        carryValue(workOf(next), next);
-        focusA = next;
+    // 別配列をまとめて元の配列へ戻す。1手
+    void copyAll() {
+        for (int i = 0; i < rowSize(); i++) carryValue(workOf(i), i);
         copied = true;
-        // 最後のビットを戻しているときだけ、戻した範囲が確定
-        if (pass == DIGITS - 1) markSettled(0, next);
-        next++;
+        // 最後のビットならこれで並び終わり
+        if (pass == DIGITS - 1) settleAll();
+    }
+
+    // 残っている (まだ移していない) 次の位置。無ければ rowSize()
+    int nextRemaining(int from) const {
+        while (from < rowSize() && emptySlot[from]) from++;
+        return from;
     }
 
 protected:
@@ -84,11 +95,11 @@ protected:
     int extraSlots() const override { return rowSize(); }
 
     void resetAlgorithm() override {
-        phase = Count;
+        phase = MoveZeros;
         pass = 0;
-        next = zeros = putZero = putOne = 0;
+        next = put = zeros = 0;
         bit = -1;
-        counted = placed = copied = false;
+        looked = placed = copied = false;
         focusA = focusB = -1;
         if (rowSize() <= 0) finished = true;
     }
@@ -98,8 +109,12 @@ protected:
         graph->resetColors();
         paintSettled();
         if (finished) return;
-        // 数えるときは見ただけ (赤)、置く / 戻すときは動かした (緑)
-        graph->setNodeColor(focusA, counted ? NODE_VISITING : NODE_PATH);
+        // 見ただけなら赤、置いたら緑。まとめて戻したときは全部が緑
+        if (copied) {
+            for (int i = 0; i < rowSize(); i++) graph->setNodeColor(i, NODE_PATH);
+        } else {
+            graph->setNodeColor(focusA, looked ? NODE_VISITING : NODE_PATH);
+        }
     }
 
     bool handleCommand(const std::string& source, const std::string& input) override {
@@ -129,42 +144,37 @@ protected:
     bool advance() override {
         if (finished) return false;
         bit = -1;
-        counted = placed = copied = false;
+        looked = placed = copied = false;
         focusA = focusB = -1;
 
         // 局面の切り替えは手を消費しない
         for (;;) {
-            if (next < rowSize()) {
-                switch (phase) {
-                case Count:    countOne(); return true;
-                case Place:    placeOne(); return true;
-                case CopyBack: copyOne();
-                    if (next >= rowSize() && pass == DIGITS - 1) finished = true;
+            switch (phase) {
+            case MoveZeros:
+                if (next < rowSize()) { moveIfZero(); return true; }
+                phase = MoveOnes;
+                next = nextRemaining(0);
+                break;
+
+            case MoveOnes:
+                if (next < rowSize()) {
+                    moveOne();
+                    next = nextRemaining(next);
                     return true;
                 }
-            }
-            // この局面を終えた
-            next = 0;
-            switch (phase) {
-            case Count:
-                phase = Place;
-                putZero = 0;
-                putOne = zeros; // 1 は 0 の後ろから
-                break;
-            case Place:
                 phase = CopyBack;
                 break;
+
             case CopyBack:
-                pass++;
-                if (pass >= DIGITS) {
-                    // 最後の戻すで finished を立てるので、ここへ来るのは配列が空のときだけ
-                    finished = true;
-                    syncVisuals();
-                    return false;
+                copyAll();
+                if (pass + 1 >= DIGITS) {
+                    finished = true; // pass は最後のビットのまま
+                } else {
+                    pass++;
+                    phase = MoveZeros;
+                    next = put = zeros = 0;
                 }
-                phase = Count;
-                zeros = 0;
-                break;
+                return true;
             }
         }
     }
@@ -180,10 +190,10 @@ public:
 
         state.set("pass", pass);
         state.set("digits", DIGITS);
-        state.set("phase", phase == Count ? "count" : phase == Place ? "place" : "copy");
+        state.set("phase", phase == MoveZeros ? "zeros" : phase == MoveOnes ? "ones" : "copy");
         state.set("bit", bit);
         state.set("zeros", zeros);
-        state.set("looked", counted);
+        state.set("looked", looked);
         state.set("placed", placed);
         state.set("copied", copied);
 

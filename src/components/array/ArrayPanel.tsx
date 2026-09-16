@@ -69,13 +69,13 @@ const statusOf = (variant: ArrayVariant, state: GraphState | null): string => {
     if (variant === 'radix') {
         const place = `下から ${(state?.pass ?? 0) + 1} ビット目`;
         const bit = state?.bit ?? -1;
-        if (state?.looked) return bit === 0 ? `${place}が 0 なので数えました` : `${place}は 1 です`;
+        if (state?.looked) return `${place}が 1 なので、残します`;
         if (state?.placed) {
-            return bit === 0 ? '0 なので、別配列の前から詰めて置きました'
-                             : '1 なので、別配列の 0 の後ろから詰めて置きました';
+            return bit === 0 ? `${place}が 0 なので、別配列の左から詰めました`
+                             : '残った 1 を、別配列の 0 の後ろに詰めました';
         }
-        if (state?.copied) return '別配列から元の配列へ戻しました';
-        return `${place}が 0 の値を数えます`;
+        if (state?.copied) return '別配列をまとめて元の配列へ戻しました';
+        return `${place}が 0 の値を、見つけたそばから別配列へ移します`;
     }
     if (variant === 'bucket') {
         if ((state?.counted ?? -1) >= 0) return `${state?.counted} を数えました (頻度 +1)`;

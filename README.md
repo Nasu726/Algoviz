@@ -124,7 +124,7 @@ cpp/
     QuickSortVisualizer.hpp    ├ クイックソート
     MergeSortVisualizer.hpp    ├ マージソート (下の段を作業用に使う)
     BucketSortVisualizer.hpp   ├ バケットソート (頻度配列を数えて展開する)
-    RadixSortVisualizer.hpp    ├ 基数ソート (ビットごとに別配列へ配置して戻す)
+    RadixSortVisualizer.hpp    ├ 基数ソート (ビットごとに 0 を先に、1 を後に別配列へ移して戻す)
     SearchVisualizer.hpp       配列から値を探すものの基底 (終わり方が2通り)
     LinearSearchVisualizer.hpp ├ 線形探索
     BinarySearchVisualizer.hpp └ 二分探索

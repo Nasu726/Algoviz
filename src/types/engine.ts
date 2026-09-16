@@ -173,7 +173,7 @@ export interface GraphState {
     pendingTasks?: number;
 
     /** バケットソート: 局面 / 値の範囲 (0..range-1) */
-    phase?: 'count' | 'expand' | 'place' | 'copy';
+    phase?: 'count' | 'expand' | 'zeros' | 'ones' | 'copy';
     range?: number;
     /** バケットソート: 直前の手で数えた値 / 書き出した値 (-1 なら無し) / 頻度 0 を見た */
     counted?: number;
@@ -187,9 +187,9 @@ export interface GraphState {
     pass?: number;
     digits?: number;
     bit?: number;
-    /** 基数ソート: 0 の個数 (数えている途中はここまでの数) */
+    /** 基数ソート: ここまでに見つけた 0 の数 */
     zeros?: number;
-    /** 基数ソート: 直前の手が 数えるために見た / 別配列に置いた / 元に戻した */
+    /** 基数ソート: 直前の手が 見て残した / 別配列に置いた / まとめて元に戻した */
     looked?: boolean;
     placed?: boolean;
     copied?: boolean;
