@@ -124,7 +124,8 @@ protected:
 
     void buildArray() {
         int total = rowSize() + extraSlots();
-        graph = std::make_unique<GraphData>(MAX_VALUES * 2, 0);
+        // 作業用のマスが多いもの (バケットソート) は配列の数倍の節点が要る
+        graph = std::make_unique<GraphData>(std::max(MAX_VALUES * 2, total), 0);
         graph->startNodeIndex = -1;
         for (int i = 0; i < total; i++) {
             float v = i < rowSize() ? (float)values[i] : 0.0f;

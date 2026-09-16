@@ -132,6 +132,8 @@ export interface GraphState {
     hiddenSlots?: number[];
     /** 画面に収める範囲 [minX, minY, maxX, maxY]。節点の目標の座標で決める */
     viewBounds?: number[];
+    /** 節点に属さない文字。世界座標で、右端を x に揃えて置く (バケットの範囲など) */
+    labels?: { x: number; y: number; text: string }[];
     /** 配列そのものの長さ。作業用のマスはこの後ろに並ぶ */
     rowSize?: number;
     /** 選択ソート: 今のところ最小の値がある位置 / 次の手で入れ替えるか */
