@@ -18,7 +18,6 @@
 #include "include/ShakerSortVisualizer.hpp"
 #include "include/QuickSortVisualizer.hpp"
 #include "include/MergeSortVisualizer.hpp"
-#include "include/BucketSortVisualizer.hpp"
 #include "include/LinearSearchVisualizer.hpp"
 #include "include/BinarySearchVisualizer.hpp"
 #include "include/DequeVisualizer.hpp"
@@ -70,8 +69,6 @@ public:
             currentAlgo = std::make_unique<QuickSortVisualizer>();
         } else if (name == "merge") {
             currentAlgo = std::make_unique<MergeSortVisualizer>();
-        } else if (name == "bucket") {
-            currentAlgo = std::make_unique<BucketSortVisualizer>();
         } else if (name == "linear") {
             currentAlgo = std::make_unique<LinearSearchVisualizer>();
         } else if (name == "binary") {

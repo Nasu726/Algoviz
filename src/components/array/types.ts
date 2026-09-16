@@ -2,7 +2,7 @@
 // variant がそのままページの中身を決める。
 
 export type ArrayVariant =
-    'bubble' | 'selection' | 'insertion' | 'shaker' | 'quick' | 'merge' | 'bucket'
+    'bubble' | 'selection' | 'insertion' | 'shaker' | 'quick' | 'merge'
     | 'linear' | 'binary'
     | 'stack' | 'queue' | 'deque';
 
@@ -20,7 +20,6 @@ export const ARRAY_TITLE: Record<ArrayVariant, string> = {
     shaker: 'シェーカーソート',
     quick: 'クイックソート',
     merge: 'マージソート',
-    bucket: 'バケットソート',
     linear: '線形探索',
     binary: '二分探索',
     stack: 'スタック',
@@ -63,8 +62,6 @@ export const defaultValues: Record<ArrayVariant, string> = {
     shaker: '2 3 4 5 6 7 8 1',
     quick: '5 2 9 1 7 3 8 4',
     merge: '5 2 9 1 7 3 8 4',
-    // 同じ値を混ぜてある。頻度が 2 以上になるところが見どころ
-    bucket: '7 3 9 7 0 2 3 5 7 1',
     linear: '5 2 9 1 7 3 8 4',
     // 二分探索は並んでいることが前提
     binary: '1 2 3 4 5 7 8 9',
@@ -75,7 +72,7 @@ export const defaultValues: Record<ArrayVariant, string> = {
 
 /** 探すものの既定の値。値の中に在るものにしてある */
 export const defaultTarget: Record<ArrayVariant, string> = {
-    bubble: '', selection: '', insertion: '', shaker: '', quick: '', merge: '', bucket: '',
+    bubble: '', selection: '', insertion: '', shaker: '', quick: '', merge: '',
     linear: '7', binary: '7',
     stack: '', queue: '', deque: '',
 };
