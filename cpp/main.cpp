@@ -21,6 +21,7 @@
 #include "include/BucketSortVisualizer.hpp"
 #include "include/RadixSortVisualizer.hpp"
 #include "include/UnionFindVisualizer.hpp"
+#include "include/KruskalVisualizer.hpp"
 #include "include/LinearSearchVisualizer.hpp"
 #include "include/BinarySearchVisualizer.hpp"
 #include "include/DequeVisualizer.hpp"
@@ -78,6 +79,8 @@ public:
             currentAlgo = std::make_unique<RadixSortVisualizer>();
         } else if (name == "unionfind") {
             currentAlgo = std::make_unique<UnionFindVisualizer>();
+        } else if (name == "kruskal") {
+            currentAlgo = std::make_unique<KruskalVisualizer>();
         } else if (name == "linear") {
             currentAlgo = std::make_unique<LinearSearchVisualizer>();
         } else if (name == "binary") {
