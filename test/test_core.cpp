@@ -5546,6 +5546,54 @@ static void testUnionFindStepMatchesRunToEndAndStepsBack() {
     empty.stepBack();
 }
 
+static void testUnionFindOptionsCanBeSwitchedOff() {
+    beginTest("工夫を外すと find は上がるだけ、union は a の根を b の根の下");
+
+    // 両方外す: union 1 2 で 1 の木 (2 個) が 2 (1 個) の下に付き、鎖 0→1→2→3 になる
+    UnionFindVisualizer naive;
+    naive.load("setValues", "union 0 1 union 1 2 union 2 3 find 0");
+    naive.load("setOptions", "");
+    while (naive.getState(val::object())["opIndex"].as<int>() < 3) naive.step();
+    std::vector<int> chain = readParents(naive);
+    checkOrder("鎖", chain, {1, 2, 3, 3});
+
+    // find 0 は 3 回上がって根。圧縮の手は無く、親も変わらない
+    int climbs = 0, compressions = 0;
+    while (naive.step() && naive.getState(val::object())["opIndex"].as<int>() < 4) {
+        val s = naive.getState(val::object());
+        if (s["climbedTo"].as<int>() >= 0) climbs++;
+        if (s["compressed"].as<int>() >= 0) compressions++;
+    }
+    CHECK_EQ(climbs, 3);
+    CHECK_EQ(compressions, 0);
+    checkOrder("find 後の親", readParents(naive), chain);
+
+    // 途中で切り替えると最初から流し直す
+    naive.load("setOptions", "compress");
+    CHECK_EQ(naive.getState(val::object())["opIndex"].as<int>(), 0);
+
+    // 経路圧縮だけ: 鎖はできるが find で平たくなる
+    UnionFindVisualizer compressOnly;
+    compressOnly.load("setValues", "union 0 1 union 1 2 union 2 3 find 0");
+    compressOnly.load("setOptions", "compress");
+    compressOnly.runToEnd();
+    checkOrder("圧縮後", readParents(compressOnly), {3, 3, 3, 3});
+
+    // union by size だけ: 鎖にならない
+    UnionFindVisualizer bySizeOnly;
+    bySizeOnly.load("setValues", "union 0 1 union 1 2 union 2 3");
+    bySizeOnly.load("setOptions", "bysize");
+    bySizeOnly.runToEnd();
+    checkOrder("大きい方が根", readParents(bySizeOnly), {0, 0, 0, 0});
+
+    // 戻すと元どおり
+    bySizeOnly.load("setOptions", "compress bysize");
+    bySizeOnly.load("setValues", "union 0 1 union 1 2 union 2 3 find 0");
+    bySizeOnly.load("setOptions", "");
+    bySizeOnly.runToEnd();
+    checkOrder("外し直し", readParents(bySizeOnly), {1, 2, 3, 3});
+}
+
 static void testUnionFindRandomOpsStayInRange() {
     beginTest("ランダム生成の番号が範囲内");
 
@@ -5756,6 +5804,7 @@ int main(int argc, char** argv) {
     testUnionFindEdgesMatchParents();
     testUnionFindElementCountFollowsTheOps();
     testUnionFindStepMatchesRunToEndAndStepsBack();
+    testUnionFindOptionsCanBeSwitchedOff();
     testUnionFindRandomOpsStayInRange();
 
     beginSection("スタック / キュー / デック");

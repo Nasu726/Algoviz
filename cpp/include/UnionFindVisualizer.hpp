@@ -19,7 +19,8 @@
 //               下に付ける** (1手、union by size)。根が同じなら「既に同じ集合」(1手)
 //
 // 経路圧縮で木が平たくなる様子と、大きい木の下に付くので背が伸びない様子が
-// 見どころ。どちらも動きを見ないと分からない。
+// 見どころ。どちらも動きを見ないと分からない。**どちらの工夫も外せる** (`setOptions`)。
+// 外すと find は上がるだけ、union は a の根を b の根の下に付ける。
 //
 // 辺は parent[] から毎手作り直す。GraphData に辺を消す口が無いので、付け替えは
 // 全部の辺を作り直す形にする。要素の数は操作に出てくる最大の番号 + 1。
@@ -36,6 +37,10 @@ private:
 
     std::vector<Op> ops;
     int elements = 2;
+
+    // 工夫を使うか。外して背が伸びる様子を見比べるため
+    bool compress = true;
+    bool bySize = true;
 
     std::vector<int> parent, size;
     int opIndex = 0;
@@ -229,17 +234,18 @@ private:
                 // 通った節点を根の直下に付け替える。既に直下のものは付け替える
                 // ものが無いので飛ばす (見ても何も起きない)
                 int root = foundRootOf();
-                while (compressAt < (int)path.size() && parent[path[compressAt]] == root) {
+                while (compress && compressAt < (int)path.size() && parent[path[compressAt]] == root) {
                     compressAt++;
                 }
-                if (compressAt < (int)path.size()) {
+                if (compress && compressAt < (int)path.size()) {
                     int node = path[compressAt++];
                     parent[node] = root;
                     compressed = node;
                     rebuildEdges();
                     return true;
                 }
-                // 圧縮し終えた。union なら2回目の find へ、それから link
+                // 圧縮し終えた (工夫を外していれば何もしない)。union なら2回目の
+                // find へ、それから link
                 path.clear();
                 const Op& op = ops[opIndex];
                 if (op.isUnion && !secondFind) {
@@ -259,9 +265,11 @@ private:
                 if (rootA == rootB) {
                     sameSet = true;
                 } else {
-                    // 小さい木を大きい木の下に。同じなら a の下に b
+                    // 小さい木を大きい木の下に。同じなら a の下に b。
+                    // 工夫を外すと a の根を b の根の下に付ける
                     int big = rootA, small = rootB;
-                    if (size[rootB] > size[rootA]) { big = rootB; small = rootA; }
+                    if (!bySize) { big = rootB; small = rootA; }
+                    else if (size[rootB] > size[rootA]) { big = rootB; small = rootA; }
                     parent[small] = big;
                     size[big] += size[small];
                     linkedChild = small;
@@ -289,6 +297,14 @@ protected:
     bool handleCommand(const std::string& source, const std::string& input) override {
         if (source == "setValues") { setOpsFrom(input); return true; }
         if (source == "resetRun")  { resetRun(); return true; }
+        // "compress bysize" のように、使う工夫を語で並べる。無い語は外す
+        if (source == "setOptions") {
+            std::string w = lowered(input);
+            compress = w.find("compress") != std::string::npos;
+            bySize = w.find("bysize") != std::string::npos;
+            resetRun();
+            return true;
+        }
         if (source == "genRandom") {
             int howMany = 10;
             std::istringstream iss(input);

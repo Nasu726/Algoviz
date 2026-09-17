@@ -1,5 +1,5 @@
 import React from 'react';
-import { Section, NumberInput } from '../graph/panelParts';
+import { Section, Check, NumberInput } from '../graph/panelParts';
 import { isSearch, usesOps } from './types';
 import type { ArrayVariant } from './types';
 
@@ -16,6 +16,9 @@ interface Props {
     maxValues: number;
     onApply: () => void;
     onGenerateRandom: () => void;
+    /** Union-Find だけ使う。工夫を使うか */
+    options: { compress: boolean; bySize: boolean };
+    setOptions: (v: { compress: boolean; bySize: boolean }) => void;
     compact?: boolean;
 }
 
@@ -23,7 +26,7 @@ interface Props {
 export const ArraySetupPanel: React.FC<Props> = ({
     variant, targetText, setTargetText, onApplyTarget,
     valueText, setValueText, count, setCount, maxValues,
-    onApply, onGenerateRandom, compact,
+    onApply, onGenerateRandom, options, setOptions, compact,
 }) => {
     const fontSize = compact ? '12px' : '13px';
     const button: React.CSSProperties = { padding: '8px', cursor: 'pointer' };
@@ -67,6 +70,17 @@ export const ArraySetupPanel: React.FC<Props> = ({
                         : search ? 'この値で作り直す' : 'この値で並べ直す'}
                 </button>
             </Section>
+
+            {unionFind && (
+                <Section title="工夫">
+                    <Check checked={options.compress} onChange={(v) => setOptions({ ...options, compress: v })}>
+                        経路圧縮
+                    </Check>
+                    <Check checked={options.bySize} onChange={(v) => setOptions({ ...options, bySize: v })}>
+                        union by size
+                    </Check>
+                </Section>
+            )}
 
             <Section title="ランダム生成">
                 <div>
