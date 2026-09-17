@@ -41,6 +41,7 @@
 - [スタック](https://algoviz.nasu.uk/array/stack)
 - [キュー](https://algoviz.nasu.uk/array/queue)
 - [デック](https://algoviz.nasu.uk/array/deque)
+- [Union-Find](https://algoviz.nasu.uk/array/unionfind)
 
 **オートマトン**
 
@@ -128,7 +129,8 @@ cpp/
     SearchVisualizer.hpp       配列から値を探すものの基底 (終わり方が2通り)
     LinearSearchVisualizer.hpp ├ 線形探索
     BinarySearchVisualizer.hpp └ 二分探索
-    DequeVisualizer.hpp        └ スタック / キュー / デック (両端の外へ出入りする)
+    DequeVisualizer.hpp        ├ スタック / キュー / デック (両端の外へ出入りする)
+    UnionFindVisualizer.hpp    └ Union-Find (森。経路圧縮と union by size)
 src/
   types/engine.ts              WASM 境界の型定義。C++ を変えたらここも揃える
   pages/                       ページ

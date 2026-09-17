@@ -45,6 +45,7 @@ const GENRES: { name: string; items: { path: string; label: string }[] }[] = [
             { path: '/array/stack', label: 'スタック' },
             { path: '/array/queue', label: 'キュー' },
             { path: '/array/deque', label: 'デック' },
+            { path: '/array/unionfind', label: 'Union-Find' },
         ],
     },
     {

@@ -30,6 +30,8 @@ export const ArrayPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     const [state, setState] = useState<GraphState | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const [isHelpOpen, setIsHelpOpen] = useState(false);
+    // Union-Find の工夫。外すと最初から流し直す
+    const [options, setOptions] = useState({ compress: true, bySize: true });
 
     // 入力欄の最新値をコマンド組み立て時に読む。依存配列に並べると
     // 入力するたびに配列が作り直されてしまう。
@@ -79,6 +81,12 @@ export const ArrayPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     }, [engine, variant]);
 
     const handleReset = () => { setIsPlaying(false); engine.load('resetRun', ''); readState(); };
+    const applyOptions = (next: typeof options) => {
+        setIsPlaying(false);
+        setOptions(next);
+        engine.load('setOptions', `${next.compress ? 'compress' : ''} ${next.bySize ? 'bysize' : ''}`);
+        readState();
+    };
     const handleStep = () => { setIsPlaying(false); engine.step(); readState(); };
     const handleStepBack = () => { setIsPlaying(false); engine.stepBack(); readState(); };
     const handleRunToEnd = () => { setIsPlaying(false); engine.runToEnd(); readState(); };
@@ -121,6 +129,8 @@ export const ArrayPage: React.FC<Props> = ({ engine, onBack, variant }) => {
                         maxValues={maxValues}
                         onApply={applyValues}
                         onGenerateRandom={generateRandom}
+                        options={options}
+                        setOptions={applyOptions}
                         compact={compact}
                     />
                 }

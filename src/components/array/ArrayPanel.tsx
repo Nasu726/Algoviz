@@ -37,6 +37,23 @@ const statusOf = (variant: ArrayVariant, state: GraphState | null): string => {
         }
         return '1つずつ見ています';
     }
+    if (variant === 'unionfind') {
+        if (state?.finished) return '操作の並びを流し終えました';
+        if (state?.sameSet) return '根が同じなので、既に同じ集合です';
+        if ((state?.linkedChild ?? -1) >= 0) {
+            const sizes = state?.size ?? [];
+            const root = state?.linkedRoot ?? 0, child = state?.linkedChild ?? 0;
+            return `${root} の木 (${(sizes[root] ?? 0) - (sizes[child] ?? 0)} 個) の下に ${child} の木 (${sizes[child] ?? 0} 個) を付けました`;
+        }
+        if ((state?.compressed ?? -1) >= 0) {
+            return `${state?.compressed} を根の直下に付け直しました (経路圧縮)`;
+        }
+        if ((state?.foundRoot ?? -1) >= 0) return `根は ${state?.foundRoot} でした`;
+        if ((state?.climbedTo ?? -1) >= 0) {
+            return `${state?.climbedFrom} から親の ${state?.climbedTo} へ上がりました`;
+        }
+        return '操作の並びを頭から流します';
+    }
     if (usesOps(variant)) {
         if (state?.finished) return '操作の並びを流し終えました';
         if (state?.emptyPop) return '空なので、取り出せませんでした';
@@ -133,7 +150,15 @@ export const ArrayPanel: React.FC<Props> = ({
 
     const progress = (
         <div style={{ fontSize, lineHeight: 1.7, minWidth: 0 }}>
-            {ops ? (
+            {variant === 'unionfind' ? (
+                <>
+                    {opQueue}
+                    <div>
+                        <b>集合の数</b>: {state?.setCount ?? 0}
+                        <span style={{ color: '#90a4ae' }}> / {state?.elements ?? 0} 要素</span>
+                    </div>
+                </>
+            ) : ops ? (
                 <>
                     {opQueue}
                     <div>
@@ -201,7 +226,14 @@ export const ArrayPanel: React.FC<Props> = ({
 
     const legend = (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px' }}>
-            {ops ? (
+            {variant === 'unionfind' ? (
+                <>
+                    <Swatch color={NODE_STROKE[2]} label="今たどっている節点" />
+                    <Swatch color={NODE_STROKE[1]} label="見つけた根" />
+                    <Swatch color={NODE_STROKE[3]} label="通った節点" />
+                    <Swatch color={NODE_STROKE[4]} label="付け替えた節点" />
+                </>
+            ) : ops ? (
                 <>
                     <Swatch color={NODE_STROKE[1]} label="次に出る値" />
                     <Swatch color={NODE_STROKE[4]} label="今出入りした値" />

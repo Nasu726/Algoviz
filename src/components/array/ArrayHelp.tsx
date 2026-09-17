@@ -365,6 +365,50 @@ const SearchCommon: React.FC<{ maxValues: number; sample: string; heading: numbe
     </>
 );
 
+const UnionFindHelp: React.FC<{ maxOps: number }> = ({ maxOps }) => (
+    <>
+        <h3>1. 画面の見方</h3>
+        <ul>
+            <li>要素 (番号) が節点。<b>親へ辺が伸びた森</b>で、根が集合の代表</li>
+            <li>最初は全部が根 (1つずつの集合)</li>
+            <li>赤色が今たどっている節点、橙色が見つけた根、灰色が通った節点、
+                緑色がこの手で付け替えた節点</li>
+        </ul>
+
+        <h3>2. 1ステップの単位</h3>
+        <ul>
+            <li><b>find x</b>：親をたどって<b>1つ上がる</b>のが1手。根に着いたら1手。
+                そのあと、通った節点を<b>1つずつ根の直下に付け替える</b> (経路圧縮)</li>
+            <li><b>union a b</b>：a と b の find をそれぞれ進めたあと、
+                <b>小さい木を大きい木の根の下に付ける</b> (1手)。根が同じなら何もしない (1手)</li>
+        </ul>
+
+        <h3>3. 背が伸びない</h3>
+        <p>
+            union のたびに小さい方を下に付け、find のたびに通った道を根の直下へ付け直します。
+            何回 union しても木が平たいままなのを見てください。
+        </p>
+        <p>
+            「工夫」のチェックを外すと、find は上がるだけ、union は a の根を b の根の下に
+            付けるだけになります。同じ操作で木が縦に伸び、find の手数が増えるのを見比べてください
+            (外すと最初から流し直します)。
+        </p>
+
+        <h3>4. 操作の書き方</h3>
+        <ul>
+            <li><code>union</code> に続けて2つの番号、<code>find</code> に続けて1つの番号</li>
+            <li>番号は 0 始まり。要素の数は、出てきた最大の番号 + 1 になる</li>
+            <li><b>ランダム生成</b>：8 要素で、union と find を混ぜて作る</li>
+        </ul>
+        <pre style={codeBlock}>union 0 1 union 2 3 union 1 3 find 0 union 4 5 union 3 5 find 4</pre>
+        <ul>
+            <li>操作の数の上限は {maxOps}</li>
+        </ul>
+
+        <Controls heading={5} applyLabel="この並びで動かす" />
+    </>
+);
+
 // スタック / キュー / デック。操作の並びを流す
 const OpsHelp: React.FC<{ maxOps: number; kind: 'stack' | 'queue' | 'deque' }> =
     ({ maxOps, kind }) => (
@@ -506,7 +550,8 @@ const BinaryHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
 
 export const ArrayHelp: React.FC<{ variant: ArrayVariant; maxValues: number }> =
     ({ variant, maxValues }) =>
-        variant === 'stack' || variant === 'queue' || variant === 'deque'
+        variant === 'unionfind' ? <UnionFindHelp maxOps={maxValues} />
+        : variant === 'stack' || variant === 'queue' || variant === 'deque'
             ? <OpsHelp maxOps={maxValues} kind={variant} />
         : variant === 'linear' ? <LinearHelp maxValues={maxValues} />
         : variant === 'binary' ? <BinaryHelp maxValues={maxValues} />

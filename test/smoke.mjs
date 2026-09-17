@@ -222,6 +222,13 @@ const nw = engine.getState({ withText: true });
 checkEq('頂点の重みを受け取った', nw.hasNodeWeights, true);
 checkEq('テキストに頂点の重みが載る', nw.graphText.split('\n')[1], '7 8 9');
 
+// --- Union-Find ---
+engine.setAlgorithm('unionfind');
+engine.load('setValues', 'union 0 1 union 1 2');
+engine.load('setOptions', '');
+engine.runToEnd();
+checkEq('工夫を外すと a の根が b の根の下に付く', engine.getState({}).parent[1], 2);
+
 if (failures === 0) {
     console.log(`smoke: OK (${checks} checks)`);
     process.exit(0);

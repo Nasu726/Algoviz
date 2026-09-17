@@ -39,6 +39,7 @@
 #include "../cpp/include/MergeSortVisualizer.hpp"
 #include "../cpp/include/BucketSortVisualizer.hpp"
 #include "../cpp/include/RadixSortVisualizer.hpp"
+#include "../cpp/include/UnionFindVisualizer.hpp"
 #include "../cpp/include/LinearSearchVisualizer.hpp"
 #include "../cpp/include/BinarySearchVisualizer.hpp"
 #include "../cpp/include/DequeVisualizer.hpp"
@@ -5370,6 +5371,241 @@ static void testRadixRandomAllowsDuplicates() {
     CHECK(std::adjacent_find(vs.begin(), vs.end()) != vs.end());
 }
 
+
+// ==========================================
+// Union-Find
+// ==========================================
+
+static std::vector<int> readParents(UnionFindVisualizer& u) {
+    val ps = u.getState(val::object())["parent"];
+    std::vector<int> out;
+    for (int i = 0; i < ps["length"].as<int>(); i++) out.push_back(ps[i].as<int>());
+    return out;
+}
+
+// from → child の辺があるか
+static bool hasEdgeInto(UnionFindVisualizer& u, int from, int child) {
+    val s = u.getState(val::object());
+    val edges = s["edges"];
+    int n = edges["length"].as<int>() / GraphData::EDGE_STRIDE;
+    for (int i = 0; i < n; i++) {
+        if ((int)edges[i * GraphData::EDGE_STRIDE].as<float>() == from &&
+            (int)edges[i * GraphData::EDGE_STRIDE + 1].as<float>() == child) return true;
+    }
+    return false;
+}
+
+// 深さ 3 の鎖 0 <- 4 <- 6 <- 7 を作る。union by size だと同じ大きさどうしを
+// 順に付けて 2 段、それをまた付けて 3 段にする
+static const char* CHAIN_OPS = "union 0 1 union 2 3 union 0 2 union 4 5 union 6 7 union 4 6 union 0 4";
+
+static void testUnionFindClimbsOneEdgePerStep() {
+    beginTest("find は1手で1つしか上がらない");
+
+    UnionFindVisualizer v;
+    v.load("setValues", CHAIN_OPS);
+    v.runToEnd();
+    std::vector<int> ps = readParents(v);
+    CHECK_EQ(ps[7], 6);
+    CHECK_EQ(ps[6], 4);
+    CHECK_EQ(ps[4], 0);
+
+    // find 7 だけを1手ずつ。7 → 6 → 4 → 0 で 3 回上がる
+    UnionFindVisualizer w;
+    w.load("setValues", (std::string(CHAIN_OPS) + " find 7").c_str());
+    while (w.getState(val::object())["opIndex"].as<int>() < 7) w.step();
+    int climbs = 0;
+    for (int i = 0; i < 10; i++) {
+        w.step();
+        val s = w.getState(val::object());
+        if (s["climbedTo"].as<int>() >= 0) climbs++;
+        if (s["foundRoot"].as<int>() >= 0) break;
+    }
+    CHECK_EQ(climbs, 3);
+    CHECK_EQ(w.getState(val::object())["foundRoot"].as<int>(), 0);
+}
+
+static void testUnionFindCompressesPathOneNodePerStep() {
+    beginTest("根に着いたあと、通った節点が1手ずつ根の直下に付け替わる");
+
+    UnionFindVisualizer w;
+    w.load("setValues", (std::string(CHAIN_OPS) + " find 7").c_str());
+    while (w.getState(val::object())["opIndex"].as<int>() < 7) w.step();
+    while (w.getState(val::object())["foundRoot"].as<int>() < 0) w.step();
+
+    // 通ったのは 7, 6, 4。4 は既に根の直下なので、付け替えるのは 7 と 6 の 2 手
+    std::vector<int> compressedOrder;
+    for (int i = 0; i < 5; i++) {
+        if (!w.step()) break;
+        val s = w.getState(val::object());
+        int c = s["compressed"].as<int>();
+        if (c >= 0) compressedOrder.push_back(c);
+        if (s["opIndex"].as<int>() == 8) break;
+    }
+    checkOrder("付け替えた順", compressedOrder, {7, 6});
+    std::vector<int> ps = readParents(w);
+    CHECK_EQ(ps[7], 0);
+    CHECK_EQ(ps[6], 0);
+    CHECK(hasEdgeInto(w, 0, 7)); // 辺も付け替わっている
+    CHECK(!hasEdgeInto(w, 6, 7));
+}
+
+static void testUnionLinksSmallerUnderLarger() {
+    beginTest("union は小さい木を大きい木の下に付ける");
+
+    // 0-1-2 (3 個) と 3 (1 個)。3 が 0 の下に来る
+    UnionFindVisualizer u;
+    u.load("setValues", "union 0 1 union 0 2 union 3 0");
+    u.runToEnd();
+    std::vector<int> ps = readParents(u);
+    CHECK_EQ(ps[3], 0);
+    CHECK_EQ(ps[0], 0);
+
+    // 同じ大きさなら a の根の下に b の根
+    UnionFindVisualizer v;
+    v.load("setValues", "union 1 0");
+    v.runToEnd();
+    CHECK_EQ(readParents(v)[0], 1);
+
+    // 大きさは根に集約されている
+    val s = u.getState(val::object());
+    CHECK_EQ(s["size"][0].as<int>(), 4);
+    CHECK_EQ(s["setCount"].as<int>(), 1);
+}
+
+static void testUnionOfSameSetChangesNothing() {
+    beginTest("根が同じ union は何も変えず 1 手で終わる");
+
+    UnionFindVisualizer u;
+    u.load("setValues", "union 0 1 union 0 1");
+    // 1つ目の union: find 0 (根: 1手) + find 1 (根: 1手) + link (1手) = 3手
+    for (int i = 0; i < 3; i++) u.step();
+    std::vector<int> before = readParents(u);
+    // 2つ目: find 0 は 0→1 (1手) 根 (1手)、find 1 は根 (1手)、link で「同じ」(1手)
+    int sameAt = -1;
+    for (int i = 1; i <= 6; i++) {
+        u.step();
+        if (u.getState(val::object())["sameSet"].as<bool>()) { sameAt = i; break; }
+    }
+    CHECK_EQ(sameAt, 4);
+    checkOrder("親", readParents(u), before);
+    CHECK_EQ(u.getState(val::object())["setCount"].as<int>(), 1);
+}
+
+static void testUnionFindEdgesMatchParents() {
+    beginTest("辺は常に n − 集合の数 本で、parent と一致する");
+
+    UnionFindVisualizer u;
+    u.load("setValues", "union 0 1 union 2 3 union 1 3 find 0 union 4 5 union 3 5 find 4");
+    while (u.step()) {
+        val s = u.getState(val::object());
+        int n = s["elements"].as<int>();
+        int edges = s["edges"]["length"].as<int>() / GraphData::EDGE_STRIDE;
+        CHECK_EQ(edges, n - s["setCount"].as<int>());
+        std::vector<int> ps = readParents(u);
+        for (int i = 0; i < n; i++) {
+            if (ps[i] != i) CHECK(hasEdgeInto(u, ps[i], i));
+        }
+    }
+}
+
+static void testUnionFindElementCountFollowsTheOps() {
+    beginTest("要素の数は操作に出る最大の番号 + 1");
+
+    UnionFindVisualizer u;
+    u.load("setValues", "union 2 5 find 3");
+    CHECK_EQ(u.getState(val::object())["elements"].as<int>(), 6);
+    CHECK_EQ(u.getState(val::object())["nodeCount"].as<int>(), 6);
+}
+
+static void testUnionFindStepMatchesRunToEndAndStepsBack() {
+    beginTest("1手ずつ進めた結果が一気に実行と一致し、1手戻せる");
+
+    const char* ops = "union 0 1 union 2 3 union 1 3 find 0 union 4 5 union 3 5 find 4";
+    UnionFindVisualizer stepwise, atOnce;
+    stepwise.load("setValues", ops);
+    for (int i = 0; i < 300 && stepwise.step(); i++) {}
+    atOnce.load("setValues", ops);
+    atOnce.runToEnd();
+    checkOrder("親", readParents(stepwise), readParents(atOnce));
+
+    UnionFindVisualizer before, after;
+    before.load("setValues", ops);
+    after.load("setValues", ops);
+    for (int i = 0; i < 5; i++) before.step();
+    for (int i = 0; i < 6; i++) after.step();
+    after.stepBack();
+    checkOrder("戻したあと", readParents(before), readParents(after));
+    CHECK_EQ(before.getState(val::object())["opIndex"].as<int>(),
+             after.getState(val::object())["opIndex"].as<int>());
+
+    UnionFindVisualizer empty;
+    empty.load("setValues", "");
+    empty.runToEnd();
+    CHECK(empty.getState(val::object())["finished"].as<bool>());
+    empty.stepBack();
+}
+
+static void testUnionFindOptionsCanBeSwitchedOff() {
+    beginTest("工夫を外すと find は上がるだけ、union は a の根を b の根の下");
+
+    // 両方外す: union 1 2 で 1 の木 (2 個) が 2 (1 個) の下に付き、鎖 0→1→2→3 になる
+    UnionFindVisualizer naive;
+    naive.load("setValues", "union 0 1 union 1 2 union 2 3 find 0");
+    naive.load("setOptions", "");
+    while (naive.getState(val::object())["opIndex"].as<int>() < 3) naive.step();
+    std::vector<int> chain = readParents(naive);
+    checkOrder("鎖", chain, {1, 2, 3, 3});
+
+    // find 0 は 3 回上がって根。圧縮の手は無く、親も変わらない
+    int climbs = 0, compressions = 0;
+    while (naive.step() && naive.getState(val::object())["opIndex"].as<int>() < 4) {
+        val s = naive.getState(val::object());
+        if (s["climbedTo"].as<int>() >= 0) climbs++;
+        if (s["compressed"].as<int>() >= 0) compressions++;
+    }
+    CHECK_EQ(climbs, 3);
+    CHECK_EQ(compressions, 0);
+    checkOrder("find 後の親", readParents(naive), chain);
+
+    // 途中で切り替えると最初から流し直す
+    naive.load("setOptions", "compress");
+    CHECK_EQ(naive.getState(val::object())["opIndex"].as<int>(), 0);
+
+    // 経路圧縮だけ: 鎖はできるが find で平たくなる
+    UnionFindVisualizer compressOnly;
+    compressOnly.load("setValues", "union 0 1 union 1 2 union 2 3 find 0");
+    compressOnly.load("setOptions", "compress");
+    compressOnly.runToEnd();
+    checkOrder("圧縮後", readParents(compressOnly), {3, 3, 3, 3});
+
+    // union by size だけ: 鎖にならない
+    UnionFindVisualizer bySizeOnly;
+    bySizeOnly.load("setValues", "union 0 1 union 1 2 union 2 3");
+    bySizeOnly.load("setOptions", "bysize");
+    bySizeOnly.runToEnd();
+    checkOrder("大きい方が根", readParents(bySizeOnly), {0, 0, 0, 0});
+
+    // 戻すと元どおり
+    bySizeOnly.load("setOptions", "compress bysize");
+    bySizeOnly.load("setValues", "union 0 1 union 1 2 union 2 3 find 0");
+    bySizeOnly.load("setOptions", "");
+    bySizeOnly.runToEnd();
+    checkOrder("外し直し", readParents(bySizeOnly), {1, 2, 3, 3});
+}
+
+static void testUnionFindRandomOpsStayInRange() {
+    beginTest("ランダム生成の番号が範囲内");
+
+    UnionFindVisualizer u;
+    u.load("genRandom", "12");
+    val s = u.getState(val::object());
+    CHECK_EQ(s["elements"].as<int>(), 8);
+    CHECK_EQ(s["ops"]["length"].as<int>(), 13); // 12 + 最後の find
+    u.runToEnd();
+    CHECK(u.getState(val::object())["finished"].as<bool>());
+}
+
 // ==========================================
 
 int main(int argc, char** argv) {
@@ -5560,6 +5796,17 @@ int main(int argc, char** argv) {
     testBinaryLooksAtFewerPlacesThanLinear();
     testBinaryRunsOnUnsortedInput();
     testSearchesStepBackAndHandleTinyInput();
+    beginSection("Union-Find");
+    testUnionFindClimbsOneEdgePerStep();
+    testUnionFindCompressesPathOneNodePerStep();
+    testUnionLinksSmallerUnderLarger();
+    testUnionOfSameSetChangesNothing();
+    testUnionFindEdgesMatchParents();
+    testUnionFindElementCountFollowsTheOps();
+    testUnionFindStepMatchesRunToEndAndStepsBack();
+    testUnionFindOptionsCanBeSwitchedOff();
+    testUnionFindRandomOpsStayInRange();
+
     beginSection("スタック / キュー / デック");
     testSameOpsGiveDifferentOrder();
     testDequeUsesBothEnds();
