@@ -102,6 +102,55 @@ const HeapHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
     </>
 );
 
+const HeapSortHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
+    <>
+        <h3>1. 画面の見方</h3>
+        <ul>
+            <li>ヒープの構築と同じ木。形は完全二分木で決まっていて、<b>入れ替えで動くのは値だけ</b></li>
+            <li><b>上から下、左から右に読んだものが配列</b>。左のパネルにその順で並ぶ</li>
+            <li>確定した (もう動かない) 節点は灰色。後ろから順に埋まっていく</li>
+            <li>色の意味は実行状態のパネルにある凡例のとおり</li>
+        </ul>
+
+        <h3>2. 1ステップの単位</h3>
+        <p>
+            <b>大きい方の子と一度比べて、子が大きければ入れ替えて1つ降りる</b>のが1ステップです (下ろす)。
+        </p>
+        <ul>
+            <li><b>構築</b>：値を全部置いたあと、後ろの内部節点から根へ向かって1つずつ下ろす。
+                ヒープの構築ページの「末尾に置いて上げる」と対になる</li>
+            <li><b>取り出し</b>：根 (最大) と末尾を入れ替えて末尾を確定するのが1手。そのあと根を下ろす</li>
+            <li>最大ヒープで昇順に並べる (向きは固定)</li>
+        </ul>
+
+        <h3>3. 値の入れ方</h3>
+        <ul>
+            <li><b>この値で作り直す</b>：空白か改行で区切って値を並べる。その並びのまま木に置く</li>
+            <li><b>ランダム生成</b>：個数を決めると、重複しない値を選んで並べる</li>
+        </ul>
+        <pre style={codeBlock}>20 40 30 80 50 70 60</pre>
+        <ul>
+            <li>値の個数の上限は {maxValues}</li>
+        </ul>
+
+        <h3>4. 画面の操作</h3>
+        <ul>
+            <li><b>ドラッグ</b>：表示位置を動かす</li>
+            <li><b>ホイール / 2本指のピンチ</b>：拡大・縮小</li>
+        </ul>
+
+        <h3>5. ショートカットキー</h3>
+        <ul>
+            <li><b>Esc</b>：ビジュアライザ一覧へ戻る</li>
+            <li><b>Ctrl + H</b>：ヘルプを開く</li>
+            <li><b>Ctrl + S</b>：この値で作り直す</li>
+            <li><b>Ctrl + Enter</b>：実行 / 一時停止</li>
+            <li><b>Ctrl + &larr;</b> / <b>&rarr;</b>：戻る / 進む</li>
+            <li><b>Ctrl + &uarr;</b> / <b>&darr;</b>：実行速度の増減</li>
+        </ul>
+    </>
+);
+
 
 const TrieHelp: React.FC<{ maxWords: number }> = ({ maxWords }) => (
     <>
@@ -307,4 +356,5 @@ export const TreeHelp: React.FC<{ variant: TreeVariant; maxValues: number }> = (
     : variant === 'huffman' ? <HuffmanHelp maxLeaves={maxValues} />
     : variant === 'trie' ? <TrieHelp maxWords={maxValues} />
     : variant === 'heap' ? <HeapHelp maxValues={maxValues} />
+    : variant === 'heapsort' ? <HeapSortHelp maxValues={maxValues} />
     : <BstHelp maxValues={maxValues} />;

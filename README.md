@@ -22,6 +22,7 @@
 - [AVL 木の構築](https://algoviz.nasu.uk/tree/avl)
 - [B木の構築](https://algoviz.nasu.uk/tree/btree)
 - [ヒープの構築](https://algoviz.nasu.uk/tree/heap)
+- [ヒープソート](https://algoviz.nasu.uk/tree/heapsort)
 - [trie (接頭辞木) の構築](https://algoviz.nasu.uk/tree/trie)
 - [ハフマン木の構築](https://algoviz.nasu.uk/tree/huffman)
 
@@ -118,6 +119,7 @@ cpp/
     AvlVisualizer.hpp          ├ AVL 木の構築 (回転で形が変わる)
     BTreeVisualizer.hpp        ├ B木の構築 (1つの節点に値が複数入る)
     HeapVisualizer.hpp         ├ ヒープの構築
+    HeapSortVisualizer.hpp     ├ ヒープソート (構築は下ろす、取り出しで後ろから確定)
     TrieVisualizer.hpp         ├ trie の構築
     HuffmanVisualizer.hpp      └ ハフマン木の構築
     ArrayVisualizer.hpp        配列を一列に並べるものの基底 (節点の番号 = 添字)

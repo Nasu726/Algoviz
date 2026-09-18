@@ -1,11 +1,12 @@
 // 木のビジュアライザで共有する型。1ページ1アルゴリズムなので、
 // variant がそのままページの中身を決める。
 
-export type TreeVariant = 'bst' | 'heap' | 'trie' | 'huffman' | 'avl' | 'btree';
+export type TreeVariant = 'bst' | 'heap' | 'heapsort' | 'trie' | 'huffman' | 'avl' | 'btree';
 
 export const TREE_TITLE: Record<TreeVariant, string> = {
     bst: '二分探索木の構築',
     heap: 'ヒープの構築',
+    heapsort: 'ヒープソート',
     trie: 'trie (接頭辞木) の構築',
     huffman: 'ハフマン木の構築',
     avl: 'AVL 木の構築',
@@ -25,6 +26,7 @@ export const treeAlgorithm = (v: TreeVariant): string => v;
 export const defaultValues: Record<TreeVariant, string> = {
     bst: '50 30 70 20 40 60 80',
     heap: '20 40 30 80 50 70 60',
+    heapsort: '20 40 30 80 50 70 60',
     trie: 'to tea ten ted i in inn',
     huffman: 'abracadabra',
     avl: '10 20 30 40 50 25',

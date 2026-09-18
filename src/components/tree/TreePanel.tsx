@@ -55,7 +55,20 @@ export const TreePanel: React.FC<Props> = ({
     const inserted = state?.insertedCount ?? 0;
 
     const heap = variant === 'heap';
-    const statusText = huffman
+    const heapSort = variant === 'heapsort';
+    // ヒープソートは添字順に読んだ値が配列そのもの
+    const NODE_STRIDE = 4;
+    const heapValues: number[] = heapSort && state
+        ? Array.from({ length: state.nodeCount }, (_, i) => state.nodes[i * NODE_STRIDE + 2])
+        : [];
+    const heapSize = state?.heapSize ?? 0;
+    const statusText = heapSort
+        ? (state?.finished ? '並び終えました'
+           : cursor >= 0 ? (state?.phase === 'build' ? `構築: ${heapValues[cursor]} を下ろしています`
+                                                     : '根を下ろしています')
+           : state?.phase === 'build' ? '次の節点を下ろします'
+           : '根と末尾を入れ替え、末尾を確定します')
+        : huffman
         ? (state?.finished ? '1本の木にまとまりました'
            : (state?.selectedA ?? -1) >= 0 ? 'この2つを繋ぎます'
            : '重みが最小の2つを選びます')
@@ -71,8 +84,23 @@ export const TreePanel: React.FC<Props> = ({
            : trie ? '次の単語を根から入れます'
            : '次の値を根から入れます');
 
-    // 挿入済みと、これから挿入する値を色で分ける
-    const queue = (
+    // 挿入済みと、これから挿入する値を色で分ける。ヒープソートは確定した値を灰に
+    const queue = heapSort ? (
+        <div style={{ fontFamily: 'monospace', fontSize: compact ? '14px' : '16px',
+                      wordBreak: 'break-all', lineHeight: 1.7 }}>
+            {heapValues.length === 0
+                ? <span style={dim}>（値がありません）</span>
+                : heapValues.map((v, i) => (
+                <span key={i} style={{
+                    marginRight: '8px',
+                    color: i >= heapSize ? '#90a4ae' : i === cursor ? '#e74c3c' : '#000',
+                    fontWeight: i === cursor ? 'bold' : 'normal',
+                }}>
+                    {v}
+                </span>
+            ))}
+        </div>
+    ) : (
         <div style={{ fontFamily: 'monospace', fontSize: compact ? '14px' : '16px',
                       wordBreak: 'break-all', lineHeight: 1.7 }}>
             {items.length === 0
@@ -92,7 +120,12 @@ export const TreePanel: React.FC<Props> = ({
     const progress = (
         <div style={{ fontSize, lineHeight: 1.7, minWidth: 0 }}>
             {queue}
-            {huffman ? (
+            {heapSort ? (
+                <div>
+                    <b>未確定</b>: {heapSize}
+                    <span style={dim}> / {heapValues.length}</span>
+                </div>
+            ) : huffman ? (
                 <div>
                     <b>まだ繋がっていない木</b>: {state?.rootCount ?? 0}
                 </div>
@@ -108,7 +141,7 @@ export const TreePanel: React.FC<Props> = ({
                     {state?.prefix ? <code>{state.prefix}</code> : <span style={dim}>なし</span>}
                 </div>
             )}
-            {!huffman && (
+            {!huffman && !heapSort && (
                 <div>
                     <b>{heap ? '上げている位置' : trie || btree ? '今いる節点' : '比べている節点'}</b>:{' '}
                     {cursor >= 0 ? '光っている節点' : <span style={dim}>なし</span>}
@@ -124,10 +157,12 @@ export const TreePanel: React.FC<Props> = ({
                     <b>1つの節点に入る値</b>: {(state?.order ?? 4) - 1} 個まで
                 </div>
             )}
-            <div>
-                <b>節点の数</b>: {inserted}
-                {!trie && !huffman && <span style={dim}> / {items.length}</span>}
-            </div>
+            {!heapSort && (
+                <div>
+                    <b>節点の数</b>: {inserted}
+                    {!trie && !huffman && <span style={dim}> / {items.length}</span>}
+                </div>
+            )}
             {!heap && state?.duplicate && (
                 <div style={{ color: '#e67e22' }}>同じ値が既にあったので入れませんでした</div>
             )}
@@ -172,6 +207,14 @@ export const TreePanel: React.FC<Props> = ({
                     <Swatch color={NODE_STROKE[4]} label="今作った節点" />
                     <Swatch color={EDGE_COLOR[2]} label="直前に降りた枝" isEdge />
                     <Swatch color={EDGE_COLOR[3]} label="通った枝" isEdge />
+                </>
+            ) : heapSort ? (
+                <>
+                    <Swatch color={NODE_STROKE[2]} label="下ろしている位置" />
+                    <Swatch color={NODE_STROKE[1]} label="比べている子" />
+                    <Swatch color={NODE_STROKE[4]} label="直前に入れ替えた相手" />
+                    <Swatch color={NODE_STROKE[3]} label="確定した節点" />
+                    <Swatch color={EDGE_COLOR[2]} label="今比べている枝" isEdge />
                 </>
             ) : heap ? (
                 <>
