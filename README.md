@@ -13,6 +13,7 @@
 - [幅優先探索 (BFS)](https://algoviz.nasu.uk/graph/bfs)
 - [深さ優先探索 (DFS)](https://algoviz.nasu.uk/graph/dfs)
 - [ダイクストラ法](https://algoviz.nasu.uk/graph/dijkstra)
+- [プリム法](https://algoviz.nasu.uk/graph/prim)
 - [クラスカル法](https://algoviz.nasu.uk/graph/kruskal)
 
 **木**
@@ -110,7 +111,7 @@ cpp/
     TreeLayout.hpp                ├ 木 (Reingold-Tilford)。常に上から下
     LineLayout.hpp                └ 配列 (番号順に左から一列。段にも分けられる)
     GraphVisualizer.hpp        グラフの生成・レイアウト・描画データ供給の基底クラス
-    TraversalVisualizer.hpp    ├ BFS / DFS / ダイクストラ法
+    TraversalVisualizer.hpp    ├ BFS / DFS / ダイクストラ法 / プリム法
     KruskalVisualizer.hpp      ├ クラスカル法 (辺を軽い順に見て、閉路になる辺を捨てる)
     AutomatonVisualizer.hpp    ├ DFA (常に有向 + 初期状態 + 受理状態 + 遷移記号)
     BstVisualizer.hpp          ├ 二分探索木の構築

@@ -4,16 +4,20 @@
 export const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 
 /** 1ページ1アルゴリズム。ルートと1対1に対応する */
-export type GraphVariant = 'bfs' | 'dfs' | 'dijkstra' | 'kruskal' | 'automaton' | 'plain';
+export type GraphVariant = 'bfs' | 'dfs' | 'dijkstra' | 'prim' | 'kruskal' | 'automaton' | 'plain';
 
-/** 探索を行う variant か */
-export const isTraversal = (v: GraphVariant): v is 'bfs' | 'dfs' | 'dijkstra' =>
-    v === 'bfs' || v === 'dfs' || v === 'dijkstra';
+/** 探索を行う variant か (プリム法も「取り出して確定」の同じ形) */
+export const isTraversal = (v: GraphVariant): v is 'bfs' | 'dfs' | 'dijkstra' | 'prim' =>
+    v === 'bfs' || v === 'dfs' || v === 'dijkstra' || v === 'prim';
+
+/** 無向・重み付きで固定の variant か (最小全域木) */
+export const isFixedShape = (v: GraphVariant): boolean => v === 'kruskal' || v === 'prim';
 
 export const VARIANT_TITLE: Record<GraphVariant, string> = {
     bfs: '幅優先探索 (BFS)',
     dfs: '深さ優先探索 (DFS)',
     dijkstra: 'ダイクストラ法',
+    prim: 'プリム法',
     kruskal: 'クラスカル法',
     automaton: '決定性有限オートマトン (DFA)',
     plain: 'グラフ描画',
@@ -52,9 +56,9 @@ export const defaultSettings = (variant: GraphVariant): GraphSettings => ({
     allowSameEdge: false,
     // 探索を見せるページでは、途中で行き止まりにならない方が既定として自然
     connected: isTraversal(variant) || variant === 'kruskal',
-    // 重みを使うのはダイクストラとクラスカルだけ。遊び場も既定で重み付きにしておく。
+    // 重みを使うのはダイクストラと最小全域木だけ。遊び場も既定で重み付きにしておく。
     // BFS / DFS は重みを一切見ないので、出すと使っていると誤解させる
-    weighted: variant === 'dijkstra' || variant === 'kruskal' || variant === 'plain',
+    weighted: variant === 'dijkstra' || isFixedShape(variant) || variant === 'plain',
     useNodeWeights: false,
     skipExtension: true,
     showWeights: true,

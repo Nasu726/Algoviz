@@ -5,7 +5,7 @@ import { Section, Swatch, NumberInput } from './panelParts';
 import type { GraphState } from '../../types/engine';
 
 interface Props {
-    variant: 'bfs' | 'dfs' | 'dijkstra';
+    variant: 'bfs' | 'dfs' | 'dijkstra' | 'prim';
     state: GraphState | null;
     maxNodes: number;
 
@@ -39,10 +39,13 @@ export const TraversalPanel: React.FC<Props> = ({
     horizontal, compact,
 }) => {
     const isDijkstra = variant === 'dijkstra';
+    const isPrim = variant === 'prim';
+    // 取り出した瞬間に確定する形 (暫定値の最小を取る)
+    const settles = isDijkstra || isPrim;
     const frontierLabel = variant === 'bfs' ? 'キュー'
         : variant === 'dfs' ? 'スタック'
         : '優先度付きキュー';
-    const orderLabel = isDijkstra ? '確定順' : '訪問順';
+    const orderLabel = settles ? '確定順' : '訪問順';
 
     const frontier = state?.frontier ?? [];
     const visitOrder = state?.visitOrder ?? [];
@@ -54,7 +57,8 @@ export const TraversalPanel: React.FC<Props> = ({
     const dim = { color: '#90a4ae' };
     const fontSize = compact ? '12px' : '13px';
 
-    const statusText = !state?.finished ? '探索中…'
+    const statusText = !state?.finished ? (isPrim ? '木を広げています…' : '探索中…')
+        : isPrim ? ((state?.visitOrder?.length ?? 0) === total ? '全域木ができました' : '届く範囲を木にしました')
         : state?.found ? '終点に到達しました'
         : goalNode.trim() === '' ? '到達できる範囲を調べ終えました'
         : '終点には到達できませんでした';
@@ -73,21 +77,28 @@ export const TraversalPanel: React.FC<Props> = ({
                 {visitOrder.length ? visitOrder.join(', ') : <span style={dim}>なし</span>}
                 <span style={dim}> ({visitOrder.length} / {total})</span>
             </div>
-            {isDijkstra && (
+            {settles && (
                 <div style={{ wordBreak: 'break-all' }}>
-                    <b>距離</b>:{' '}
+                    <b>{isPrim ? '暫定値 (木へつなぐ辺)' : '距離'}</b>:{' '}
                     {distances.length
                         ? distances.map((d, i) => `${i}:${fmt(d)}`).join('  ')
                         : <span style={dim}>なし</span>}
                 </div>
             )}
-            <div>
-                <b>経路</b>: {path.length ? path.join(' → ') : <span style={dim}>未発見</span>}
-                {isDijkstra && path.length > 0 && state?.goalDistance !== undefined && (
-                    <span style={dim}> (長さ {fmt(state.goalDistance)})</span>
-                )}
-            </div>
-            <div style={{ marginTop: '6px', fontWeight: 'bold', color: state?.found ? '#27ae60' : '#78909c' }}>
+            {isPrim ? (
+                <div>
+                    <b>合計</b>: {fmt(state?.treeWeight ?? 0)}
+                </div>
+            ) : (
+                <div>
+                    <b>経路</b>: {path.length ? path.join(' → ') : <span style={dim}>未発見</span>}
+                    {isDijkstra && path.length > 0 && state?.goalDistance !== undefined && (
+                        <span style={dim}> (長さ {fmt(state.goalDistance)})</span>
+                    )}
+                </div>
+            )}
+            <div style={{ marginTop: '6px', fontWeight: 'bold',
+                          color: state?.found || (isPrim && state?.finished) ? '#27ae60' : '#78909c' }}>
                 {statusText}
             </div>
         </div>
@@ -98,11 +109,11 @@ export const TraversalPanel: React.FC<Props> = ({
             <Swatch color={NODE_STROKE[0]} label="未訪問" />
             <Swatch color={NODE_STROKE[1]} label={frontierLabel + 'の中'} />
             <Swatch color={NODE_STROKE[2]} label="処理中" />
-            <Swatch color={NODE_STROKE[3]} label={isDijkstra ? '確定済み' : '訪問済み'} />
-            <Swatch color={NODE_STROKE[4]} label="経路上" />
-            <Swatch color={EDGE_COLOR[1]} label="探索木の辺" isEdge />
+            <Swatch color={NODE_STROKE[3]} label={settles ? '確定済み' : '訪問済み'} />
+            {!isPrim && <Swatch color={NODE_STROKE[4]} label="経路上" />}
+            <Swatch color={EDGE_COLOR[1]} label={isPrim ? '木の辺 (仮の親辺も)' : '探索木の辺'} isEdge />
             <Swatch color={EDGE_COLOR[3]} label="調べ済みの辺" isEdge />
-            <Swatch color={EDGE_COLOR[4]} label="経路の辺" isEdge />
+            {!isPrim && <Swatch color={EDGE_COLOR[4]} label="経路の辺" isEdge />}
         </div>
     );
 
@@ -119,7 +130,9 @@ export const TraversalPanel: React.FC<Props> = ({
     const endpoints = (
         <div style={{ fontSize, display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
             <span>始点 s: <NumberInput value={startNode} max={maxNodes - 1} onChange={setStartNode} /></span>
-            <span>終点 t: <NumberInput value={goalNode} placeholder="なし" max={maxNodes - 1} onChange={setGoalNode} /></span>
+            {!isPrim && (
+                <span>終点 t: <NumberInput value={goalNode} placeholder="なし" max={maxNodes - 1} onChange={setGoalNode} /></span>
+            )}
         </div>
     );
 
@@ -165,7 +178,7 @@ export const TraversalPanel: React.FC<Props> = ({
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <Section title="探索">
+            <Section title={isPrim ? '実行' : '探索'}>
                 {endpoints}
                 {controls}
             </Section>
