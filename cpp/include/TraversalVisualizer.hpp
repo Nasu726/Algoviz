@@ -8,25 +8,26 @@
 #include <limits>
 #include <algorithm>
 
-// 幅優先探索 / 深さ優先探索 / ダイクストラ法のビジュアライザ。
+// 幅優先探索 / 深さ優先探索 / ダイクストラ法 / プリム法のビジュアライザ。
 //
-// 3つを1つのクラスにしている。違いは
-// 「まだ隣接辺を見終わっていない頂点の列 (frames) からどれを取り出すか」
-// だけだからである。
+// 4つを1つのクラスにしている。違いは
+// 「まだ隣接辺を見終わっていない頂点の列 (frames) からどれを取り出すか」と
+// 「辺を見たときに暫定値を何で更新するか」だけだからである。
 //
 //   frames は「まだ隣接辺を見終わっていない頂点」の列。
 //   BFS      … 先頭を取る。新しく見つけた頂点は末尾に積むので後回し（キュー）
 //   DFS      … 末尾を取る。新しく見つけた頂点は末尾に積むのですぐ潜る（スタック）
 //   Dijkstra … 暫定距離が最小のものを取る（優先度付きキュー）
+//   Prim     … 同じ形で、暫定値が「木へつなぐ辺の重み」(始点からの距離ではない)
 //
 // この形にすると DFS は再帰と同じ前順走査になり、隣接を見終わった頂点が
 // frames から外れる様子がそのままバックトラックの可視化になる。
 //
-// ダイクストラだけは「取り出した瞬間に最短距離が確定する」という性質が本質なので、
+// ダイクストラとプリムは「取り出した瞬間に確定する」という性質が本質なので、
 // 確定を独立した1ステップとして見せている。
 class TraversalVisualizer : public GraphVisualizer {
 public:
-    enum Mode { BFS = 0, DFS = 1, DIJKSTRA = 2 };
+    enum Mode { BFS = 0, DFS = 1, DIJKSTRA = 2, PRIM = 3 };
 
 private:
     // 保持するスナップショットの数。1つあたり O(V + E)。
@@ -38,6 +39,9 @@ private:
     Mode mode = BFS;
     int startNode = 0;
     int goalNode = -1;
+
+    // 取り出した瞬間に確定する形か (暫定値の最小を取る)
+    bool settles() const { return mode == DIJKSTRA || mode == PRIM; }
 
     // (行き先, 辺のインデックス)。無向グラフとして生成された場合は両向きに入れる。
     std::vector<std::vector<std::pair<int, int>>> adjTraversal;
@@ -84,7 +88,7 @@ private:
         if (mode == BFS) return 0;
         if (mode == DFS) return (int)st.frames.size() - 1;
 
-        // ダイクストラ: 暫定距離が最小のもの。
+        // ダイクストラ / プリム: 暫定値が最小のもの。
         // 頂点数の上限が 100 なので、線形探索で十分速いうえに
         // 「未確定の中から最小を選ぶ」という説明そのままの形になる。
         int best = 0;
@@ -158,7 +162,7 @@ private:
             pushFrame(startNode);
             // ダイクストラの訪問順は「確定した順」なので、取り出したときに積む。
             // BFS / DFS は発見順なのでここで積む。
-            if (mode != DIJKSTRA) st.visitOrder.push_back(startNode);
+            if (!settles()) st.visitOrder.push_back(startNode);
             if (startNode == goalNode) {
                 buildPath(startNode);
                 st.finished = true;
@@ -213,10 +217,10 @@ private:
         }
 
         // --- 頂点の脇に出す数値 ---
-        // ダイクストラのときは暫定距離、それ以外は入力された頂点の重み。
+        // ダイクストラ / プリムのときは暫定値、それ以外は入力された頂点の重み。
         for (int i = 0; i < n && i < (int)nodeWeightBackup.size(); i++) {
             graph->nodeData[i * GraphData::NODE_STRIDE + 2] =
-                (mode == DIJKSTRA) ? st.dist[i] : nodeWeightBackup[i];
+                settles() ? st.dist[i] : nodeWeightBackup[i];
         }
     }
 
@@ -238,7 +242,7 @@ protected:
 
     bool handleCommand(const std::string& source, const std::string& input) override {
         if (source == "setTraversal") {
-            // "bfs 0 5" / "dfs 3 -1" / "dijkstra 0 7"
+            // "bfs 0 5" / "dfs 3 -1" / "dijkstra 0 7" / "prim 0"
             std::istringstream iss(input);
             std::string m;
             int s = 0, g = -1;
@@ -247,11 +251,13 @@ protected:
 
             if (m == "dfs" || m == "DFS")                     mode = DFS;
             else if (m == "dijkstra" || m == "Dijkstra")      mode = DIJKSTRA;
+            else if (m == "prim" || m == "Prim")              mode = PRIM;
             else                                              mode = BFS;
 
             int n = nodeCount();
             startNode = (s >= 0 && s < n) ? s : (n > 0 ? 0 : -1);
             goalNode  = (g >= 0 && g < n) ? g : -1;
+            if (mode == PRIM) goalNode = -1; // 全域木に終点は無い
             resetTraversal();
             return true;
         }
@@ -277,9 +283,9 @@ public:
 
         const int u = st.frames[ai].vertex;
 
-        // ダイクストラは「取り出した瞬間に最短距離が確定する」のが本質なので、
+        // ダイクストラ / プリムは「取り出した瞬間に確定する」のが本質なので、
         // 確定を独立した1ステップとして見せる。
-        if (mode == DIJKSTRA && !st.settled[u]) {
+        if (settles() && !st.settled[u]) {
             st.settled[u] = 1;
             st.visitOrder.push_back(u);
             if (u == goalNode) {
@@ -302,9 +308,10 @@ public:
             st.frames[ai].cursor++;
             st.examined[ei] = 1;
 
-            if (mode == DIJKSTRA) {
-                // 緩和: この辺を通った方が近ければ距離と親を張り替える
-                float nd = st.dist[u] + edgeWeight(ei);
+            if (settles()) {
+                // 緩和: この辺を通った方が近ければ距離と親を張り替える。
+                // プリムは始点からの距離ではなく、この辺1本の重みで比べる
+                float nd = mode == PRIM ? edgeWeight(ei) : st.dist[u] + edgeWeight(ei);
                 if (!st.settled[to] && nd < st.dist[to]) {
                     st.dist[to] = nd;
                     st.parentNode[to] = u;
@@ -344,7 +351,7 @@ public:
     emscripten::val getState(emscripten::val params) override {
         emscripten::val state = GraphVisualizer::getState(params);
 
-        const char* names[] = {"bfs", "dfs", "dijkstra"};
+        const char* names[] = {"bfs", "dfs", "dijkstra", "prim"};
         state.set("algorithm", std::string(names[mode]));
         state.set("startNode", startNode);
         state.set("goalNode", goalNode);
@@ -353,7 +360,17 @@ public:
         state.set("found", st.found);
         state.set("canStepBack", !history.empty());
         // 頂点の脇の数字が何を表しているか
-        state.set("nodeValueMode", std::string(mode == DIJKSTRA ? "distance" : "weight"));
+        state.set("nodeValueMode", std::string(settles() ? "distance" : "weight"));
+
+        // プリム: 木に入れた辺の重みの合計
+        if (mode == PRIM) {
+            float total = 0.0f;
+            for (int v = 0; v < nodeCount(); v++) {
+                int e = st.parentEdge[v];
+                if (st.settled[v] && e >= 0) total += edgeWeight(e);
+            }
+            state.set("treeWeight", total);
+        }
 
         // ダイクストラは負の重みを前提にしていない。混ざっていたら UI から知らせる。
         bool negative = false;
@@ -375,7 +392,7 @@ public:
         }
         if (mode == DFS) {
             std::reverse(order.begin(), order.end());
-        } else if (mode == DIJKSTRA) {
+        } else if (settles()) {
             std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
                 return st.dist[st.frames[a].vertex] < st.dist[st.frames[b].vertex];
             });
@@ -393,7 +410,7 @@ public:
         for (int v : st.path) path.call<void>("push", v);
         state.set("path", path);
 
-        if (mode == DIJKSTRA) {
+        if (settles()) {
             emscripten::val dists = emscripten::val::array();
             for (float d : st.dist) dists.call<void>("push", d);
             state.set("distances", dists);

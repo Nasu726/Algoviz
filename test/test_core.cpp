@@ -5526,6 +5526,102 @@ static void testKruskalRestartsWhenGraphChanges() {
 
 
 // ==========================================
+// プリム法
+// ==========================================
+
+static int edgeColorOf(val s, int e) {
+    return (int)s["edges"][e * GraphData::EDGE_STRIDE + 3].as<float>();
+}
+
+static void testPrimSettlesByCheapestEdgeAndBuildsMst() {
+    beginTest("暫定値最小の順に確定し、合計が最小全域木になる");
+
+    TraversalVisualizer t;
+    t.load("horizontal", KRUSKAL_GRAPH);
+    t.load("setTraversal", traversalCmd("prim", 0, -1));
+    runTraversal(t);
+
+    val s = t.getState(progressParams());
+    CHECK(s["finished"].as<bool>());
+    checkOrder("確定順", valToVector(s["visitOrder"]), {0, 1, 2, 3, 4});
+    CHECK_NEAR(s["treeWeight"].as<float>(), 10.0f, 1e-6f);
+    // 木の辺は 0-1, 1-2, 2-3 と、重み 4 の 2 本 (3-4 / 0-4) のどちらか 1 本。
+    // 4 に先に届いた 0-4 が残る (同じ重みでは張り替えない)
+    for (int e = 0; e < 3; e++) CHECK_EQ(edgeColorOf(s, e), (int)EDGE_TREE);
+    CHECK_EQ(edgeColorOf(s, 4), (int)EDGE_TREE);
+    CHECK(edgeColorOf(s, 3) != (int)EDGE_TREE);
+    CHECK(edgeColorOf(s, 5) != (int)EDGE_TREE);
+    CHECK(edgeColorOf(s, 6) != (int)EDGE_TREE);
+}
+
+static void testPrimKeyIsEdgeWeightNotPathLength() {
+    beginTest("暫定値は木へつなぐ辺の重みで、始点からの距離ではない");
+
+    // 0 確定後: dist[2] = 5 (辺 0-2)。1 確定後: 辺 1-2 (2) で 2 に張り替わる。
+    // 距離の和なら 1 + 2 = 3 になるはず
+    TraversalVisualizer t;
+    t.load("horizontal", KRUSKAL_GRAPH);
+    t.load("setTraversal", traversalCmd("prim", 0, -1));
+
+    // 0 を確定 (1手) → 0 の辺 0-1, 0-4, 0-2 を見る (3手) → 0 を外す (1手)
+    for (int i = 0; i < 5; i++) t.step();
+    std::vector<float> d = valToFloats(t.getState(progressParams())["distances"]);
+    CHECK_NEAR(d[2], 5.0f, 1e-6f);
+    CHECK_EQ(edgeColorOf(t.getState(val::object()), 5), (int)EDGE_TREE); // 0-2 が仮の親辺
+    // 合計に入るのは確定した頂点の親辺だけ (まだ 0 しか確定していない)
+    CHECK_NEAR(t.getState(val::object())["treeWeight"].as<float>(), 0.0f, 1e-6f);
+
+    // 1 を確定 (1手) → 1 の辺 0-1, 1-2, 1-3 を見る (3手)
+    for (int i = 0; i < 4; i++) t.step();
+    val s = t.getState(progressParams());
+    d = valToFloats(s["distances"]);
+    CHECK_NEAR(d[2], 2.0f, 1e-6f);
+    CHECK_EQ(edgeColorOf(s, 1), (int)EDGE_TREE);  // 1-2 に張り替わった
+    CHECK(edgeColorOf(s, 5) != (int)EDGE_TREE);   // 0-2 は外れた
+}
+
+static void testPrimOnDisconnectedGraphStopsAtComponent() {
+    beginTest("非連結なら始点の成分だけ確定して終わる");
+
+    TraversalVisualizer t;
+    t.load("horizontal", "custom 1 0 0 1\n5 3\n0 1 3\n1 2 1\n3 4 2\n");
+    t.load("setTraversal", traversalCmd("prim", 0, -1));
+    runTraversal(t);
+    val s = t.getState(progressParams());
+    CHECK(s["finished"].as<bool>());
+    CHECK_EQ(s["visitOrder"]["length"].as<int>(), 3);
+    CHECK_NEAR(s["treeWeight"].as<float>(), 4.0f, 1e-6f);
+}
+
+static void testPrimStepMatchesRunToEndAndStepsBack() {
+    beginTest("1手ずつ進めた結果が一気に実行と一致し、1手戻せる");
+
+    TraversalVisualizer a, b;
+    a.load("horizontal", KRUSKAL_GRAPH);
+    b.load("horizontal", KRUSKAL_GRAPH);
+    a.load("setTraversal", traversalCmd("prim", 0, -1));
+    b.load("setTraversal", traversalCmd("prim", 0, -1));
+    runTraversal(a);
+    b.runToEnd();
+    checkOrder("確定順", valToVector(a.getState(progressParams())["visitOrder"]),
+               valToVector(b.getState(progressParams())["visitOrder"]));
+
+    TraversalVisualizer before, after;
+    before.load("horizontal", KRUSKAL_GRAPH);
+    after.load("horizontal", KRUSKAL_GRAPH);
+    before.load("setTraversal", traversalCmd("prim", 0, -1));
+    after.load("setTraversal", traversalCmd("prim", 0, -1));
+    for (int i = 0; i < 6; i++) before.step();
+    for (int i = 0; i < 7; i++) after.step();
+    after.stepBack();
+    std::vector<float> db = valToFloats(before.getState(progressParams())["distances"]);
+    std::vector<float> da = valToFloats(after.getState(progressParams())["distances"]);
+    CHECK_EQ((int)db.size(), (int)da.size());
+    for (std::size_t i = 0; i < db.size() && i < da.size(); i++) CHECK_EQ(db[i], da[i]);
+}
+
+
+// ==========================================
 // Union-Find
 // ==========================================
 
@@ -5958,6 +6054,12 @@ int main(int argc, char** argv) {
     testKruskalOnDisconnectedGraphMakesAForest();
     testKruskalStepMatchesRunToEndAndStepsBack();
     testKruskalRestartsWhenGraphChanges();
+
+    beginSection("プリム法");
+    testPrimSettlesByCheapestEdgeAndBuildsMst();
+    testPrimKeyIsEdgeWeightNotPathLength();
+    testPrimOnDisconnectedGraphStopsAtComponent();
+    testPrimStepMatchesRunToEndAndStepsBack();
 
     beginSection("Union-Find");
     testUnionFindClimbsOneEdgePerStep();
