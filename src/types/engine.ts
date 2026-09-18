@@ -247,6 +247,15 @@ export interface GraphState {
     /** ダイクストラの暫定距離。未到達は Infinity */
     distances?: number[];
     goalDistance?: number;
+
+    /** クラスカル法: 見ている途中か / 直前の判断 / 採用した本数と合計 */
+    looking?: boolean;
+    decision?: 'accept' | 'reject' | '';
+    treeEdges?: number;
+    treeWeight?: number;
+    /** クラスカル法かつ withProgress: 軽い順の辺の番号 / 辺ごとの 0 未処理 1 採用 2 却下 */
+    edgeOrder?: number[];
+    edgeStatus?: number[];
 }
 
 /** getState に渡せるパラメータ。どれも省略可能 */

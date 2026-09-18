@@ -8,11 +8,12 @@
 
 1ページ1アルゴリズムです。
 
-**グラフ探索**
+**グラフ**
 
 - [幅優先探索 (BFS)](https://algoviz.nasu.uk/graph/bfs)
 - [深さ優先探索 (DFS)](https://algoviz.nasu.uk/graph/dfs)
 - [ダイクストラ法](https://algoviz.nasu.uk/graph/dijkstra)
+- [クラスカル法](https://algoviz.nasu.uk/graph/kruskal)
 
 **木**
 
@@ -110,6 +111,7 @@ cpp/
     LineLayout.hpp                └ 配列 (番号順に左から一列。段にも分けられる)
     GraphVisualizer.hpp        グラフの生成・レイアウト・描画データ供給の基底クラス
     TraversalVisualizer.hpp    ├ BFS / DFS / ダイクストラ法
+    KruskalVisualizer.hpp      ├ クラスカル法 (辺を軽い順に見て、閉路になる辺を捨てる)
     AutomatonVisualizer.hpp    ├ DFA (常に有向 + 初期状態 + 受理状態 + 遷移記号)
     BstVisualizer.hpp          ├ 二分探索木の構築
     AvlVisualizer.hpp          ├ AVL 木の構築 (回転で形が変わる)

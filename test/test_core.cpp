@@ -40,6 +40,7 @@
 #include "../cpp/include/BucketSortVisualizer.hpp"
 #include "../cpp/include/RadixSortVisualizer.hpp"
 #include "../cpp/include/UnionFindVisualizer.hpp"
+#include "../cpp/include/KruskalVisualizer.hpp"
 #include "../cpp/include/LinearSearchVisualizer.hpp"
 #include "../cpp/include/BinarySearchVisualizer.hpp"
 #include "../cpp/include/DequeVisualizer.hpp"
@@ -5371,6 +5372,158 @@ static void testRadixRandomAllowsDuplicates() {
     CHECK(std::adjacent_find(vs.begin(), vs.end()) != vs.end());
 }
 
+// ==========================================
+// クラスカル法
+// ==========================================
+
+// 5 頂点 7 辺。最小全域木は 0-1(1) 1-2(2) 2-3(3) 3-4(4) = 10。
+// 同じ重み 4 の辺が 2 本 (番号 3 と 4) あり、番号順に見る
+static const char* KRUSKAL_GRAPH =
+    "custom 1 0 0 1\n5 7\n0 1 1\n1 2 2\n2 3 3\n3 4 4\n0 4 4\n0 2 5\n1 3 6\n";
+
+static std::vector<int> edgeStatusOf(KruskalVisualizer& k) {
+    return valToVector(k.getState(progressParams())["edgeStatus"]);
+}
+
+static void testKruskalLooksAtEdgesInWeightOrder() {
+    beginTest("辺は重みの昇順に見る。同じ重みは番号順");
+
+    KruskalVisualizer k;
+    k.load("horizontal", KRUSKAL_GRAPH);
+    checkOrder("並び", valToVector(k.getState(progressParams())["edgeOrder"]), {0, 1, 2, 3, 4, 5, 6});
+
+    // 番号を入れ替えても重みの順になる
+    KruskalVisualizer r;
+    r.load("horizontal", "custom 1 0 0 1\n3 3\n0 1 9\n1 2 1\n0 2 5\n");
+    checkOrder("並び", valToVector(r.getState(progressParams())["edgeOrder"]), {1, 2, 0});
+    r.step();
+    CHECK_EQ(r.getState(val::object())["current"].as<int>(), 1);
+}
+
+static void testKruskalTakesTwoStepsPerEdge() {
+    beginTest("1本の辺は「見る」「決める」の2手");
+
+    KruskalVisualizer k;
+    k.load("horizontal", KRUSKAL_GRAPH);
+    CHECK(k.step());
+    val s = k.getState(progressParams());
+    CHECK_EQ(s["looking"].as<bool>(), true);
+    CHECK_EQ(s["current"].as<int>(), 0);
+    CHECK_EQ((int)s["edges"][0 * GraphData::EDGE_STRIDE + 3].as<float>(), (int)EDGE_ACTIVE);
+    CHECK_EQ(edgeStatusOf(k)[0], 0);
+
+    CHECK(k.step());
+    s = k.getState(progressParams());
+    CHECK_EQ(s["looking"].as<bool>(), false);
+    CHECK_EQ(s["decision"].as<std::string>(), std::string("accept"));
+    CHECK_EQ((int)s["edges"][0 * GraphData::EDGE_STRIDE + 3].as<float>(), (int)EDGE_TREE);
+    CHECK_EQ(s["treeEdges"].as<int>(), 1);
+}
+
+static void testKruskalRejectsEdgesThatCloseACycle() {
+    beginTest("両端が別の木なら採用、同じ木なら却下");
+
+    KruskalVisualizer k;
+    k.load("horizontal", KRUSKAL_GRAPH);
+    // 0-1, 1-2, 2-3, 3-4 まで採用 (8 手)。次の 0-4 (番号 4) は閉路
+    for (int i = 0; i < 8; i++) k.step();
+    CHECK_EQ(k.getState(val::object())["treeEdges"].as<int>(), 4);
+    k.step();
+    k.step();
+    val s = k.getState(progressParams());
+    CHECK_EQ(s["decision"].as<std::string>(), std::string("reject"));
+    CHECK_EQ(s["current"].as<int>(), 4);
+    CHECK_EQ(edgeStatusOf(k)[4], 2);
+    CHECK_EQ((int)s["edges"][4 * GraphData::EDGE_STRIDE + 3].as<float>(), (int)EDGE_VISITED);
+    CHECK_EQ(s["treeEdges"].as<int>(), 4);
+}
+
+static void testKruskalFindsMinimumSpanningTree() {
+    beginTest("合計が最小全域木と一致し、採用は V-1 本");
+
+    KruskalVisualizer k;
+    k.load("horizontal", KRUSKAL_GRAPH);
+    k.runToEnd();
+    val s = k.getState(progressParams());
+    CHECK_EQ(s["treeEdges"].as<int>(), 4);
+    CHECK_NEAR(s["treeWeight"].as<float>(), 10.0f, 1e-6f);
+    CHECK_EQ(s["setCount"].as<int>(), 1);
+    checkOrder("辺の状態", edgeStatusOf(k), {1, 1, 1, 1, 2, 2, 2});
+}
+
+static void testKruskalLooksAtEveryEdge() {
+    beginTest("V-1 本そろった後も残りの辺を全部見て却下する");
+
+    KruskalVisualizer k;
+    k.load("horizontal", KRUSKAL_GRAPH);
+    int steps = 0;
+    while (k.step()) steps++;
+    CHECK_EQ(steps, 14); // 7 辺 × 2 手
+    CHECK(k.getState(val::object())["finished"].as<bool>());
+    std::vector<int> status = edgeStatusOf(k);
+    CHECK(std::none_of(status.begin(), status.end(), [](int x) { return x == 0; }));
+}
+
+static void testKruskalOnDisconnectedGraphMakesAForest() {
+    beginTest("非連結なら採用は V − 成分数 本");
+
+    KruskalVisualizer k;
+    k.load("horizontal", "custom 1 0 0 1\n6 4\n0 1 1\n1 2 1\n0 2 1\n3 4 2\n");
+    k.runToEnd();
+    val s = k.getState(val::object());
+    CHECK_EQ(s["treeEdges"].as<int>(), 3); // 成分は {0,1,2} {3,4} {5}
+    CHECK_EQ(s["setCount"].as<int>(), 3);
+    CHECK_NEAR(s["treeWeight"].as<float>(), 4.0f, 1e-6f);
+}
+
+static void testKruskalStepMatchesRunToEndAndStepsBack() {
+    beginTest("1手ずつ進めた結果が一気に実行と一致し、1手戻せる");
+
+    KruskalVisualizer stepwise, atOnce;
+    stepwise.load("horizontal", KRUSKAL_GRAPH);
+    atOnce.load("horizontal", KRUSKAL_GRAPH);
+    while (stepwise.step()) {}
+    atOnce.runToEnd();
+    checkOrder("辺の状態", edgeStatusOf(stepwise), edgeStatusOf(atOnce));
+
+    KruskalVisualizer before, after;
+    before.load("horizontal", KRUSKAL_GRAPH);
+    after.load("horizontal", KRUSKAL_GRAPH);
+    for (int i = 0; i < 9; i++) before.step();
+    for (int i = 0; i < 10; i++) after.step();
+    after.stepBack();
+    checkOrder("戻したあと", edgeStatusOf(before), edgeStatusOf(after));
+    CHECK_EQ(before.getState(val::object())["looking"].as<bool>(),
+             after.getState(val::object())["looking"].as<bool>());
+    CHECK_EQ(before.getState(val::object())["current"].as<int>(),
+             after.getState(val::object())["current"].as<int>());
+
+    KruskalVisualizer empty;
+    empty.load("horizontal", "custom 1 0 0 1\n3 0\n");
+    CHECK(empty.getState(val::object())["finished"].as<bool>());
+    CHECK(!empty.step());
+    empty.stepBack();
+}
+
+static void testKruskalRestartsWhenGraphChanges() {
+    beginTest("グラフを作り直すと最初から");
+
+    KruskalVisualizer k;
+    k.load("horizontal", KRUSKAL_GRAPH);
+    for (int i = 0; i < 6; i++) k.step();
+    k.load("horizontal", "random 8 10 1 0 0 0 1 1");
+    val s = k.getState(progressParams());
+    CHECK_EQ(s["treeEdges"].as<int>(), 0);
+    CHECK_EQ(s["current"].as<int>(), -1);
+    CHECK_EQ(s["canStepBack"].as<bool>(), false);
+    CHECK_EQ(s["edgeOrder"]["length"].as<int>(), 10);
+
+    // resetRun でも最初から
+    for (int i = 0; i < 6; i++) k.step();
+    k.load("resetRun", "");
+    CHECK_EQ(k.getState(val::object())["treeEdges"].as<int>(), 0);
+}
+
 
 // ==========================================
 // Union-Find
@@ -5796,6 +5949,16 @@ int main(int argc, char** argv) {
     testBinaryLooksAtFewerPlacesThanLinear();
     testBinaryRunsOnUnsortedInput();
     testSearchesStepBackAndHandleTinyInput();
+    beginSection("クラスカル法");
+    testKruskalLooksAtEdgesInWeightOrder();
+    testKruskalTakesTwoStepsPerEdge();
+    testKruskalRejectsEdgesThatCloseACycle();
+    testKruskalFindsMinimumSpanningTree();
+    testKruskalLooksAtEveryEdge();
+    testKruskalOnDisconnectedGraphMakesAForest();
+    testKruskalStepMatchesRunToEndAndStepsBack();
+    testKruskalRestartsWhenGraphChanges();
+
     beginSection("Union-Find");
     testUnionFindClimbsOneEdgePerStep();
     testUnionFindCompressesPathOneNodePerStep();

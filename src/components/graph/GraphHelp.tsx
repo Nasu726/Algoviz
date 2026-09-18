@@ -57,6 +57,24 @@ const AlgorithmSection: React.FC<{ variant: GraphVariant }> = ({ variant }) => {
         </>
     );
 
+    if (variant === 'kruskal') return (
+        <>
+            <h3>1. クラスカル法</h3>
+            <p>
+                辺を<b>軽い順</b>に1本ずつ見て、両端が<b>別の木</b>なら採用し、
+                <b>既につながっている</b>なら捨てます (閉路になるため)。
+            </p>
+            <ul>
+                <li>1本の辺は2ステップ。まず「見る」(橙)、次に採用か却下を「決める」(色は凡例のとおり)。
+                    間で止まるので、採用されるかを先に考えられる</li>
+                <li>V-1 本そろっても止まらず、残りの辺も全部見る。後半は全部却下される</li>
+                <li>同じ重みの辺は番号の小さい順</li>
+                <li>連結でないグラフでは森になる。採用が V-1 本に届かないまま終わる</li>
+                <li>グラフは無向・重み付きで固定</li>
+            </ul>
+        </>
+    );
+
     return (
         <>
             <h3>1. グラフ描画</h3>
@@ -145,7 +163,9 @@ export const GraphHelp: React.FC<{ variant: GraphVariant; maxNodes: number }> = 
             <li>辺の重みを書かないと 1 として扱う。重み無しグラフのダイクストラ法は BFS と同じ結果になる</li>
             <li>範囲外の頂点番号を含む行は読み飛ばす</li>
             <li>頂点数の上限は {maxNodes}。一度に見て分かる範囲に合わせている</li>
-            <li>「有向グラフ」のチェックは生成時に反映される。探索が辺の向きを守るかどうかもこれで決まる</li>
+            {variant !== 'kruskal' && (
+                <li>「有向グラフ」のチェックは生成時に反映される。探索が辺の向きを守るかどうかもこれで決まる</li>
+            )}
         </ul>
 
         <h3>4. 画面の操作</h3>
@@ -160,7 +180,7 @@ export const GraphHelp: React.FC<{ variant: GraphVariant; maxNodes: number }> = 
             <li><b>Esc</b>：ビジュアライザ一覧へ戻る</li>
             <li><b>Ctrl + H</b>：ヘルプを開く</li>
             <li><b>Ctrl + S</b>：テキストからグラフを生成</li>
-            {isTraversal(variant) && <>
+            {(isTraversal(variant) || variant === 'kruskal') && <>
                 <li><b>Ctrl + Enter</b>：実行 / 一時停止</li>
                 <li><b>Ctrl + ←</b> / <b>→</b>：戻る / 進む</li>
                 <li><b>Ctrl + ↑</b> / <b>↓</b>：実行速度の増減</li>

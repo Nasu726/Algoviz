@@ -21,6 +21,8 @@ export const GraphSetupPanel: React.FC<Props> = ({
     compact,
 }) => {
     const s = settings;
+    // クラスカル法は無向・重み付きで固定なので、選ばせない
+    const fixedShape = variant === 'kruskal';
     const fontSize = compact ? '12px' : '13px';
     const button: React.CSSProperties = { padding: '8px', cursor: 'pointer' };
     // 横に並べて、サイドバーをスクロールせずに使える高さに収める
@@ -38,15 +40,19 @@ export const GraphSetupPanel: React.FC<Props> = ({
                     </span>
                 </div>
 
-                <Check checked={s.isDirected} onChange={(v) => update({ isDirected: v })}>
-                    有向グラフ
-                </Check>
+                {!fixedShape && (
+                    <Check checked={s.isDirected} onChange={(v) => update({ isDirected: v })}>
+                        有向グラフ
+                    </Check>
+                )}
                 <Check checked={s.connected} onChange={(v) => update({ connected: v })}>
                     連結なグラフにする
                 </Check>
-                <Check checked={s.weighted} onChange={(v) => update({ weighted: v })}>
-                    重み付きグラフ
-                </Check>
+                {!fixedShape && (
+                    <Check checked={s.weighted} onChange={(v) => update({ weighted: v })}>
+                        重み付きグラフ
+                    </Check>
+                )}
                 <Check checked={s.allowSelfLoop} onChange={(v) => update({ allowSelfLoop: v })}>
                     自己ループを許す
                 </Check>
@@ -95,7 +101,7 @@ export const GraphSetupPanel: React.FC<Props> = ({
                 </Section>
             )}
 
-            {isTraversal(variant) && (
+            {(isTraversal(variant) || fixedShape) && (
                 <p style={{ margin: 0, fontSize: '12px', color: '#78909c', lineHeight: 1.6 }}>
                     頂点数の上限は {maxNodes} です。連結を指定したとき、辺の数が
                     V-1 に満たなければ V-1 まで増やします。

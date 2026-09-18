@@ -4,7 +4,7 @@
 export const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 
 /** 1ページ1アルゴリズム。ルートと1対1に対応する */
-export type GraphVariant = 'bfs' | 'dfs' | 'dijkstra' | 'automaton' | 'plain';
+export type GraphVariant = 'bfs' | 'dfs' | 'dijkstra' | 'kruskal' | 'automaton' | 'plain';
 
 /** 探索を行う variant か */
 export const isTraversal = (v: GraphVariant): v is 'bfs' | 'dfs' | 'dijkstra' =>
@@ -14,13 +14,15 @@ export const VARIANT_TITLE: Record<GraphVariant, string> = {
     bfs: '幅優先探索 (BFS)',
     dfs: '深さ優先探索 (DFS)',
     dijkstra: 'ダイクストラ法',
+    kruskal: 'クラスカル法',
     automaton: '決定性有限オートマトン (DFA)',
     plain: 'グラフ描画',
 };
 
 /** C++ 側の setAlgorithm へ渡す名前 */
 export const engineAlgorithm = (v: GraphVariant): string =>
-    isTraversal(v) ? 'traversal' : v === 'automaton' ? 'automaton' : 'graph';
+    isTraversal(v) ? 'traversal' : v === 'automaton' ? 'automaton'
+    : v === 'kruskal' ? 'kruskal' : 'graph';
 
 /** グラフの作り方と見た目の設定。実行前に決めるもの */
 export interface GraphSettings {
@@ -49,10 +51,10 @@ export const defaultSettings = (variant: GraphVariant): GraphSettings => ({
     allowSelfLoop: false,
     allowSameEdge: false,
     // 探索を見せるページでは、途中で行き止まりにならない方が既定として自然
-    connected: isTraversal(variant),
-    // 重みを使うのはダイクストラだけ。遊び場も既定で重み付きにしておく。
+    connected: isTraversal(variant) || variant === 'kruskal',
+    // 重みを使うのはダイクストラとクラスカルだけ。遊び場も既定で重み付きにしておく。
     // BFS / DFS は重みを一切見ないので、出すと使っていると誤解させる
-    weighted: variant === 'dijkstra' || variant === 'plain',
+    weighted: variant === 'dijkstra' || variant === 'kruskal' || variant === 'plain',
     useNodeWeights: false,
     skipExtension: true,
     showWeights: true,

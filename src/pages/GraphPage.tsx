@@ -4,6 +4,7 @@ import { VisualizerShell } from '../components/ui/VisualizerShell';
 import { SidebarLayout } from '../components/ui/SidebarLayout';
 import { GraphSetupPanel } from '../components/graph/GraphSetupPanel';
 import { TraversalPanel } from '../components/graph/TraversalPanel';
+import { KruskalPanel } from '../components/graph/KruskalPanel';
 import { AutomatonSetupPanel } from '../components/graph/AutomatonSetupPanel';
 import { AutomatonPanel } from '../components/graph/AutomatonPanel';
 import { GraphHelp } from '../components/graph/GraphHelp';
@@ -24,8 +25,9 @@ interface Props {
 export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     const tier = useLayoutTier();
     const traversal = isTraversal(variant);
+    const kruskal = variant === 'kruskal';
     // 1手ずつ動かせるページか。描くだけの遊び場だけが動かない
-    const runnable = traversal || variant === 'automaton';
+    const runnable = traversal || kruskal || variant === 'automaton';
 
     const [settings, setSettings] = useState<GraphSettings>(() => defaultSettings(variant));
     const update = (patch: Partial<GraphSettings>) => setSettings((s) => ({ ...s, ...patch }));
@@ -61,12 +63,13 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         const s = latest.current.settings;
         return {
             skip: s.skipExtension ? 1 : 0,
-            dir: s.isDirected ? 1 : 0,
+            // クラスカル法は無向・重み付きで固定
+            dir: s.isDirected && !kruskal ? 1 : 0,
             nodeW: s.useNodeWeights ? 1 : 0,
             selfLoop: s.allowSelfLoop ? 1 : 0,
             sameEdge: s.allowSameEdge ? 1 : 0,
             conn: s.connected ? 1 : 0,
-            wt: s.weighted ? 1 : 0,
+            wt: s.weighted || kruskal ? 1 : 0,
         };
     };
 
@@ -127,7 +130,7 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
 
     const handleReset = () => {
         setIsPlaying(false);
-        engine.load(variant === 'automaton' ? 'resetRun' : 'resetTraversal', '');
+        engine.load(traversal ? 'resetTraversal' : 'resetRun', '');
         readState();
     };
     const handleStep = () => { setIsPlaying(false); engine.step(); readState(); };
@@ -201,6 +204,18 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
             state={state}
             inputString={inputString}
             setInputString={setInputString}
+            isPlaying={isPlaying} delay={delay} setDelay={setDelay}
+            onReset={handleReset}
+            onPlayPause={toggle}
+            onStepBack={handleStepBack}
+            onStepNext={handleStep}
+            onRunToEnd={handleRunToEnd}
+            horizontal={tier !== 'wide'}
+            compact={compact}
+        />
+    ) : kruskal ? (
+        <KruskalPanel
+            state={state}
             isPlaying={isPlaying} delay={delay} setDelay={setDelay}
             onReset={handleReset}
             onPlayPause={toggle}

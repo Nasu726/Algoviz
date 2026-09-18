@@ -5,11 +5,12 @@ import { useNavigate } from 'react-router-dom';
 // 1ページ1アルゴリズムなので、ここに1行足すのが追加の作業になる。
 const GENRES: { name: string; items: { path: string; label: string }[] }[] = [
     {
-        name: 'グラフ探索',
+        name: 'グラフ',
         items: [
             { path: '/graph/bfs', label: '幅優先探索 (BFS)' },
             { path: '/graph/dfs', label: '深さ優先探索 (DFS)' },
             { path: '/graph/dijkstra', label: 'ダイクストラ法' },
+            { path: '/graph/kruskal', label: 'クラスカル法' },
         ],
     },
     {

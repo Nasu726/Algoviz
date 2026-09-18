@@ -229,6 +229,12 @@ engine.load('setOptions', '');
 engine.runToEnd();
 checkEq('工夫を外すと a の根が b の根の下に付く', engine.getState({}).parent[1], 2);
 
+// --- クラスカル法 ---
+engine.setAlgorithm('kruskal');
+engine.load('horizontal', 'custom 1 0 0 1\n3 3\n0 1 5\n1 2 1\n0 2 3\n');
+engine.runToEnd();
+checkEq('最小全域木の合計', engine.getState({}).treeWeight, 4);
+
 if (failures === 0) {
     console.log(`smoke: OK (${checks} checks)`);
     process.exit(0);
