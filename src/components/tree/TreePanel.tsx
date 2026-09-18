@@ -84,21 +84,34 @@ export const TreePanel: React.FC<Props> = ({
            : trie ? '次の単語を根から入れます'
            : '次の値を根から入れます');
 
-    // 挿入済みと、これから挿入する値を色で分ける。ヒープソートは確定した値を灰に
+    // 挿入済みと、これから挿入する値を色で分ける。
+    // ヒープソートは配列そのものなので、マスに入れて添字を付ける
     const queue = heapSort ? (
-        <div style={{ fontFamily: 'monospace', fontSize: compact ? '14px' : '16px',
-                      wordBreak: 'break-all', lineHeight: 1.7 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', fontFamily: 'monospace',
+                      fontSize: compact ? '13px' : '15px', lineHeight: 1.2 }}>
             {heapValues.length === 0
                 ? <span style={dim}>（値がありません）</span>
-                : heapValues.map((v, i) => (
-                <span key={i} style={{
-                    marginRight: '8px',
-                    color: i >= heapSize ? '#90a4ae' : i === cursor ? '#e74c3c' : '#000',
-                    fontWeight: i === cursor ? 'bold' : 'normal',
-                }}>
-                    {v}
-                </span>
-            ))}
+                : heapValues.map((v, i) => {
+                const settled = i >= heapSize;
+                const stroke = i === cursor ? '#e74c3c'
+                    : i === (state?.compared ?? -1) ? '#e67e22'
+                    : i === (state?.lastSwap ?? -1) ? '#27ae60'
+                    : settled ? '#b0bec5' : '#546e7a';
+                return (
+                    <div key={i} style={{ textAlign: 'center' }}>
+                        <div style={{
+                            minWidth: '2em', padding: '2px 4px', boxSizing: 'border-box',
+                            border: `2px solid ${stroke}`, borderRadius: '4px',
+                            background: settled ? '#eceff1' : '#fff',
+                            color: settled ? '#90a4ae' : '#000',
+                            fontWeight: i === cursor ? 'bold' : 'normal',
+                        }}>
+                            {v}
+                        </div>
+                        <div style={{ fontSize: '10px', color: '#90a4ae' }}>{i}</div>
+                    </div>
+                );
+            })}
         </div>
     ) : (
         <div style={{ fontFamily: 'monospace', fontSize: compact ? '14px' : '16px',
