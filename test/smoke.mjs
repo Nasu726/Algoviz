@@ -229,6 +229,13 @@ engine.load('setOptions', '');
 engine.runToEnd();
 checkEq('工夫を外すと a の根が b の根の下に付く', engine.getState({}).parent[1], 2);
 
+// --- プリム法 ---
+engine.setAlgorithm('traversal');
+engine.load('horizontal', 'custom 1 0 0 1\n3 3\n0 1 5\n1 2 1\n0 2 3\n');
+engine.load('setTraversal', 'prim 0 -1');
+engine.runToEnd();
+checkEq('プリム法の合計', engine.getState({}).treeWeight, 4);
+
 // --- クラスカル法 ---
 engine.setAlgorithm('kruskal');
 engine.load('horizontal', 'custom 1 0 0 1\n3 3\n0 1 5\n1 2 1\n0 2 3\n');
