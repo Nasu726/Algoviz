@@ -8,7 +8,7 @@ import { KruskalPanel } from '../components/graph/KruskalPanel';
 import { AutomatonSetupPanel } from '../components/graph/AutomatonSetupPanel';
 import { AutomatonPanel } from '../components/graph/AutomatonPanel';
 import { GraphHelp } from '../components/graph/GraphHelp';
-import { defaultSettings, engineAlgorithm, isTraversal, VARIANT_TITLE } from '../components/graph/types';
+import { defaultSettings, engineAlgorithm, isFixedShape, isTraversal, VARIANT_TITLE } from '../components/graph/types';
 import type { GraphSettings, GraphVariant } from '../components/graph/types';
 import { useKeyboardShortcuts } from '../hooks/keyboardShortcut';
 import { useLayoutTier } from '../hooks/useLayoutTier';
@@ -26,6 +26,7 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     const tier = useLayoutTier();
     const traversal = isTraversal(variant);
     const kruskal = variant === 'kruskal';
+    const fixedShape = isFixedShape(variant);
     // 1手ずつ動かせるページか。描くだけの遊び場だけが動かない
     const runnable = traversal || kruskal || variant === 'automaton';
 
@@ -63,13 +64,13 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         const s = latest.current.settings;
         return {
             skip: s.skipExtension ? 1 : 0,
-            // クラスカル法は無向・重み付きで固定
-            dir: s.isDirected && !kruskal ? 1 : 0,
+            // 最小全域木は無向・重み付きで固定
+            dir: s.isDirected && !fixedShape ? 1 : 0,
             nodeW: s.useNodeWeights ? 1 : 0,
             selfLoop: s.allowSelfLoop ? 1 : 0,
             sameEdge: s.allowSameEdge ? 1 : 0,
             conn: s.connected ? 1 : 0,
-            wt: s.weighted || kruskal ? 1 : 0,
+            wt: s.weighted || fixedShape ? 1 : 0,
         };
     };
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import type { GraphVariant } from './types';
-import { isTraversal } from './types';
+import { isFixedShape, isTraversal } from './types';
 
 // ページごとに、そのアルゴリズムだけを説明する。
 // 1ページ1アルゴリズムにしたのは、情報を詰め込みすぎないため。
@@ -53,6 +53,25 @@ const AlgorithmSection: React.FC<{ variant: GraphVariant }> = ({ variant }) => {
                 <li>緩和で親が張り替わると、探索木の辺も引き直される</li>
                 <li>見つかる経路は<b>重みの合計</b>で最短。<b>辺の本数</b>で最短にしたいときは <b>BFS</b> のページへ。この2つは一致しないことがある</li>
                 <li>負の重みがあると正しい答えを出せないので、その場合は警告を出す</li>
+            </ul>
+        </>
+    );
+
+    if (variant === 'prim') return (
+        <>
+            <h3>1. プリム法</h3>
+            <p>
+                始点から木を広げます。まだ木に入っていない頂点のうち、
+                <b>木へつなぐ辺が最も軽いもの</b>を取り出して木に入れます。
+            </p>
+            <ul>
+                <li>1ステップは「頂点を1つ確定する」か「確定した頂点の辺を1本見る」のどちらか</li>
+                <li>各頂点の脇の数字は<b>木へつなぐ最も軽い辺の重み</b>。始点からの距離ではない
+                    (ダイクストラ法との違いはここだけ)。まだ届いていない頂点は ∞</li>
+                <li>もっと軽い辺が見つかると、木の辺 (仮の親辺) が引き直される</li>
+                <li>同じ最小全域木を<b>クラスカル法</b>は辺の側から作る。見比べると順番が違う</li>
+                <li>連結でないグラフでは、始点から届く範囲だけが木になる</li>
+                <li>グラフは無向・重み付きで固定</li>
             </ul>
         </>
     );
@@ -163,7 +182,7 @@ export const GraphHelp: React.FC<{ variant: GraphVariant; maxNodes: number }> = 
             <li>辺の重みを書かないと 1 として扱う。重み無しグラフのダイクストラ法は BFS と同じ結果になる</li>
             <li>範囲外の頂点番号を含む行は読み飛ばす</li>
             <li>頂点数の上限は {maxNodes}。一度に見て分かる範囲に合わせている</li>
-            {variant !== 'kruskal' && (
+            {!isFixedShape(variant) && (
                 <li>「有向グラフ」のチェックは生成時に反映される。探索が辺の向きを守るかどうかもこれで決まる</li>
             )}
         </ul>

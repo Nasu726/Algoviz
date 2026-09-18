@@ -145,6 +145,9 @@ function App() {
         <Route path="/graph/dijkstra" element={
           <EngineGate>{(engine) => <GraphWrapper engine={engine} variant="dijkstra" />}</EngineGate>
         } />
+        <Route path="/graph/prim" element={
+          <EngineGate>{(engine) => <GraphWrapper engine={engine} variant="prim" />}</EngineGate>
+        } />
         <Route path="/graph/kruskal" element={
           <EngineGate>{(engine) => <GraphWrapper engine={engine} variant="kruskal" />}</EngineGate>
         } />

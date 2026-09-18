@@ -1,7 +1,7 @@
 import React from 'react';
 import { Section, Check, NumberInput } from './panelParts';
 import type { GraphSettings, GraphVariant } from './types';
-import { isTraversal } from './types';
+import { isFixedShape, isTraversal } from './types';
 
 interface Props {
     variant: GraphVariant;
@@ -21,8 +21,8 @@ export const GraphSetupPanel: React.FC<Props> = ({
     compact,
 }) => {
     const s = settings;
-    // クラスカル法は無向・重み付きで固定なので、選ばせない
-    const fixedShape = variant === 'kruskal';
+    // 最小全域木は無向・重み付きで固定なので、選ばせない
+    const fixedShape = isFixedShape(variant);
     const fontSize = compact ? '12px' : '13px';
     const button: React.CSSProperties = { padding: '8px', cursor: 'pointer' };
     // 横に並べて、サイドバーをスクロールせずに使える高さに収める
