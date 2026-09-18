@@ -34,7 +34,8 @@ export const TreeSetupPanel: React.FC<Props> = ({
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', fontSize }}>
-            <Section title={text ? '数える文章' : words ? '挿入する単語' : '挿入する値'}>
+            <Section title={text ? '数える文章' : words ? '挿入する単語'
+                            : variant === 'heapsort' ? '並べる値' : '挿入する値'}>
                 <textarea
                     value={valueText}
                     onChange={(e) => setValueText(e.target.value)}
@@ -85,6 +86,8 @@ export const TreeSetupPanel: React.FC<Props> = ({
                     ? `文章に出てくる文字を数えます。空白は数えません。文字の種類の上限は ${maxValues} です。`
                     : words
                     ? `単語は空白で区切って、左から順に挿入します。上限は ${maxValues} 個です。`
+                    : variant === 'heapsort'
+                    ? `値はその並びのまま木に置きます。上限は ${maxValues} 個です。`
                     : `値は左から順に挿入します。上限は ${maxValues} 個です。`}
             </p>
         </div>
