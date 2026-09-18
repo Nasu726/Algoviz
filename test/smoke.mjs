@@ -236,6 +236,13 @@ engine.load('setTraversal', 'prim 0 -1');
 engine.runToEnd();
 checkEq('プリム法の合計', engine.getState({}).treeWeight, 4);
 
+// --- ヒープソート ---
+engine.setAlgorithm('heapsort');
+engine.load('setValues', '3 1 2');
+engine.runToEnd();
+const hs = engine.getState({});
+checkEq('ヒープソートで昇順', [0, 1, 2].map((i) => hs.nodes[i * NODE_STRIDE + 2]).join(' '), '1 2 3');
+
 // --- クラスカル法 ---
 engine.setAlgorithm('kruskal');
 engine.load('horizontal', 'custom 1 0 0 1\n3 3\n0 1 5\n1 2 1\n0 2 3\n');

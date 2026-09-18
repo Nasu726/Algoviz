@@ -172,8 +172,12 @@ export interface GraphState {
     /** マージソート: まだ片付けていない仕事の数 */
     pendingTasks?: number;
 
-    /** バケットソート: 局面 / 値の範囲 (0..range-1) */
-    phase?: 'count' | 'expand' | 'zeros' | 'ones' | 'copy';
+    /** バケットソート / ヒープソート: 局面 / 値の範囲 (0..range-1) */
+    phase?: 'count' | 'expand' | 'zeros' | 'ones' | 'copy' | 'build' | 'extract' | 'done';
+    /** ヒープソート: 未確定の数 / 直前に比べた子 / 直前に入れ替えた相手 (-1 なら無し) */
+    heapSize?: number;
+    compared?: number;
+    lastSwap?: number;
     range?: number;
     /** バケットソート: 直前の手で数えた値 / 書き出した値 (-1 なら無し) / 頻度 0 を見た */
     counted?: number;

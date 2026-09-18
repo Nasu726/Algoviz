@@ -162,6 +162,9 @@ function App() {
         <Route path="/tree/heap" element={
           <EngineGate>{(engine) => <TreeWrapper engine={engine} variant="heap" />}</EngineGate>
         } />
+        <Route path="/tree/heapsort" element={
+          <EngineGate>{(engine) => <TreeWrapper engine={engine} variant="heapsort" />}</EngineGate>
+        } />
         <Route path="/tree/trie" element={
           <EngineGate>{(engine) => <TreeWrapper engine={engine} variant="trie" />}</EngineGate>
         } />
