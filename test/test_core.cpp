@@ -41,6 +41,7 @@
 #include "../cpp/include/RadixSortVisualizer.hpp"
 #include "../cpp/include/UnionFindVisualizer.hpp"
 #include "../cpp/include/KruskalVisualizer.hpp"
+#include "../cpp/include/HeapSortVisualizer.hpp"
 #include "../cpp/include/LinearSearchVisualizer.hpp"
 #include "../cpp/include/BinarySearchVisualizer.hpp"
 #include "../cpp/include/DequeVisualizer.hpp"
@@ -5622,6 +5623,152 @@ static void testPrimStepMatchesRunToEndAndStepsBack() {
 
 
 // ==========================================
+// ヒープソート
+// ==========================================
+
+static std::vector<int> heapSortValues(HeapSortVisualizer& h) {
+    val s = h.getState(val::object());
+    int n = s["nodeCount"].as<int>();
+    std::vector<int> out;
+    for (int i = 0; i < n; i++) out.push_back((int)s["nodes"][i * GraphData::NODE_STRIDE + 2].as<float>());
+    return out;
+}
+
+static bool isMaxHeap(const std::vector<int>& a, int size) {
+    for (int i = 1; i < size; i++) if (a[(i - 1) / 2] < a[i]) return false;
+    return true;
+}
+
+static const char* HEAPSORT_INPUT = "20 40 30 80 50 70 60";
+
+static void testHeapSortBuildStartsFromLastInternalNodeAndMakesAHeap() {
+    beginTest("構築は n/2-1 から下ろし、終わるとヒープになっている");
+
+    HeapSortVisualizer h;
+    h.load("setValues", HEAPSORT_INPUT);
+    // 最初は入力の並びのまま全部置かれている
+    checkOrder("最初", heapSortValues(h), {20, 40, 30, 80, 50, 70, 60});
+    CHECK_EQ(h.getState(val::object())["heapSize"].as<int>(), 7);
+
+    h.step();
+    CHECK_EQ(h.getState(val::object())["cursor"].as<int>(), 2); // 7/2-1
+
+    // 構築が終わった瞬間 (extract に切り替わる手の直前) の並びを見る。
+    // 切り替わる手で最初の取り出しが起きるので、その前を取る
+    std::vector<int> a;
+    while (h.getState(val::object())["phase"].as<std::string>() == "build") {
+        a = heapSortValues(h);
+        h.step();
+    }
+    CHECK(isMaxHeap(a, 7));
+    CHECK_EQ(a[0], 80);
+}
+
+static void testHeapSortSiftsDownOneComparisonPerStep() {
+    beginTest("1手は1回の比較。子が大きければ入れ替えて1つ降りる");
+
+    HeapSortVisualizer h;
+    h.load("setValues", HEAPSORT_INPUT);
+    h.step(); // 2 を下ろし始める (30 と 子 70, 60)
+    h.step(); // 70 と比べて入れ替え
+    val s = h.getState(val::object());
+    CHECK_EQ(s["compared"].as<int>(), 5);
+    CHECK_EQ(s["lastSwap"].as<int>(), 2);
+    CHECK_EQ(s["cursor"].as<int>(), 5);
+    std::vector<int> a = heapSortValues(h);
+    CHECK_EQ(a[2], 70);
+    CHECK_EQ(a[5], 30);
+
+    h.step(); // 5 には子が無いので終わり
+    s = h.getState(val::object());
+    CHECK_EQ(s["cursor"].as<int>(), -1);
+    CHECK_EQ(s["lastSwap"].as<int>(), -1);
+
+    // 次は 1 を下ろす: 40 と 子 80, 50 → 80 と入れ替え
+    h.step();
+    CHECK_EQ(h.getState(val::object())["cursor"].as<int>(), 1);
+    h.step();
+    s = h.getState(val::object());
+    CHECK_EQ(s["compared"].as<int>(), 3);
+    CHECK_EQ(heapSortValues(h)[1], 80);
+}
+
+static void testHeapSortExtractSwapsRootWithLastAndSettlesIt() {
+    beginTest("取り出しは根と末尾を入れ替えて末尾を確定する");
+
+    HeapSortVisualizer h;
+    h.load("setValues", HEAPSORT_INPUT);
+    while (h.getState(val::object())["phase"].as<std::string>() == "build") h.step();
+    // build → extract に切り替わった手で最初の取り出しが起きている
+    val s = h.getState(val::object());
+    CHECK_EQ(s["heapSize"].as<int>(), 6);
+    CHECK_EQ(s["lastSwap"].as<int>(), 6);
+    CHECK_EQ(s["cursor"].as<int>(), 0);
+    std::vector<int> a = heapSortValues(h);
+    CHECK_EQ(a[6], 80);
+    // 確定した値は以後変わらない
+    h.runToEnd();
+    CHECK_EQ(heapSortValues(h)[6], 80);
+}
+
+static void testHeapSortEndsSortedAscending() {
+    beginTest("終わると添字順が昇順で、値の集合は変わらない");
+
+    HeapSortVisualizer h;
+    h.load("setValues", HEAPSORT_INPUT);
+    h.runToEnd();
+    val s = h.getState(val::object());
+    CHECK(s["finished"].as<bool>());
+    CHECK_EQ(s["heapSize"].as<int>(), 0);
+    checkOrder("並び", heapSortValues(h), {20, 30, 40, 50, 60, 70, 80});
+
+    HeapSortVisualizer r;
+    r.load("genRandom", "20");
+    std::vector<int> before = heapSortValues(r);
+    std::sort(before.begin(), before.end());
+    r.runToEnd();
+    checkOrder("ランダム", heapSortValues(r), before);
+}
+
+static void testHeapSortStepMatchesRunToEndAndStepsBack() {
+    beginTest("1手ずつ進めた結果が一気に実行と一致し、1手戻せる");
+
+    HeapSortVisualizer stepwise, atOnce;
+    stepwise.load("setValues", HEAPSORT_INPUT);
+    atOnce.load("setValues", HEAPSORT_INPUT);
+    int steps = 0;
+    while (stepwise.step()) steps++;
+    atOnce.runToEnd();
+    checkOrder("並び", heapSortValues(stepwise), heapSortValues(atOnce));
+    CHECK(steps > 7);
+
+    HeapSortVisualizer before, after;
+    before.load("setValues", HEAPSORT_INPUT);
+    after.load("setValues", HEAPSORT_INPUT);
+    for (int i = 0; i < 9; i++) before.step();
+    for (int i = 0; i < 10; i++) after.step();
+    after.stepBack();
+    checkOrder("戻したあと", heapSortValues(before), heapSortValues(after));
+    CHECK_EQ(before.getState(val::object())["cursor"].as<int>(),
+             after.getState(val::object())["cursor"].as<int>());
+    CHECK_EQ(before.getState(val::object())["heapSize"].as<int>(),
+             after.getState(val::object())["heapSize"].as<int>());
+
+    HeapSortVisualizer empty;
+    empty.load("setValues", "");
+    CHECK(empty.getState(val::object())["finished"].as<bool>());
+    empty.runToEnd();
+    empty.stepBack();
+
+    HeapSortVisualizer one;
+    one.load("setValues", "5");
+    one.runToEnd();
+    CHECK(one.getState(val::object())["finished"].as<bool>());
+    checkOrder("1個", heapSortValues(one), {5});
+}
+
+
+// ==========================================
 // Union-Find
 // ==========================================
 
@@ -6060,6 +6207,13 @@ int main(int argc, char** argv) {
     testPrimKeyIsEdgeWeightNotPathLength();
     testPrimOnDisconnectedGraphStopsAtComponent();
     testPrimStepMatchesRunToEndAndStepsBack();
+
+    beginSection("ヒープソート");
+    testHeapSortBuildStartsFromLastInternalNodeAndMakesAHeap();
+    testHeapSortSiftsDownOneComparisonPerStep();
+    testHeapSortExtractSwapsRootWithLastAndSettlesIt();
+    testHeapSortEndsSortedAscending();
+    testHeapSortStepMatchesRunToEndAndStepsBack();
 
     beginSection("Union-Find");
     testUnionFindClimbsOneEdgePerStep();
