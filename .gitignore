@@ -34,3 +34,6 @@ visualize_plan.md
 cpp/include/ForceDirectedLayout.hpp
 # test build output
 test/out
+
+# Git Bash のクラッシュダンプ
+*.stackdump
