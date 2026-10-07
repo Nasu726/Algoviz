@@ -135,11 +135,13 @@ export const ArrayPanel: React.FC<Props> = ({
     // 操作の並び。実行済み / 次に実行するもの を色で分ける
     const opQueue = (
         <div style={{ fontFamily: 'monospace', fontSize: compact ? '13px' : '15px',
-                      wordBreak: 'break-all', lineHeight: 1.7 }}>
+                      lineHeight: 1.7 }}>
             {opList.length === 0
                 ? <span style={{ color: '#90a4ae' }}>（操作がありません）</span>
                 : opList.map((op, i) => (
                     <span key={i} style={{
+                        // 1操作は塊で折り返す。放っておくと "union 4 5" が "un" と "ion 4 5" に割れる
+                        display: 'inline-block', whiteSpace: 'nowrap',
                         marginRight: '10px',
                         color: i < opIndex ? '#90a4ae' : i === opIndex ? '#e74c3c' : '#000',
                         fontWeight: i === opIndex ? 'bold' : 'normal',
