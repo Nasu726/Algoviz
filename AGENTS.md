@@ -59,6 +59,9 @@
   `operator new/delete` が未定義になる
 - **emscripten のバージョンは `emscripten/emsdk:5.0.1` に固定。**
   `latest` にするとローカルと CI で別のコンパイラが動き、出荷する WASM が再現しない
+- **Node のバージョンは `.node-version` に固定。** CI と Cloudflare Pages のビルドがこれを読む。
+  無いと Cloudflare は既定の古い版で動く。Node のセキュリティリリースが出たら、
+  こことローカル (nvm) を上げる
 - リファクタの前にテストを書く。`step()` と `runToEnd()` の統合では
   「両者の結果が一致する」テストが安全網になった
 - **ビジュアライザを足したら2か所を更新する。** どちらも忘れやすい
