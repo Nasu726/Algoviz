@@ -41,6 +41,7 @@
 #include "../cpp/include/RadixSortVisualizer.hpp"
 #include "../cpp/include/UnionFindVisualizer.hpp"
 #include "../cpp/include/KruskalVisualizer.hpp"
+#include "../cpp/include/BipartiteVisualizer.hpp"
 #include "../cpp/include/HeapSortVisualizer.hpp"
 #include "../cpp/include/LinearSearchVisualizer.hpp"
 #include "../cpp/include/BinarySearchVisualizer.hpp"
@@ -5769,6 +5770,184 @@ static void testHeapSortStepMatchesRunToEndAndStepsBack() {
 
 
 // ==========================================
+// 二部グラフ判定
+// ==========================================
+
+static const char* EVEN_CYCLE = "custom 1 0 0 0\n4 4\n0 1\n1 2\n2 3\n3 0\n";
+static const char* ODD_CYCLE  = "custom 1 0 0 0\n5 5\n0 1\n1 2\n2 3\n3 4\n4 0\n";
+
+static std::vector<int> sidesOf(BipartiteVisualizer& b) {
+    return valToVector(b.getState(progressParams())["sides"]);
+}
+
+// 全部の頂点が塗られていて、全部の辺で両端の色が違うか
+static bool sidesSplitEveryEdge(BipartiteVisualizer& b) {
+    std::vector<int> side = sidesOf(b);
+    if (std::any_of(side.begin(), side.end(), [](int s) { return s < 0; })) return false;
+    for (auto& e : readGraph(b).edges) {
+        if (side[e.first] == side[e.second]) return false;
+    }
+    return true;
+}
+
+static void testBipartiteEvenCycleSplitsEveryEdge() {
+    beginTest("偶数長の閉路は二部グラフ。全部の辺で両端の色が違う");
+
+    BipartiteVisualizer b;
+    b.load("horizontal", EVEN_CYCLE);
+    b.runToEnd();
+    val s = b.getState(val::object());
+    CHECK(s["finished"].as<bool>());
+    CHECK(s["bipartite"].as<bool>());
+    CHECK_EQ(s["conflictEdge"].as<int>(), -1);
+    CHECK_EQ(s["coloredCount"].as<int>(), 4);
+    CHECK(sidesSplitEveryEdge(b));
+}
+
+static void testBipartiteOddCycleStopsAtTheConflict() {
+    beginTest("奇数長の閉路は二部グラフでない。両端が同じ色の辺を見た手で終わる");
+
+    // 0 から BFS: 1 と 4 が橙、2 と 3 が青。2 の隣を見て 2-3 (番号 2) で矛盾
+    BipartiteVisualizer b;
+    b.load("horizontal", ODD_CYCLE);
+    b.runToEnd();
+    val s = b.getState(val::object());
+    CHECK(s["finished"].as<bool>());
+    CHECK(!s["bipartite"].as<bool>());
+    CHECK_EQ(s["conflictEdge"].as<int>(), 2);
+    CHECK_EQ(s["lookingEdge"].as<int>(), 2);
+    CHECK_EQ(s["current"].as<int>(), -1);
+    std::vector<int> side = sidesOf(b);
+    CHECK_EQ(side[2], side[3]);
+    CHECK_EQ((int)s["edges"][2 * GraphData::EDGE_STRIDE + 3].as<float>(), (int)EDGE_ACTIVE);
+    // 終わったあとは進まない
+    CHECK(!b.step());
+    CHECK_EQ(b.getState(val::object())["conflictEdge"].as<int>(), 2);
+}
+
+static void testBipartiteStartsEachComponentFromSmallestUncolored() {
+    beginTest("非連結なら成分ごとに、塗られていない最小の番号から始める");
+
+    // 成分は {0,1} {2,3} {4}
+    BipartiteVisualizer b;
+    b.load("horizontal", "custom 1 0 0 0\n5 2\n0 1\n2 3\n");
+    std::vector<int> starts;
+    int seen = 0;
+    while (b.step()) {
+        val s = b.getState(val::object());
+        int count = s["componentCount"].as<int>();
+        if (count > seen) {
+            seen = count;
+            starts.push_back(s["current"].as<int>());
+            CHECK_EQ(sidesOf(b)[s["current"].as<int>()], 0);
+        }
+    }
+    checkOrder("成分を始めた頂点", starts, {0, 2, 4});
+    CHECK(b.getState(val::object())["bipartite"].as<bool>());
+    CHECK(sidesSplitEveryEdge(b));
+}
+
+static void testBipartiteSelfLoopIsAConflict() {
+    beginTest("自己ループがあれば二部グラフでない");
+
+    BipartiteVisualizer b;
+    b.load("horizontal", "custom 1 0 0 0\n2 2\n0 1\n1 1\n");
+    b.runToEnd();
+    val s = b.getState(val::object());
+    CHECK(!s["bipartite"].as<bool>());
+    CHECK_EQ(s["conflictEdge"].as<int>(), 1);
+}
+
+static void testBipartiteLooksAtOneEdgePerStep() {
+    beginTest("1手で見る辺は1本まで");
+
+    // 二部グラフなら手数は ちょうど 成分の数 + 2E (両端から1回ずつ) + V (見終える)
+    BipartiteVisualizer b;
+    b.load("horizontal", EVEN_CYCLE);
+    CHECK(b.step()); // 成分を始める
+    CHECK_EQ(b.getState(val::object())["lookingEdge"].as<int>(), -1);
+    CHECK(b.step()); // 0 の最初の辺 0-1
+    CHECK_EQ(b.getState(val::object())["lookingEdge"].as<int>(), 0);
+    int steps = 2;
+    while (b.step()) steps++;
+    CHECK_EQ(steps, 1 + 2 * 4 + 4);
+
+    BipartiteVisualizer d;
+    d.load("horizontal", "custom 1 0 0 0\n5 2\n0 1\n2 3\n");
+    steps = 0;
+    while (d.step()) steps++;
+    CHECK_EQ(steps, 3 + 2 * 2 + 5);
+}
+
+static void testBipartiteStepMatchesRunToEndAndStepsBack() {
+    beginTest("1手ずつ進めた結果が一気に実行と一致し、1手戻せる");
+
+    for (const char* g : {EVEN_CYCLE, ODD_CYCLE}) {
+        BipartiteVisualizer stepwise, atOnce;
+        stepwise.load("horizontal", g);
+        atOnce.load("horizontal", g);
+        while (stepwise.step()) {}
+        atOnce.runToEnd();
+        checkOrder("色", sidesOf(stepwise), sidesOf(atOnce));
+        CHECK_EQ(stepwise.getState(val::object())["bipartite"].as<bool>(),
+                 atOnce.getState(val::object())["bipartite"].as<bool>());
+
+        BipartiteVisualizer before, after;
+        before.load("horizontal", g);
+        after.load("horizontal", g);
+        for (int i = 0; i < 5; i++) before.step();
+        for (int i = 0; i < 6; i++) after.step();
+        after.stepBack();
+        checkOrder("戻したあと", sidesOf(before), sidesOf(after));
+        CHECK_EQ(before.getState(val::object())["lookingEdge"].as<int>(),
+                 after.getState(val::object())["lookingEdge"].as<int>());
+        CHECK_EQ(before.getState(val::object())["current"].as<int>(),
+                 after.getState(val::object())["current"].as<int>());
+    }
+
+    BipartiteVisualizer empty;
+    empty.load("horizontal", "custom 1 0 0 0\n0 0\n");
+    CHECK(empty.getState(val::object())["finished"].as<bool>());
+    CHECK(empty.getState(val::object())["bipartite"].as<bool>());
+    CHECK(!empty.step());
+    empty.stepBack();
+}
+
+static void testBipartiteGeneratorAlwaysMakesBipartiteGraphs() {
+    beginTest("「二部グラフになるように作る」なら、指定によらず必ず二部グラフ");
+
+    // random V E skip selfLoop sameEdge dir conn wt bip
+    for (int v : {1, 2, 5, 12, 30}) {
+        for (int e : {0, 6, 40, 300}) {
+            for (int conn : {0, 1}) {
+                for (int loops : {0, 1}) {
+                    for (int same : {0, 1}) {
+                        BipartiteVisualizer b;
+                        b.load("horizontal", "random " + std::to_string(v) + " " + std::to_string(e) +
+                               " 1 " + std::to_string(loops) + " " + std::to_string(same) +
+                               " 0 " + std::to_string(conn) + " 0 1");
+                        b.runToEnd();
+                        val s = b.getState(val::object());
+                        if (!s["bipartite"].as<bool>() || (conn && s["componentCount"].as<int>() != 1)) {
+                            g_checks++;
+                            reportFailure("V=" + std::to_string(v) + " E=" + std::to_string(e) +
+                                          " conn=" + std::to_string(conn) + " loops=" + std::to_string(loops) +
+                                          " same=" + std::to_string(same));
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // 辺が実際に張られている (候補を全部捨てていない)
+    BipartiteVisualizer dense;
+    dense.load("horizontal", "random 12 30 1 0 0 0 0 0 1");
+    CHECK(dense.getState(val::object())["edgeCount"].as<int>() >= 20);
+}
+
+
+// ==========================================
 // Union-Find
 // ==========================================
 
@@ -6214,6 +6393,15 @@ int main(int argc, char** argv) {
     testHeapSortExtractSwapsRootWithLastAndSettlesIt();
     testHeapSortEndsSortedAscending();
     testHeapSortStepMatchesRunToEndAndStepsBack();
+
+    beginSection("二部グラフ判定");
+    testBipartiteEvenCycleSplitsEveryEdge();
+    testBipartiteOddCycleStopsAtTheConflict();
+    testBipartiteStartsEachComponentFromSmallestUncolored();
+    testBipartiteSelfLoopIsAConflict();
+    testBipartiteLooksAtOneEdgePerStep();
+    testBipartiteStepMatchesRunToEndAndStepsBack();
+    testBipartiteGeneratorAlwaysMakesBipartiteGraphs();
 
     beginSection("Union-Find");
     testUnionFindClimbsOneEdgePerStep();
