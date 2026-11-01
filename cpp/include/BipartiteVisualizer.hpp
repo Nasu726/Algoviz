@@ -22,6 +22,9 @@ class BipartiteVisualizer : public GraphVisualizer {
 
     enum Status : char { PENDING = 0, TREE = 1, OK = 2, CONFLICT = 3 };
 
+    // この手でしたこと。パネルの文に使う (辺の色だけでは「塗った」と「既に違う色」を区別できない)
+    enum Action : char { NONE, START, PAINT, FINE, CLASH, DONE };
+
     struct Frame {
         int vertex;
         int cursor; // adj[vertex] を何本目まで見たか
@@ -33,6 +36,8 @@ class BipartiteVisualizer : public GraphVisualizer {
         std::vector<char>  status;      // 辺ごと
         int  nextStart = 0;             // 次の成分を始める候補
         int  lookingEdge = -1;          // この手で見た辺
+        Action action = NONE;
+        int  actionVertex = -1;         // この手で扱った頂点 (始めた / 隣を見た / 見終えた)
         int  conflictEdge = -1;
         int  componentCount = 0;
         bool finished = false;
@@ -132,12 +137,15 @@ public:
             st.side[s] = 0;
             st.componentCount++;
             st.frames.push_back({s, 0});
+            st.action = START;
+            st.actionVertex = s;
             syncVisuals();
             return true;
         }
 
         const int u = st.frames.front().vertex;
         const int cursor = st.frames.front().cursor;
+        st.actionVertex = u;
 
         if (cursor < (int)adj[u].size()) {
             // 辺を1本見る
@@ -150,20 +158,24 @@ public:
                 st.side[to] = 1 - st.side[u];
                 st.status[ei] = TREE;
                 st.frames.push_back({to, 0});
+                st.action = PAINT;
             } else if (st.side[to] == st.side[u]) {
                 st.status[ei] = CONFLICT;
                 st.conflictEdge = ei;
                 st.finished = true;
                 st.bipartite = false;
-            } else if (st.status[ei] == PENDING) {
+                st.action = CLASH;
+            } else {
                 // 無向なので1本の辺は両端から2回見る。色を伝えた辺はそのまま残す
-                st.status[ei] = OK;
+                if (st.status[ei] == PENDING) st.status[ei] = OK;
+                st.action = FINE;
             }
             syncVisuals();
             return true;
         }
 
         // 見終える
+        st.action = DONE;
         st.frames.erase(st.frames.begin());
         if (st.frames.empty() && !advanceNextStart()) {
             st.finished = true;
@@ -190,6 +202,9 @@ public:
         state.set("finished", st.finished);
         state.set("bipartite", st.bipartite);
         state.set("lookingEdge", st.lookingEdge);
+        static const char* actionNames[] = {"", "start", "paint", "fine", "clash", "done"};
+        state.set("action", std::string(actionNames[st.action]));
+        state.set("actionVertex", st.actionVertex);
         state.set("conflictEdge", st.conflictEdge);
         state.set("componentCount", st.componentCount);
         state.set("coloredCount", colored);

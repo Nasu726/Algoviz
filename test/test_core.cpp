@@ -5879,6 +5879,31 @@ static void testBipartiteLooksAtOneEdgePerStep() {
     CHECK_EQ(steps, 3 + 2 * 2 + 5);
 }
 
+static void testBipartiteReportsWhatEachStepDid() {
+    beginTest("その手で何をしたか (始めた / 塗った / 問題なし / 見終えた) を返す");
+
+    // 0 の隣は 1, 3 (どちらも未着色)。1 の隣は 0 (既に違う色), 2 (未着色)
+    BipartiteVisualizer b;
+    b.load("horizontal", EVEN_CYCLE);
+    std::vector<std::string> actions;
+    std::vector<int> vertices;
+    for (int i = 0; i < 6; i++) {
+        b.step();
+        val s = b.getState(val::object());
+        actions.push_back(s["action"].as<std::string>());
+        vertices.push_back(s["actionVertex"].as<int>());
+    }
+    std::vector<std::string> expected = {"start", "paint", "paint", "done", "fine", "paint"};
+    for (int i = 0; i < 6; i++) CHECK_EQ(actions[i], expected[i]);
+    checkOrder("扱った頂点", vertices, {0, 0, 0, 0, 1, 1});
+
+    BipartiteVisualizer odd;
+    odd.load("horizontal", ODD_CYCLE);
+    odd.runToEnd();
+    CHECK_EQ(odd.getState(val::object())["action"].as<std::string>(), std::string("clash"));
+    CHECK_EQ(odd.getState(val::object())["actionVertex"].as<int>(), 2);
+}
+
 static void testBipartiteStepMatchesRunToEndAndStepsBack() {
     beginTest("1手ずつ進めた結果が一気に実行と一致し、1手戻せる");
 
@@ -6400,6 +6425,7 @@ int main(int argc, char** argv) {
     testBipartiteStartsEachComponentFromSmallestUncolored();
     testBipartiteSelfLoopIsAConflict();
     testBipartiteLooksAtOneEdgePerStep();
+    testBipartiteReportsWhatEachStepDid();
     testBipartiteStepMatchesRunToEndAndStepsBack();
     testBipartiteGeneratorAlwaysMakesBipartiteGraphs();
 
