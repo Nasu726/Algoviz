@@ -1,6 +1,6 @@
 import React from 'react';
 import type { GraphVariant } from './types';
-import { isFixedShape, isTraversal } from './types';
+import { fixedShape, isTraversal } from './types';
 
 // ページごとに、そのアルゴリズムだけを説明する。
 // 1ページ1アルゴリズムにしたのは、情報を詰め込みすぎないため。
@@ -94,6 +94,23 @@ const AlgorithmSection: React.FC<{ variant: GraphVariant }> = ({ variant }) => {
         </>
     );
 
+    if (variant === 'bipartite') return (
+        <>
+            <h3>1. 二部グラフ判定</h3>
+            <p>
+                BFS で頂点を<b>青と橙</b>に塗っていきます。隣は自分と反対の色。
+                <b>両端が同じ色の辺</b>が見つかったら二部グラフではありません。
+            </p>
+            <ul>
+                <li>1ステップは「辺を1本見る」か「その頂点の隣を見終える」か「次の成分を始める」</li>
+                <li>処理中の頂点は色を変えず、<b>今見ている辺 (太い赤)</b> で示す。その根元が処理中</li>
+                <li>無向なので、1本の辺は両端から1回ずつ見る</li>
+                <li>連結でなければ、キューが空になったところで塗られていない最小の番号から次を始める</li>
+                <li>グラフは無向・重みなしで固定</li>
+            </ul>
+        </>
+    );
+
     return (
         <>
             <h3>1. グラフ描画</h3>
@@ -171,6 +188,10 @@ export const GraphHelp: React.FC<{ variant: GraphVariant; maxNodes: number }> = 
                 有向のときは頂点 0 を根にするので、始点を 0 にすれば必ず全頂点へ届く。
                 辺の数が V-1 に満たない指定は V-1 まで増やす</li>
             <li><b>完全グラフ生成</b>：すべての頂点対を辺で結ぶ</li>
+            {variant === 'bipartite' && (
+                <li><b>二部グラフになるように作る</b>：頂点を2つに分け、分けた側をまたぐ辺だけを張る。
+                    外すと普通のランダム生成になり、たいてい二部グラフにならない</li>
+            )}
         </ul>
 
         <h3>3. グラフの入力</h3>
@@ -182,7 +203,7 @@ export const GraphHelp: React.FC<{ variant: GraphVariant; maxNodes: number }> = 
             <li>辺の重みを書かないと 1 として扱う。重み無しグラフのダイクストラ法は BFS と同じ結果になる</li>
             <li>範囲外の頂点番号を含む行は読み飛ばす</li>
             <li>頂点数の上限は {maxNodes}。一度に見て分かる範囲に合わせている</li>
-            {!isFixedShape(variant) && (
+            {!fixedShape(variant) && (
                 <li>「有向グラフ」のチェックは生成時に反映される。探索が辺の向きを守るかどうかもこれで決まる</li>
             )}
         </ul>
@@ -199,7 +220,7 @@ export const GraphHelp: React.FC<{ variant: GraphVariant; maxNodes: number }> = 
             <li><b>Esc</b>：ビジュアライザ一覧へ戻る</li>
             <li><b>Ctrl + H</b>：ヘルプを開く</li>
             <li><b>Ctrl + S</b>：テキストからグラフを生成</li>
-            {(isTraversal(variant) || variant === 'kruskal') && <>
+            {variant !== 'plain' && <>
                 <li><b>Ctrl + Enter</b>：実行 / 一時停止</li>
                 <li><b>Ctrl + ←</b> / <b>→</b>：戻る / 進む</li>
                 <li><b>Ctrl + ↑</b> / <b>↓</b>：実行速度の増減</li>

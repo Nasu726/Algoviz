@@ -5,10 +5,11 @@ import { SidebarLayout } from '../components/ui/SidebarLayout';
 import { GraphSetupPanel } from '../components/graph/GraphSetupPanel';
 import { TraversalPanel } from '../components/graph/TraversalPanel';
 import { KruskalPanel } from '../components/graph/KruskalPanel';
+import { BipartitePanel } from '../components/graph/BipartitePanel';
 import { AutomatonSetupPanel } from '../components/graph/AutomatonSetupPanel';
 import { AutomatonPanel } from '../components/graph/AutomatonPanel';
 import { GraphHelp } from '../components/graph/GraphHelp';
-import { defaultSettings, engineAlgorithm, isFixedShape, isTraversal, VARIANT_TITLE } from '../components/graph/types';
+import { defaultSettings, engineAlgorithm, fixedShape, isTraversal, VARIANT_TITLE } from '../components/graph/types';
 import type { GraphSettings, GraphVariant } from '../components/graph/types';
 import { useKeyboardShortcuts } from '../hooks/keyboardShortcut';
 import { useLayoutTier } from '../hooks/useLayoutTier';
@@ -26,9 +27,10 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
     const tier = useLayoutTier();
     const traversal = isTraversal(variant);
     const kruskal = variant === 'kruskal';
-    const fixedShape = isFixedShape(variant);
+    const bipartite = variant === 'bipartite';
+    const fixed = fixedShape(variant);
     // 1手ずつ動かせるページか。描くだけの遊び場だけが動かない
-    const runnable = traversal || kruskal || variant === 'automaton';
+    const runnable = variant !== 'plain';
 
     const [settings, setSettings] = useState<GraphSettings>(() => defaultSettings(variant));
     const update = (patch: Partial<GraphSettings>) => setSettings((s) => ({ ...s, ...patch }));
@@ -64,13 +66,14 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         const s = latest.current.settings;
         return {
             skip: s.skipExtension ? 1 : 0,
-            // 最小全域木は無向・重み付きで固定
-            dir: s.isDirected && !fixedShape ? 1 : 0,
+            // 形が決まっている variant は無向で、重みの有無も決まっている
+            dir: s.isDirected && !fixed ? 1 : 0,
             nodeW: s.useNodeWeights ? 1 : 0,
             selfLoop: s.allowSelfLoop ? 1 : 0,
             sameEdge: s.allowSameEdge ? 1 : 0,
             conn: s.connected ? 1 : 0,
-            wt: s.weighted || fixedShape ? 1 : 0,
+            wt: (fixed ? fixed.weighted : s.weighted) ? 1 : 0,
+            bip: bipartite && s.bipartite ? 1 : 0,
         };
     };
 
@@ -146,7 +149,7 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
             return;
         }
         const f = flags();
-        generate(`random ${s.nodeCount} ${s.edgeCount} ${f.skip} ${f.selfLoop} ${f.sameEdge} ${f.dir} ${f.conn} ${f.wt}`);
+        generate(`random ${s.nodeCount} ${s.edgeCount} ${f.skip} ${f.selfLoop} ${f.sameEdge} ${f.dir} ${f.conn} ${f.wt} ${f.bip}`);
     };
     const handleGenerateComplete = () => {
         const f = flags();
@@ -216,6 +219,18 @@ export const GraphPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         />
     ) : kruskal ? (
         <KruskalPanel
+            state={state}
+            isPlaying={isPlaying} delay={delay} setDelay={setDelay}
+            onReset={handleReset}
+            onPlayPause={toggle}
+            onStepBack={handleStepBack}
+            onStepNext={handleStep}
+            onRunToEnd={handleRunToEnd}
+            horizontal={tier !== 'wide'}
+            compact={compact}
+        />
+    ) : bipartite ? (
+        <BipartitePanel
             state={state}
             isPlaying={isPlaying} delay={delay} setDelay={setDelay}
             onReset={handleReset}
