@@ -183,6 +183,9 @@ function App() {
         <Route path="/tree/segtree" element={
           <EngineGate>{(engine) => <TreeWrapper engine={engine} variant="segtree" />}</EngineGate>
         } />
+        <Route path="/tree/fenwick" element={
+          <EngineGate>{(engine) => <TreeWrapper engine={engine} variant="fenwick" />}</EngineGate>
+        } />
 
         {/* 配列。1ページ1アルゴリズム */}
         <Route path="/array/bubble" element={

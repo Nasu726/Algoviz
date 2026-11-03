@@ -172,9 +172,9 @@ export interface GraphState {
     /** マージソート: まだ片付けていない仕事の数 */
     pendingTasks?: number;
 
-    /** バケットソート / ヒープソート / セグメント木: 局面 / 値の範囲 (0..range-1) */
+    /** バケットソート / ヒープソート / セグメント木 / Fenwick 木: 局面 / 値の範囲 (0..range-1) */
     phase?: 'count' | 'expand' | 'zeros' | 'ones' | 'copy' | 'build' | 'extract'
-        | 'update' | 'query' | 'done';
+        | 'update' | 'query' | 'add' | 'sum' | 'done';
     /** ヒープソート: 未確定の数 / 直前に比べた子 / 直前に入れ替えた相手 (-1 なら無し) */
     heapSize?: number;
     compared?: number;
@@ -281,17 +281,28 @@ export interface GraphState {
     segLeft?: number[];
     segRight?: number[];
     segValue?: (number | null)[];
-    /** セグメント木: 今の段階 (組み立て / 今の操作) を終えたか */
+    /** セグメント木 / Fenwick 木: 今の段階 (組み立て / 今の操作) を終えたか */
     opComplete?: boolean;
     /** セグメント木: 直前の手で扱った節点 (-1 なら無し) と、したこと */
     lastNode?: number;
-    lastKind?: '' | 'build' | 'leaf' | 'recompute' | 'in' | 'out' | 'partial';
+    lastKind?: '' | 'build' | 'leaf' | 'recompute' | 'in' | 'out' | 'partial'
+        | 'add' | 'sum' | 'empty';
     /** セグメント木: query の区間 [queryL, queryR) / 答えに使った節点 / 答え (最小・最大の単位元は null) */
     queryL?: number;
     queryR?: number;
     takenNodes?: number[];
     answer?: number | null;
     monoid?: 'sum' | 'min' | 'max';
+
+    /** Fenwick 木: a[1..n] と ft[1..n] (どちらも 0 始まりの配列で、添字 i は i-1 番目) */
+    fenA?: number[];
+    fenTree?: number[];
+    /** Fenwick 木: 直前の手で書いた / 足した箱、組み立てで読んだ箱、次に触る箱 (無ければ 0) */
+    lastIndex?: number;
+    lastFrom?: number;
+    nextIndex?: number;
+    /** Fenwick 木: sum で足した箱 */
+    taken?: number[];
 }
 
 /** getState に渡せるパラメータ。どれも省略可能 */

@@ -1,7 +1,8 @@
 // 木のビジュアライザで共有する型。1ページ1アルゴリズムなので、
 // variant がそのままページの中身を決める。
 
-export type TreeVariant = 'bst' | 'heap' | 'heapsort' | 'trie' | 'huffman' | 'avl' | 'btree' | 'segtree';
+export type TreeVariant = 'bst' | 'heap' | 'heapsort' | 'trie' | 'huffman' | 'avl' | 'btree' | 'segtree'
+    | 'fenwick';
 
 export const TREE_TITLE: Record<TreeVariant, string> = {
     bst: '二分探索木の構築',
@@ -12,10 +13,11 @@ export const TREE_TITLE: Record<TreeVariant, string> = {
     avl: 'AVL 木の構築',
     btree: 'B木の構築',
     segtree: 'セグメント木',
+    fenwick: 'Fenwick 木',
 };
 
 /** 値の列に加えて、操作の並びも入れる variant か */
-export const usesOps = (v: TreeVariant): boolean => v === 'segtree';
+export const usesOps = (v: TreeVariant): boolean => v === 'segtree' || v === 'fenwick';
 
 /** セグメント木の集約。どれも正しいセグメント木なので選ばせる */
 export type Monoid = 'sum' | 'min' | 'max';
@@ -39,7 +41,11 @@ export const defaultValues: Record<TreeVariant, string> = {
     avl: '10 20 30 40 50 25',
     btree: '10 20 30 40 50 60 70',
     segtree: '5 3 8 1 6 2 7 4',
+    fenwick: '5 3 8 1 6 2 7 4',
 };
 
 /** usesOps のときに既定で入れておく操作 */
-export const defaultOps = 'query 1 6\nupdate 3 9\nquery 2 8';
+export const defaultOps: Partial<Record<TreeVariant, string>> = {
+    segtree: 'query 1 6\nupdate 3 9\nquery 2 8',
+    fenwick: 'sum 7\nadd 3 2\nsum 6',
+};

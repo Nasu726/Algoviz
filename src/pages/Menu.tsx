@@ -26,6 +26,7 @@ const GENRES: { name: string; items: { path: string; label: string }[] }[] = [
             { path: '/tree/trie', label: 'trie (接頭辞木) の構築' },
             { path: '/tree/huffman', label: 'ハフマン木の構築' },
             { path: '/tree/segtree', label: 'セグメント木' },
+            { path: '/tree/fenwick', label: 'Fenwick 木' },
         ],
     },
     {
