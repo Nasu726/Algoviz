@@ -372,12 +372,12 @@ const SegTreeHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
         <h3>3. 値と操作の入れ方</h3>
         <ul>
             <li><b>配列</b>：空白か改行で区切って値を並べる。上限は {maxValues} 個</li>
-            <li><b>操作の並び</b>：update に続けて添字と値、query に続けて区間の両端を書く。
+            <li><b>操作の並び</b>：1行に1つ。update に続けて添字と値、query に続けて区間の両端を書く。
                 範囲の外の番号は端に寄せる</li>
             <li><b>集約</b>：和 / 最小 / 最大。変えると最初から作り直す</li>
             <li><b>ランダム生成</b>：個数を決めると、1〜9 の値と操作を作る</li>
         </ul>
-        <pre style={codeBlock}>query 1 6 update 3 9 query 2 8</pre>
+        <pre style={codeBlock}>{'query 1 6\nupdate 3 9\nquery 2 8'}</pre>
 
         <h3>4. 画面の操作</h3>
         <ul>

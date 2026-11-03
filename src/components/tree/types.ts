@@ -42,4 +42,4 @@ export const defaultValues: Record<TreeVariant, string> = {
 };
 
 /** usesOps のときに既定で入れておく操作 */
-export const defaultOps = 'query 1 6 update 3 9 query 2 8';
+export const defaultOps = 'query 1 6\nupdate 3 9\nquery 2 8';

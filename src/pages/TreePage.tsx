@@ -74,7 +74,8 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
         const s = engine.getState<GraphState>({});
         setState(s);
         setValueText((s.values ?? []).join(' '));
-        if (usesOps(variant)) setOpsText((s.ops ?? []).join(' '));
+        // 操作は1つずつ行に分ける
+        if (usesOps(variant)) setOpsText((s.ops ?? []).join('\n'));
     };
 
     useEffect(() => {

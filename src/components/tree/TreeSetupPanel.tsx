@@ -60,11 +60,12 @@ export const TreeSetupPanel: React.FC<Props> = ({
                         <textarea
                             value={opsText}
                             onChange={(e) => setOpsText(e.target.value)}
+                            // 1操作を1行に書く。ランダム生成の5操作が収まる高さ
                             style={{
-                                width: '100%', height: compact ? '55px' : '70px',
+                                width: '100%', height: compact ? '100px' : '120px',
                                 fontFamily: 'monospace', resize: 'vertical', boxSizing: 'border-box',
                             }}
-                            placeholder="query 1 6 update 3 9"
+                            placeholder={'query 1 6\nupdate 3 9'}
                         />
                     </>
                 )}
@@ -121,7 +122,7 @@ export const TreeSetupPanel: React.FC<Props> = ({
                 {text
                     ? `文章に出てくる文字を数えます。空白は数えません。文字の種類の上限は ${maxValues} です。`
                     : ops
-                    ? `配列は左から添字 0, 1, 2, … です。上限は ${maxValues} 個です。操作は update に続けて添字と値、query に続けて区間の両端 l r と書きます (半開区間 [l, r))。`
+                    ? `配列は左から添字 0, 1, 2, … です。上限は ${maxValues} 個です。操作は1行に1つ、update に続けて添字と値、query に続けて区間の両端 l r と書きます (半開区間 [l, r))。`
                     : words
                     ? `単語は空白で区切って、左から順に挿入します。上限は ${maxValues} 個です。`
                     : variant === 'heapsort'
