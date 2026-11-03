@@ -52,7 +52,8 @@
 
   ```bash
   # 足したアルゴリズムの名前が出荷する WASM に入っているか
-  grep -c '<新しい setAlgorithm の名前>' public/wasm/core.js
+  # 文字列は core.js ではなく core.wasm に入る (core.js を見ると常に 0)
+  grep -c '<新しい setAlgorithm の名前>' public/wasm/core.wasm
   ```
 
 - **`emcc` ではなく `em++`。** C++ をリンクするので `emcc` だと
