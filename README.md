@@ -15,6 +15,7 @@
 - [ダイクストラ法](https://algoviz.nasu.uk/graph/dijkstra)
 - [プリム法](https://algoviz.nasu.uk/graph/prim)
 - [クラスカル法](https://algoviz.nasu.uk/graph/kruskal)
+- [二部グラフ判定](https://algoviz.nasu.uk/graph/bipartite)
 
 **木**
 
@@ -114,6 +115,7 @@ cpp/
     GraphVisualizer.hpp        グラフの生成・レイアウト・描画データ供給の基底クラス
     TraversalVisualizer.hpp    ├ BFS / DFS / ダイクストラ法 / プリム法
     KruskalVisualizer.hpp      ├ クラスカル法 (辺を軽い順に見て、閉路になる辺を捨てる)
+    BipartiteVisualizer.hpp    ├ 二部グラフ判定 (BFS で2色に塗り、両端が同じ色の辺で止まる)
     AutomatonVisualizer.hpp    ├ DFA (常に有向 + 初期状態 + 受理状態 + 遷移記号)
     BstVisualizer.hpp          ├ 二分探索木の構築
     AvlVisualizer.hpp          ├ AVL 木の構築 (回転で形が変わる)

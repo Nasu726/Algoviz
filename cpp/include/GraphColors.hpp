@@ -23,6 +23,10 @@ constexpr int NODE_RANGE   = NODE_GOAL;  // 今処理している範囲
 // クイックは「基準より小さいと分かった部分」、マージは「左の並びの残り」
 constexpr int NODE_SMALLER = NODE_START; // その範囲のうち、片側に分かれた部分
 
+// 二部グラフ判定での読み替え。2つの側は青と橙 (色覚の型によらず見分けやすい組)
+constexpr int NODE_SIDE_A = NODE_START;    // 青
+constexpr int NODE_SIDE_B = NODE_FRONTIER; // 橙
+
 enum EdgeColor : int {
     EDGE_DEFAULT = 0, // 通常
     EDGE_TREE    = 1, // 探索木の辺

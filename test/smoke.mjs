@@ -249,6 +249,15 @@ engine.load('horizontal', 'custom 1 0 0 1\n3 3\n0 1 5\n1 2 1\n0 2 3\n');
 engine.runToEnd();
 checkEq('最小全域木の合計', engine.getState({}).treeWeight, 4);
 
+// --- 二部グラフ判定 ---
+engine.setAlgorithm('bipartite');
+engine.load('horizontal', 'custom 1 0 0 0\n4 4\n0 1\n1 2\n2 3\n3 0\n');
+engine.runToEnd();
+checkEq('偶数長の閉路は二部グラフ', engine.getState({}).bipartite, true);
+engine.load('horizontal', 'custom 1 0 0 0\n3 3\n0 1\n1 2\n2 0\n');
+engine.runToEnd();
+checkEq('三角形は二部グラフでない', engine.getState({}).bipartite, false);
+
 if (failures === 0) {
     console.log(`smoke: OK (${checks} checks)`);
     process.exit(0);

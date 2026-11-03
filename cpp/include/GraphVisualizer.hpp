@@ -160,8 +160,10 @@ protected:
                           : std::make_pair(std::min(a, b), std::max(a, b));
     }
 
+    // bipartite: 頂点を2つの側に分け、側をまたぐ組だけを辺にする (必ず二部グラフになる)
     void generateRandom(int v, int e, bool allowSelfLoop, bool allowSameEdge,
-                        bool isDirected, bool connected, bool isWeighted) {
+                        bool isDirected, bool connected, bool isWeighted,
+                        bool bipartite = false) {
         isDirected = isDirected || forceDirected();
         weighted = isWeighted;
         v = std::clamp(v, 0, MAX_NODES);
@@ -177,13 +179,19 @@ protected:
         for (int i = 0; i < v; i++) scatterNode(i);
 
         std::set<std::pair<int, int>> used;
+        std::vector<int> side(v, 0);
+        if (bipartite && !connected) {
+            for (int i = 0; i < v; i++) side[i] = randInt(2);
+        }
 
         // 先に全域木を張る。頂点 0 から順に、既に追加済みの頂点を1つ選んで繋ぐ。
         // 有向のときは向きを「既存 -> 新規」に固定するので、頂点 0 を根とする
         // 有向全域木になり、始点 0 からの探索が必ず全頂点へ届く。
+        // 二部グラフにするときは、親と反対の側に置けば木の辺が必ず側をまたぐ。
         if (connected) {
             for (int i = 1; i < v; i++) {
                 int parent = randInt(i);
+                side[i] = 1 - side[parent];
                 addRandomEdge(parent, i);
                 used.insert(edgeKey(parent, i, isDirected));
             }
@@ -196,6 +204,8 @@ protected:
         for (int i = 0; i < v; i++) {
             for (int j = (isDirected ? 0 : i); j < v; j++) {
                 if (!allowSelfLoop && i == j) continue;
+                // 同じ側どうし (自己ループも含む) は二部グラフを壊す
+                if (bipartite && side[i] == side[j]) continue;
                 // 多重辺を許さないなら、全域木で使った組は候補から外す
                 if (!allowSameEdge && used.count(edgeKey(i, j, isDirected))) continue;
                 possible.push_back({i, j});
@@ -350,11 +360,11 @@ public:
         iss >> cmd;
 
         if (cmd == "random") {
-            int v = 0, e = 0, skip = 1, selfLoop = 0, sameEdge = 0, dir = 0, conn = 0, wt = 0;
+            int v = 0, e = 0, skip = 1, selfLoop = 0, sameEdge = 0, dir = 0, conn = 0, wt = 0, bip = 0;
             if (!(iss >> v >> e)) return;
-            iss >> skip >> selfLoop >> sameEdge >> dir >> conn >> wt;
+            iss >> skip >> selfLoop >> sameEdge >> dir >> conn >> wt >> bip;
             skipExtension = (skip != 0);
-            generateRandom(v, e, selfLoop != 0, sameEdge != 0, dir != 0, conn != 0, wt != 0);
+            generateRandom(v, e, selfLoop != 0, sameEdge != 0, dir != 0, conn != 0, wt != 0, bip != 0);
             rebuild();
         } else if (cmd == "complete") {
             int v = 0, skip = 1, dir = 0, wt = 0;

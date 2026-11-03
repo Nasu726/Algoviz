@@ -22,6 +22,7 @@
 #include "include/RadixSortVisualizer.hpp"
 #include "include/UnionFindVisualizer.hpp"
 #include "include/KruskalVisualizer.hpp"
+#include "include/BipartiteVisualizer.hpp"
 #include "include/HeapSortVisualizer.hpp"
 #include "include/LinearSearchVisualizer.hpp"
 #include "include/BinarySearchVisualizer.hpp"
@@ -82,6 +83,8 @@ public:
             currentAlgo = std::make_unique<UnionFindVisualizer>();
         } else if (name == "kruskal") {
             currentAlgo = std::make_unique<KruskalVisualizer>();
+        } else if (name == "bipartite") {
+            currentAlgo = std::make_unique<BipartiteVisualizer>();
         } else if (name == "heapsort") {
             currentAlgo = std::make_unique<HeapSortVisualizer>();
         } else if (name == "linear") {

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Section, Check, NumberInput } from './panelParts';
 import type { GraphSettings, GraphVariant } from './types';
-import { isFixedShape, isTraversal } from './types';
+import { fixedShape, isTraversal } from './types';
 
 interface Props {
     variant: GraphVariant;
@@ -21,8 +21,8 @@ export const GraphSetupPanel: React.FC<Props> = ({
     compact,
 }) => {
     const s = settings;
-    // 最小全域木は無向・重み付きで固定なので、選ばせない
-    const fixedShape = isFixedShape(variant);
+    // 向きと重みの有無が決まっている variant では選ばせない
+    const fixed = fixedShape(variant) !== null;
     const fontSize = compact ? '12px' : '13px';
     const button: React.CSSProperties = { padding: '8px', cursor: 'pointer' };
     // 横に並べて、サイドバーをスクロールせずに使える高さに収める
@@ -40,7 +40,7 @@ export const GraphSetupPanel: React.FC<Props> = ({
                     </span>
                 </div>
 
-                {!fixedShape && (
+                {!fixed && (
                     <Check checked={s.isDirected} onChange={(v) => update({ isDirected: v })}>
                         有向グラフ
                     </Check>
@@ -48,7 +48,12 @@ export const GraphSetupPanel: React.FC<Props> = ({
                 <Check checked={s.connected} onChange={(v) => update({ connected: v })}>
                     連結なグラフにする
                 </Check>
-                {!fixedShape && (
+                {variant === 'bipartite' && (
+                    <Check checked={s.bipartite} onChange={(v) => update({ bipartite: v })}>
+                        二部グラフになるように作る
+                    </Check>
+                )}
+                {!fixed && (
                     <Check checked={s.weighted} onChange={(v) => update({ weighted: v })}>
                         重み付きグラフ
                     </Check>
@@ -101,7 +106,7 @@ export const GraphSetupPanel: React.FC<Props> = ({
                 </Section>
             )}
 
-            {(isTraversal(variant) || fixedShape) && (
+            {(isTraversal(variant) || fixed) && (
                 <p style={{ margin: 0, fontSize: '12px', color: '#78909c', lineHeight: 1.6 }}>
                     頂点数の上限は {maxNodes} です。連結を指定したとき、辺の数が
                     V-1 に満たなければ V-1 まで増やします。

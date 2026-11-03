@@ -12,6 +12,7 @@ const GENRES: { name: string; items: { path: string; label: string }[] }[] = [
             { path: '/graph/dijkstra', label: 'ダイクストラ法' },
             { path: '/graph/prim', label: 'プリム法' },
             { path: '/graph/kruskal', label: 'クラスカル法' },
+            { path: '/graph/bipartite', label: '二部グラフ判定' },
         ],
     },
     {

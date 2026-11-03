@@ -260,6 +260,19 @@ export interface GraphState {
     /** クラスカル法かつ withProgress: 軽い順の辺の番号 / 辺ごとの 0 未処理 1 採用 2 却下 */
     edgeOrder?: number[];
     edgeStatus?: number[];
+
+    /** 二部グラフ判定: 結果 (finished のときに意味を持つ) / この手で見た辺 / 矛盾した辺 */
+    bipartite?: boolean;
+    lookingEdge?: number;
+    conflictEdge?: number;
+    /** 二部グラフ判定: この手でしたこと (成分を始めた / 隣を塗った / 問題なし / 矛盾 / 見終えた) と、その頂点 */
+    action?: '' | 'start' | 'paint' | 'fine' | 'clash' | 'done';
+    actionVertex?: number;
+    /** 二部グラフ判定: 始めた成分の数 / 塗った頂点の数 */
+    componentCount?: number;
+    coloredCount?: number;
+    /** 二部グラフ判定かつ withProgress: 頂点ごとの -1 未着色 0 青 1 橙 */
+    sides?: number[];
 }
 
 /** getState に渡せるパラメータ。どれも省略可能 */
