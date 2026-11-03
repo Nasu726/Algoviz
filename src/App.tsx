@@ -180,6 +180,9 @@ function App() {
         <Route path="/tree/btree" element={
           <EngineGate>{(engine) => <TreeWrapper engine={engine} variant="btree" />}</EngineGate>
         } />
+        <Route path="/tree/segtree" element={
+          <EngineGate>{(engine) => <TreeWrapper engine={engine} variant="segtree" />}</EngineGate>
+        } />
 
         {/* 配列。1ページ1アルゴリズム */}
         <Route path="/array/bubble" element={

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Section, NumberInput, Check } from '../graph/panelParts';
-import { usesWords, usesText } from './types';
-import type { TreeVariant } from './types';
+import { usesWords, usesText, usesOps } from './types';
+import type { TreeVariant, Monoid } from './types';
 
 interface Props {
     variant: TreeVariant;
@@ -11,6 +11,11 @@ interface Props {
     /** B木のときだけ使う。1つの節点が持てる子の数の上限 */
     order: number;
     setOrder: (v: number) => void;
+    /** セグメント木のときだけ使う。操作の並びと集約 */
+    opsText: string;
+    setOpsText: (v: string) => void;
+    monoid: Monoid;
+    setMonoid: (v: Monoid) => void;
     valueText: string;
     setValueText: (v: string) => void;
     count: string;
@@ -24,6 +29,7 @@ interface Props {
 // 実行前に決める設定。何を挿入するか。
 export const TreeSetupPanel: React.FC<Props> = ({
     variant, maxHeap, setMaxHeap, order, setOrder,
+    opsText, setOpsText, monoid, setMonoid,
     valueText, setValueText, count, setCount, maxValues,
     onApply, onGenerateRandom, compact,
 }) => {
@@ -31,10 +37,12 @@ export const TreeSetupPanel: React.FC<Props> = ({
     const button: React.CSSProperties = { padding: '8px', cursor: 'pointer' };
     const words = usesWords(variant);
     const text = usesText(variant);
+    const ops = usesOps(variant);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', fontSize }}>
             <Section title={text ? '数える文章' : words ? '挿入する単語'
+                            : ops ? '配列'
                             : variant === 'heapsort' ? '並べる値' : '挿入する値'}>
                 <textarea
                     value={valueText}
@@ -43,12 +51,40 @@ export const TreeSetupPanel: React.FC<Props> = ({
                         width: '100%', height: compact ? '70px' : '90px',
                         fontFamily: 'monospace', resize: 'vertical', boxSizing: 'border-box',
                     }}
-                    placeholder={text ? 'abracadabra' : words ? 'to tea ten ted' : '50 30 70 20 40'}
+                    placeholder={text ? 'abracadabra' : words ? 'to tea ten ted'
+                                 : ops ? '5 3 8 1 6 2 7 4' : '50 30 70 20 40'}
                 />
+                {ops && (
+                    <>
+                        <div style={{ fontWeight: 'bold', color: '#37474f' }}>操作の並び</div>
+                        <textarea
+                            value={opsText}
+                            onChange={(e) => setOpsText(e.target.value)}
+                            style={{
+                                width: '100%', height: compact ? '55px' : '70px',
+                                fontFamily: 'monospace', resize: 'vertical', boxSizing: 'border-box',
+                            }}
+                            placeholder="query 1 6 update 3 9"
+                        />
+                    </>
+                )}
                 <button onClick={onApply} style={button}>
-                    📝 {text ? 'この文章で作り直す' : words ? 'この単語で作り直す' : 'この値で作り直す'}
+                    📝 {text ? 'この文章で作り直す' : words ? 'この単語で作り直す'
+                        : ops ? 'この配列と操作で動かす' : 'この値で作り直す'}
                 </button>
             </Section>
+
+            {/* どれも正しいセグメント木で、分類では決まらないので選ばせる */}
+            {ops && (
+                <Section title="集約">
+                    <select value={monoid} onChange={(e) => setMonoid(e.target.value as Monoid)}
+                            style={{ padding: '4px', fontSize }}>
+                        <option value="sum">和</option>
+                        <option value="min">最小</option>
+                        <option value="max">最大</option>
+                    </select>
+                </Section>
+            )}
 
             {/* どちらも正しいヒープで、分類では決まらないので選ばせる */}
             {variant === 'heap' && (
@@ -84,6 +120,8 @@ export const TreeSetupPanel: React.FC<Props> = ({
             <p style={{ margin: 0, fontSize: '12px', color: '#78909c', lineHeight: 1.6 }}>
                 {text
                     ? `文章に出てくる文字を数えます。空白は数えません。文字の種類の上限は ${maxValues} です。`
+                    : ops
+                    ? `配列は左から添字 0, 1, 2, … です。上限は ${maxValues} 個です。操作は update に続けて添字と値、query に続けて区間の両端 l r と書きます (半開区間 [l, r))。`
                     : words
                     ? `単語は空白で区切って、左から順に挿入します。上限は ${maxValues} 個です。`
                     : variant === 'heapsort'
