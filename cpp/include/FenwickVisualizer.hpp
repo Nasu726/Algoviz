@@ -13,10 +13,15 @@
 // 右の子を消したもの) と同じ形で、操作で動かない。
 //
 // 節点は a[1..n] (番号 0..n-1) と ft[1..n] (番号 n..2n-1) の2n個。
+//
+// a は配列のページと同じ箱で描き、木の段から離して置く。円で描いて木のすぐ下に置くと、
+// a と ft の奇数番 (受け持ちが1つ) の見分けが付かない。
 class FenwickLayout : public EasedLayout {
 public:
-    static constexpr float PITCH = 48.0f; // 隣り合う a の箱の中心どうしの間隔
-    static constexpr float ROW   = 56.0f; // 段と段の間隔
+    static constexpr float ARRAY_HALF_WIDTH = 22.0f; // 配列のページ (ArrayVisualizer) と同じ
+    static constexpr float PITCH = 2 * ARRAY_HALF_WIDTH + 8.0f; // a の箱の中心どうしの間隔
+    static constexpr float ROW   = 56.0f; // 木の段と段の間隔
+    static constexpr float ARRAY_GAP = 96.0f; // a と木のいちばん下の段の間隔
 
     static int lowbit(int i) { return i & -i; }
 
@@ -26,7 +31,8 @@ public:
         return k;
     }
 
-    // ft[i] の箱の半幅。左右の端が a[i - lowbit + 1] と a[i] の箱の端に揃う
+    // ft[i] の箱の半幅。受け持ちが1つなら円、2つ以上なら a[i - lowbit + 1] から a[i] までの
+    // 中心を、円と同じ余白で囲む
     static float halfWidthOf(int i) {
         return (float)(lowbit(i) - 1) * PITCH / 2.0f + GraphData::DEFAULT_HALF_WIDTH;
     }
@@ -40,7 +46,7 @@ protected:
         for (int j = 1; j <= n; j++) targetX[j - 1] = (float)(j - 1) * PITCH;
         for (int i = 1; i <= n; i++) {
             targetX[n + i - 1] = (float)((i - lowbit(i)) + (i - 1)) * PITCH / 2.0f;
-            targetY[n + i - 1] = -(float)(level(i) + 1) * ROW;
+            targetY[n + i - 1] = -(ARRAY_GAP + (float)level(i) * ROW);
         }
     }
 };
@@ -112,7 +118,10 @@ private:
             a[i] = ft[i] = values[i - 1];
             if (i + lowbit(i) <= n()) buildOrder.push_back(i);
         }
-        for (int j = 0; j < n(); j++) graph->setNode(j, 0.0f, 0.0f, 0.0f, 0);
+        for (int j = 0; j < n(); j++) {
+            graph->setNode(j, 0.0f, 0.0f, 0.0f, 0);
+            graph->setHalfWidth(j, FenwickLayout::ARRAY_HALF_WIDTH);
+        }
         for (int i = 1; i <= n(); i++) {
             graph->setNode(boxOf(i), 0.0f, 0.0f, 0.0f, 0);
             graph->setHalfWidth(boxOf(i), FenwickLayout::halfWidthOf(i));

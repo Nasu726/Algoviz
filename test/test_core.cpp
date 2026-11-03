@@ -6618,7 +6618,7 @@ static void testFenwickClampsIndices() {
 }
 
 static void testFenwickBoxesSpanTheirRange() {
-    beginTest("ft[i] の箱は a[i - lowbit + 1] から a[i] までにまたがり、lowbit が大きいほど上");
+    beginTest("ft[i] の箱は a[i - lowbit + 1] から a[i] までにまたがり、lowbit が大きいほど上。a は配列の箱で、木から離れている");
 
     const int n = 13;
     FenwickVisualizer t;
@@ -6633,9 +6633,12 @@ static void testFenwickBoxesSpanTheirRange() {
     for (int i = 1; i <= n; i++) {
         int box = n + i - 1;
         int first = i - fenLow(i) + 1;
-        CHECK(std::abs((x(box) - hw(box)) - (x(first - 1) - hw(first - 1))) < 0.01f);
-        CHECK(std::abs((x(box) + hw(box)) - (x(i - 1) + hw(i - 1))) < 0.01f);
-        CHECK(y(box) < y(i - 1)); // a より上
+        const float r = GraphData::DEFAULT_HALF_WIDTH;
+        CHECK(std::abs((x(box) - hw(box)) - (x(first - 1) - r)) < 0.01f);
+        CHECK(std::abs((x(box) + hw(box)) - (x(i - 1) + r)) < 0.01f);
+        // a と木の間は、木の段どうしより空ける
+        CHECK(y(i - 1) - y(box) > FenwickLayout::ROW);
+        CHECK(hw(i - 1) > r); // a は円ではなく配列の箱
         for (int k = 1; k <= n; k++) {
             if (fenLow(k) > fenLow(i)) CHECK(y(n + k - 1) < y(box));
         }
