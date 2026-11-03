@@ -72,11 +72,11 @@ export const defaultValues: Record<ArrayVariant, string> = {
     linear: '5 2 9 1 7 3 8 4',
     // 二分探索は並んでいることが前提
     binary: '1 2 3 4 5 7 8 9',
-    stack: 'push 5 push 2 pop push 9 pop pop',
-    queue: 'push 5 push 2 pop push 9 pop pop',
-    deque: 'pushR 5 pushL 2 pushR 9 popL popR popL',
+    stack: 'push 5\npush 2\npop\npush 9\npop\npop',
+    queue: 'push 5\npush 2\npop\npush 9\npop\npop',
+    deque: 'pushR 5\npushL 2\npushR 9\npopL\npopR\npopL',
     // 同じ大きさどうしを付けてから合わせると、find で圧縮する節点が出る
-    unionfind: 'union 0 1 union 2 3 union 1 3 find 0 union 4 5 union 3 5 find 4',
+    unionfind: 'union 0 1\nunion 2 3\nunion 1 3\nfind 0\nunion 4 5\nunion 3 5\nfind 4',
 };
 
 /** 探すものの既定の値。値の中に在るものにしてある */

@@ -396,11 +396,11 @@ const UnionFindHelp: React.FC<{ maxOps: number }> = ({ maxOps }) => (
 
         <h3>4. 操作の書き方</h3>
         <ul>
-            <li><code>union</code> に続けて2つの番号、<code>find</code> に続けて1つの番号</li>
+            <li>1行に1つ。<code>union</code> に続けて2つの番号、<code>find</code> に続けて1つの番号</li>
             <li>番号は 0 始まり。要素の数は、出てきた最大の番号 + 1 になる</li>
             <li><b>ランダム生成</b>：8 要素で、union と find を混ぜて作る</li>
         </ul>
-        <pre style={codeBlock}>union 0 1 union 2 3 union 1 3 find 0 union 4 5 union 3 5 find 4</pre>
+        <pre style={codeBlock}>{'union 0 1\nunion 2 3\nunion 1 3\nfind 0\nunion 4 5\nunion 3 5\nfind 4'}</pre>
         <ul>
             <li>操作の数の上限は {maxOps}</li>
         </ul>
@@ -459,17 +459,17 @@ const OpsHelp: React.FC<{ maxOps: number; kind: 'stack' | 'queue' | 'deque' }> =
         <h3>4. 操作の書き方</h3>
         <ul>
             {kind === 'deque' ? (
-                <li><code>pushL</code> か <code>pushR</code> に続けて値、
+                <li>1行に1つ。<code>pushL</code> か <code>pushR</code> に続けて値、
                     <code>popL</code> か <code>popR</code></li>
             ) : (
-                <li><code>push</code> に続けて値、<code>pop</code></li>
+                <li>1行に1つ。<code>push</code> に続けて値、<code>pop</code></li>
             )}
             <li><b>ランダム生成</b>：空なのに取り出す操作が出ないように作ります</li>
             <li>空なのに取り出そうとしたときは、何も起きません</li>
         </ul>
         <pre style={codeBlock}>
-            {kind === 'deque' ? 'pushR 5 pushL 2 pushR 9 popL popR popL'
-                              : 'push 5 push 2 pop push 9 pop pop'}
+            {kind === 'deque' ? 'pushR 5\npushL 2\npushR 9\npopL\npopR\npopL'
+                              : 'push 5\npush 2\npop\npush 9\npop\npop'}
         </pre>
         <ul>
             <li>操作の数の上限は {maxOps}</li>

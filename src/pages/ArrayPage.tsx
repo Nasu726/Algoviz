@@ -65,8 +65,8 @@ export const ArrayPage: React.FC<Props> = ({ engine, onBack, variant }) => {
         // 生成された値を入力欄にも反映する
         const s = engine.getState<GraphState>({});
         setState(s);
-        // 操作の並びを入れるものは、値ではなく操作を入力欄に戻す
-        setValueText((s.ops ?? s.values ?? []).join(' '));
+        // 操作の並びを入れるものは、値ではなく操作を1行に1つずつ入力欄に戻す
+        setValueText(s.ops ? s.ops.join('\n') : (s.values ?? []).join(' '));
     };
 
     useEffect(() => {
