@@ -1,4 +1,6 @@
 # core.js と core.wasm は対で読む。片方だけキャッシュに残ると embind の対応がずれて落ちる。
-# .js は Cloudflare の既定で 4 時間キャッシュされるので、毎回確かめさせる。
+# core.wasm にはこれが効く。core.js は Cloudflare のゾーン設定 (Browser Cache TTL, 4 時間) が
+# 上書きするので効かない。core.js が変わった直後は、前に開いた人が最大 4 時間真っ白になる。
+# それは許容している。困ったら Browser Cache TTL を「Respect Existing Headers」にする。
 /wasm/*
   Cache-Control: no-cache
