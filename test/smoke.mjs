@@ -258,6 +258,13 @@ engine.load('horizontal', 'custom 1 0 0 0\n3 3\n0 1\n1 2\n2 0\n');
 engine.runToEnd();
 checkEq('三角形は二部グラフでない', engine.getState({}).bipartite, false);
 
+// --- セグメント木 ---
+engine.setAlgorithm('segtree');
+engine.load('setValues', '5 3 8 1');
+engine.load('setOps', 'query 1 3');
+engine.runToEnd();
+checkEq('セグメント木の区間和', engine.getState({}).answer, 11);
+
 if (failures === 0) {
     console.log(`smoke: OK (${checks} checks)`);
     process.exit(0);

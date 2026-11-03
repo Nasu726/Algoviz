@@ -21,6 +21,7 @@
 #include "include/BucketSortVisualizer.hpp"
 #include "include/RadixSortVisualizer.hpp"
 #include "include/UnionFindVisualizer.hpp"
+#include "include/SegmentTreeVisualizer.hpp"
 #include "include/KruskalVisualizer.hpp"
 #include "include/BipartiteVisualizer.hpp"
 #include "include/HeapSortVisualizer.hpp"
@@ -81,6 +82,8 @@ public:
             currentAlgo = std::make_unique<RadixSortVisualizer>();
         } else if (name == "unionfind") {
             currentAlgo = std::make_unique<UnionFindVisualizer>();
+        } else if (name == "segtree") {
+            currentAlgo = std::make_unique<SegmentTreeVisualizer>();
         } else if (name == "kruskal") {
             currentAlgo = std::make_unique<KruskalVisualizer>();
         } else if (name == "bipartite") {

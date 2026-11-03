@@ -4,12 +4,13 @@ import { VisualizerShell } from '../components/ui/VisualizerShell';
 import { SidebarLayout } from '../components/ui/SidebarLayout';
 import { TreeSetupPanel } from '../components/tree/TreeSetupPanel';
 import { TreePanel } from '../components/tree/TreePanel';
+import { SegTreePanel } from '../components/tree/SegTreePanel';
 import { TreeHelp } from '../components/tree/TreeHelp';
 import { useKeyboardShortcuts } from '../hooks/keyboardShortcut';
 import { useLayoutTier } from '../hooks/useLayoutTier';
 import { usePlayback } from '../hooks/usePlayback';
-import { TREE_TITLE, treeAlgorithm, defaultValues, usesWords, usesText } from '../components/tree/types';
-import type { TreeVariant } from '../components/tree/types';
+import { TREE_TITLE, treeAlgorithm, defaultValues, defaultOps, usesWords, usesText, usesOps } from '../components/tree/types';
+import type { TreeVariant, Monoid } from '../components/tree/types';
 import type { VisualizerEngine, GraphState } from '../types/engine';
 
 interface Props {
@@ -29,6 +30,8 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
     const [valueText, setValueText] = useState(defaultValues[variant]);
     const [maxHeap, setMaxHeap] = useState(true);
     const [order, setOrder] = useState(4);
+    const [opsText, setOpsText] = useState(defaultOps);
+    const [monoid, setMonoid] = useState<Monoid>('sum');
     const [count, setCount] = useState('10');
     const [state, setState] = useState<GraphState | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
@@ -36,8 +39,8 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
 
     // 入力欄の最新値をコマンド組み立て時に読む。依存配列に並べると
     // 入力するたびに木が作り直されてしまう。
-    const latest = useRef({ valueText, count });
-    latest.current = { valueText, count };
+    const latest = useRef({ valueText, count, opsText, monoid });
+    latest.current = { valueText, count, opsText, monoid };
 
     const readState = () => setState(engine.getState<GraphState>({}));
 
@@ -52,9 +55,15 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
             readState();
         });
 
+    // 値を入れ直す。操作の並びも入れるものは、続けて操作も入れる
+    const loadInputs = () => {
+        engine.load(loadCommand, latest.current.valueText);
+        if (usesOps(variant)) engine.load('setOps', latest.current.opsText);
+    };
+
     const applyValues = () => {
         setIsPlaying(false);
-        engine.load(loadCommand, latest.current.valueText);
+        loadInputs();
         readState();
     };
 
@@ -65,13 +74,16 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
         const s = engine.getState<GraphState>({});
         setState(s);
         setValueText((s.values ?? []).join(' '));
+        // 操作は1つずつ行に分ける
+        if (usesOps(variant)) setOpsText((s.ops ?? []).join('\n'));
     };
 
     useEffect(() => {
         if (!engine) return;
         setIsPlaying(false);
         engine.setAlgorithm(treeAlgorithm(variant));
-        engine.load(loadCommand, latest.current.valueText);
+        if (usesOps(variant)) engine.load('setMonoid', latest.current.monoid);
+        loadInputs();
         readState();
         setIsLoaded(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -92,6 +104,15 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
         setMaxHeap(v);
         engine.load('setMaxHeap', v ? '1' : '0');
         engine.load('setValues', latest.current.valueText);
+        readState();
+    };
+
+    // 集約が変われば木の値も変わるので、C++ 側で作り直す
+    const changeMonoid = (v: Monoid) => {
+        setIsPlaying(false);
+        setMonoid(v);
+        engine.load('setMonoid', v);
+        loadInputs();
         readState();
     };
 
@@ -134,6 +155,10 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
                         setMaxHeap={changeMaxHeap}
                         order={order}
                         setOrder={changeOrder}
+                        opsText={opsText}
+                        setOpsText={setOpsText}
+                        monoid={monoid}
+                        setMonoid={changeMonoid}
                         valueText={valueText}
                         setValueText={setValueText}
                         count={count}
@@ -145,7 +170,21 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
                     />
                 }
                 canvas={isLoaded ? <GraphRenderer engine={engine} showWeights={usesText(variant) || variant === 'avl'} /> : null}
-                controlPanel={
+                controlPanel={usesOps(variant) ? (
+                    <SegTreePanel
+                        state={state}
+                        isPlaying={isPlaying}
+                        delay={delay}
+                        setDelay={setDelay}
+                        onReset={handleReset}
+                        onPlayPause={toggle}
+                        onStepBack={handleStepBack}
+                        onStepNext={handleStep}
+                        onRunToEnd={handleRunToEnd}
+                        horizontal={tier !== 'wide'}
+                        compact={compact}
+                    />
+                ) : (
                     <TreePanel
                         variant={variant}
                         state={state}
@@ -160,7 +199,7 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
                         horizontal={tier !== 'wide'}
                         compact={compact}
                     />
-                }
+                )}
             />
         </VisualizerShell>
     );

@@ -40,6 +40,7 @@
 #include "../cpp/include/BucketSortVisualizer.hpp"
 #include "../cpp/include/RadixSortVisualizer.hpp"
 #include "../cpp/include/UnionFindVisualizer.hpp"
+#include "../cpp/include/SegmentTreeVisualizer.hpp"
 #include "../cpp/include/KruskalVisualizer.hpp"
 #include "../cpp/include/BipartiteVisualizer.hpp"
 #include "../cpp/include/HeapSortVisualizer.hpp"
@@ -6207,6 +6208,284 @@ static void testUnionFindRandomOpsStayInRange() {
 }
 
 // ==========================================
+// セグメント木
+// ==========================================
+
+struct SegRec {
+    std::vector<int> l, r, left, right, value;
+    std::vector<bool> computed;
+};
+
+static SegRec readSeg(SegmentTreeVisualizer& t) {
+    val s = t.getState(val::object());
+    SegRec rec;
+    rec.l = valToVector(s["segL"]);
+    rec.r = valToVector(s["segR"]);
+    rec.left = valToVector(s["segLeft"]);
+    rec.right = valToVector(s["segRight"]);
+    val v = s["segValue"];
+    for (int i = 0; i < (int)rec.l.size(); i++) {
+        bool known = !v[i].isNull();
+        rec.computed.push_back(known);
+        rec.value.push_back(known ? v[i].as<int>() : 0);
+    }
+    return rec;
+}
+
+static int segCombine(const std::string& monoid, int a, int b) {
+    return monoid == "sum" ? a + b : monoid == "min" ? std::min(a, b) : std::max(a, b);
+}
+
+// 全部の内部の節点が子の ⊕ になっているか
+static bool segConsistent(const SegRec& rec, const std::string& monoid) {
+    for (int u = 0; u < (int)rec.l.size(); u++) {
+        if (!rec.computed[u]) return false;
+        if (rec.left[u] < 0) continue;
+        if (rec.value[u] != segCombine(monoid, rec.value[rec.left[u]], rec.value[rec.right[u]])) return false;
+    }
+    return true;
+}
+
+static std::vector<int> segValues(int n) {
+    std::vector<int> v;
+    for (int i = 0; i < n; i++) v.push_back((i * 7) % 10 - 3);
+    return v;
+}
+
+static std::string joinInts(const std::vector<int>& v) {
+    std::string s;
+    for (int x : v) s += std::to_string(x) + " ";
+    return s;
+}
+
+static void segLoad(SegmentTreeVisualizer& t, const std::string& monoid,
+                    const std::vector<int>& values, const std::string& ops) {
+    t.load("setMonoid", monoid);
+    t.load("setValues", joinInts(values));
+    t.load("setOps", ops);
+}
+
+// 根からの深さ
+static int segDepth(const SegRec& rec, int target) {
+    std::vector<int> parent(rec.l.size(), -1);
+    for (int u = 0; u < (int)rec.l.size(); u++) {
+        if (rec.left[u] >= 0) { parent[rec.left[u]] = u; parent[rec.right[u]] = u; }
+    }
+    int d = 0;
+    for (int u = target; parent[u] >= 0; u = parent[u]) d++;
+    return d;
+}
+
+static void testSegtreeBuildsOneNodePerStep() {
+    beginTest("組み立ては内部の節点を1手に1つ、子を計算してから親を計算する");
+
+    for (int n : {1, 5, 8, 16}) {
+        SegmentTreeVisualizer t;
+        segLoad(t, "sum", segValues(n), "");
+        SegRec before = readSeg(t);
+        CHECK_EQ((int)before.l.size(), 2 * n - 1);
+        for (int u = 0; u < (int)before.l.size(); u++) {
+            CHECK_EQ((bool)before.computed[u], before.left[u] < 0); // 最初は葉だけ
+        }
+
+        int steps = 0;
+        while (t.step()) {
+            steps++;
+            int u = t.getState(val::object())["lastNode"].as<int>();
+            SegRec rec = readSeg(t);
+            CHECK(rec.left[u] >= 0);
+            CHECK(rec.computed[rec.left[u]] && rec.computed[rec.right[u]]);
+        }
+        CHECK_EQ(steps, n - 1);
+
+        SegRec after = readSeg(t);
+        CHECK(segConsistent(after, "sum"));
+        int total = 0;
+        for (int x : segValues(n)) total += x;
+        CHECK_EQ(after.value[0], total);
+    }
+}
+
+static void testSegtreeQueryMatchesBruteForce() {
+    beginTest("query の答えが愚直な計算と一致し、使った節点が [l, r) をちょうど覆う");
+
+    for (const char* monoid : {"sum", "min", "max"}) {
+        for (int n : {1, 5, 8, 13}) {
+            std::vector<int> v = segValues(n);
+            for (int l = 0; l <= n; l++) {
+                for (int r = l + 1; r <= n; r++) {
+                    SegmentTreeVisualizer t;
+                    segLoad(t, monoid, v, "query " + std::to_string(l) + " " + std::to_string(r));
+                    t.runToEnd();
+                    val s = t.getState(val::object());
+
+                    int expected = v[l];
+                    for (int i = l + 1; i < r; i++) expected = segCombine(monoid, expected, v[i]);
+                    CHECK_EQ(s["answer"].as<int>(), expected);
+
+                    // 左から順に取るので、受け持ちが隙間なく並ぶ
+                    SegRec rec = readSeg(t);
+                    int at = l;
+                    for (int u : valToVector(s["takenNodes"])) {
+                        CHECK_EQ(rec.l[u], at);
+                        at = rec.r[u];
+                    }
+                    CHECK_EQ(at, r);
+                }
+            }
+        }
+    }
+}
+
+static void testSegtreeQueryLooksAtOneNodePerStep() {
+    beginTest("query は1手に節点を1つ見て、全部入る節点では降りない");
+
+    SegmentTreeVisualizer t;
+    segLoad(t, "sum", {5, 3, 8, 1, 6, 2, 7, 4}, "query 1 6");
+    for (int i = 0; i < 7; i++) t.step(); // 組み立て
+
+    std::vector<std::string> kinds, ranges;
+    while (t.step()) {
+        val s = t.getState(val::object());
+        int u = s["lastNode"].as<int>();
+        SegRec rec = readSeg(t);
+        kinds.push_back(s["lastKind"].as<std::string>());
+        ranges.push_back(std::to_string(rec.l[u]) + "-" + std::to_string(rec.r[u]));
+    }
+    std::vector<std::string> expectedKinds = {
+        "partial", "partial", "partial", "out", "in", "in", "partial", "in", "out"};
+    std::vector<std::string> expectedRanges = {
+        "0-8", "0-4", "0-2", "0-1", "1-2", "2-4", "4-8", "4-6", "6-8"};
+    CHECK(kinds == expectedKinds);
+    CHECK(ranges == expectedRanges);
+    CHECK_EQ(t.getState(val::object())["answer"].as<int>(), 20);
+}
+
+static void testSegtreeEmptyAndOutOfRangeQueries() {
+    beginTest("空の区間は根だけ見て単位元、範囲外の番号は端に寄せる");
+
+    std::vector<int> v = {5, 3, 8, 1, 6};
+    for (const char* q : {"query 3 3", "query 4 2"}) {
+        for (const char* monoid : {"sum", "min", "max"}) {
+            SegmentTreeVisualizer t;
+            segLoad(t, monoid, v, q);
+            for (int i = 0; i < 4; i++) t.step();
+            int steps = 0;
+            while (t.step()) steps++;
+            CHECK_EQ(steps, 1);
+            val s = t.getState(val::object());
+            CHECK_EQ(s["takenNodes"]["length"].as<int>(), 0);
+            if (std::string(monoid) == "sum") CHECK_EQ(s["answer"].as<int>(), 0);
+            else CHECK(s["answer"].isNull());
+        }
+    }
+
+    SegmentTreeVisualizer wide;
+    segLoad(wide, "sum", v, "query -5 100");
+    wide.runToEnd();
+    val s = wide.getState(val::object());
+    CHECK_EQ(s["answer"].as<int>(), 23);
+    CHECK_EQ(s["queryL"].as<int>(), 0);
+    CHECK_EQ(s["queryR"].as<int>(), 5);
+}
+
+static void testSegtreeUpdateClimbsToTheRoot() {
+    beginTest("update は葉を書き換えてから、1手に1つ親へ上がって根まで計算し直す");
+
+    for (int n : {1, 5, 8}) {
+        for (int i = 0; i < n; i++) {
+            for (const char* monoid : {"sum", "min"}) {
+                SegmentTreeVisualizer t;
+                segLoad(t, monoid, segValues(n), "update " + std::to_string(i) + " 42");
+                for (int k = 0; k < n - 1; k++) t.step();
+
+                std::vector<int> visited;
+                std::vector<std::string> kinds;
+                while (t.step()) {
+                    val s = t.getState(val::object());
+                    visited.push_back(s["lastNode"].as<int>());
+                    kinds.push_back(s["lastKind"].as<std::string>());
+                }
+                SegRec rec = readSeg(t);
+                int leaf = visited.front();
+                CHECK_EQ(rec.l[leaf], i);
+                CHECK_EQ(rec.r[leaf], i + 1);
+                CHECK_EQ(rec.value[leaf], 42);
+                CHECK_EQ((int)visited.size(), 1 + segDepth(rec, leaf));
+                CHECK_EQ(visited.back(), 0);
+                CHECK_EQ(kinds.front(), std::string("leaf"));
+                for (int k = 1; k < (int)kinds.size(); k++) CHECK_EQ(kinds[k], std::string("recompute"));
+                CHECK(segConsistent(rec, monoid));
+            }
+        }
+    }
+
+    SegmentTreeVisualizer clamped;
+    segLoad(clamped, "sum", {1, 2, 3}, "update 99 7");
+    clamped.runToEnd();
+    CHECK_EQ(readSeg(clamped).value[0], 1 + 2 + 7);
+}
+
+static std::string segSnapshot(SegmentTreeVisualizer& t) {
+    val s = t.getState(val::object());
+    SegRec rec = readSeg(t);
+    std::string out = joinInts(rec.value) + "|" + joinInts(valToVector(s["takenNodes"])) + "|" +
+                      std::to_string(s["lastNode"].as<int>()) + s["lastKind"].as<std::string>() +
+                      std::to_string(s["opIndex"].as<int>()) + s["phase"].as<std::string>();
+    for (bool c : rec.computed) out += c ? "1" : "0";
+    return out;
+}
+
+static void testSegtreeStepMatchesRunToEndAndStepsBack() {
+    beginTest("1手ずつ進めた結果が一気に実行と一致し、1手戻せる");
+
+    const std::string ops = "query 1 6 update 3 9 query 2 8 update 0 -4 query 0 5";
+    std::vector<int> v = {5, 3, 8, 1, 6, 2, 7, 4};
+
+    SegmentTreeVisualizer stepwise, atOnce;
+    segLoad(stepwise, "max", v, ops);
+    segLoad(atOnce, "max", v, ops);
+    int total = 0;
+    while (stepwise.step()) total++;
+    atOnce.runToEnd();
+    CHECK(readSeg(stepwise).value == readSeg(atOnce).value);
+    CHECK_EQ(stepwise.getState(val::object())["answer"].as<int>(),
+             atOnce.getState(val::object())["answer"].as<int>());
+
+    for (int k = 0; k < total; k++) {
+        SegmentTreeVisualizer before, after;
+        segLoad(before, "max", v, ops);
+        segLoad(after, "max", v, ops);
+        for (int i = 0; i < k; i++) before.step();
+        for (int i = 0; i <= k; i++) after.step();
+        after.stepBack();
+        CHECK_EQ(segSnapshot(after), segSnapshot(before));
+    }
+}
+
+static void testSegtreeRandomStaysInRange() {
+    beginTest("ランダム生成は指定の個数で、操作の番号が範囲内");
+
+    for (int count : {1, 6, 16}) {
+        SegmentTreeVisualizer t;
+        t.load("genRandom", std::to_string(count));
+        val s = t.getState(val::object());
+        std::vector<int> v = valToVector(s["values"]);
+        CHECK_EQ((int)v.size(), count);
+        for (int x : v) CHECK(1 <= x && x <= 9);
+        CHECK_EQ(s["ops"]["length"].as<int>(), 5);
+        t.runToEnd();
+        CHECK(t.getState(val::object())["finished"].as<bool>());
+        CHECK(segConsistent(readSeg(t), "sum"));
+    }
+
+    SegmentTreeVisualizer empty;
+    empty.load("setValues", "");
+    CHECK(empty.getState(val::object())["finished"].as<bool>());
+    CHECK(!empty.step());
+}
+
+// ==========================================
 
 int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
@@ -6439,6 +6718,15 @@ int main(int argc, char** argv) {
     testUnionFindStepMatchesRunToEndAndStepsBack();
     testUnionFindOptionsCanBeSwitchedOff();
     testUnionFindRandomOpsStayInRange();
+
+    beginSection("セグメント木");
+    testSegtreeBuildsOneNodePerStep();
+    testSegtreeQueryMatchesBruteForce();
+    testSegtreeQueryLooksAtOneNodePerStep();
+    testSegtreeEmptyAndOutOfRangeQueries();
+    testSegtreeUpdateClimbsToTheRoot();
+    testSegtreeStepMatchesRunToEndAndStepsBack();
+    testSegtreeRandomStaysInRange();
 
     beginSection("スタック / キュー / デック");
     testSameOpsGiveDifferentOrder();

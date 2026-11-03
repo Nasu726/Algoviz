@@ -1,5 +1,6 @@
 import React from 'react';
 import { PlaybackControls } from '../ui/PlaybackControls';
+import { OpQueue } from '../ui/OpQueue';
 import { NODE_STROKE } from '../visualizers/PixiGraphApp';
 import { Section, Swatch } from '../graph/panelParts';
 import { settledLabel, settledCountLabel, isSearch, usesOps } from './types';
@@ -132,23 +133,7 @@ export const ArrayPanel: React.FC<Props> = ({
     const opList = state?.ops ?? [];
     const opIndex = state?.opIndex ?? 0;
 
-    // 操作の並び。実行済み / 次に実行するもの を色で分ける
-    const opQueue = (
-        <div style={{ fontFamily: 'monospace', fontSize: compact ? '13px' : '15px',
-                      lineHeight: 1.7 }}>
-            {opList.length === 0
-                ? <span style={{ color: '#90a4ae' }}>（操作がありません）</span>
-                : opList.map((op, i) => (
-                    <span key={i} style={{
-                        // 1操作は塊で折り返す。放っておくと "union 4 5" が "un" と "ion 4 5" に割れる
-                        display: 'inline-block', whiteSpace: 'nowrap',
-                        marginRight: '10px',
-                        color: i < opIndex ? '#90a4ae' : i === opIndex ? '#e74c3c' : '#000',
-                        fontWeight: i === opIndex ? 'bold' : 'normal',
-                    }}>{op}</span>
-                ))}
-        </div>
-    );
+    const opQueue = <OpQueue ops={opList} opIndex={opIndex} compact={compact} />;
 
     const progress = (
         <div style={{ fontSize, lineHeight: 1.7, minWidth: 0 }}>

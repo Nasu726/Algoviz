@@ -172,8 +172,9 @@ export interface GraphState {
     /** マージソート: まだ片付けていない仕事の数 */
     pendingTasks?: number;
 
-    /** バケットソート / ヒープソート: 局面 / 値の範囲 (0..range-1) */
-    phase?: 'count' | 'expand' | 'zeros' | 'ones' | 'copy' | 'build' | 'extract' | 'done';
+    /** バケットソート / ヒープソート / セグメント木: 局面 / 値の範囲 (0..range-1) */
+    phase?: 'count' | 'expand' | 'zeros' | 'ones' | 'copy' | 'build' | 'extract'
+        | 'update' | 'query' | 'done';
     /** ヒープソート: 未確定の数 / 直前に比べた子 / 直前に入れ替えた相手 (-1 なら無し) */
     heapSize?: number;
     compared?: number;
@@ -273,6 +274,24 @@ export interface GraphState {
     coloredCount?: number;
     /** 二部グラフ判定かつ withProgress: 頂点ごとの -1 未着色 0 青 1 橙 */
     sides?: number[];
+
+    /** セグメント木: 節点ごとの受け持ち [segL, segR) / 子 (葉は -1) / 値 (未計算は null) */
+    segL?: number[];
+    segR?: number[];
+    segLeft?: number[];
+    segRight?: number[];
+    segValue?: (number | null)[];
+    /** セグメント木: 今の段階 (組み立て / 今の操作) を終えたか */
+    opComplete?: boolean;
+    /** セグメント木: 直前の手で扱った節点 (-1 なら無し) と、したこと */
+    lastNode?: number;
+    lastKind?: '' | 'build' | 'leaf' | 'recompute' | 'in' | 'out' | 'partial';
+    /** セグメント木: query の区間 [queryL, queryR) / 答えに使った節点 / 答え (最小・最大の単位元は null) */
+    queryL?: number;
+    queryR?: number;
+    takenNodes?: number[];
+    answer?: number | null;
+    monoid?: 'sum' | 'min' | 'max';
 }
 
 /** getState に渡せるパラメータ。どれも省略可能 */
