@@ -1,6 +1,6 @@
 import React from 'react';
 import { Section, NumberInput, Check } from '../graph/panelParts';
-import { usesWords, usesText, usesOps } from './types';
+import { usesWords, usesText, usesOps, defaultOps } from './types';
 import type { TreeVariant, Monoid } from './types';
 
 interface Props {
@@ -11,7 +11,7 @@ interface Props {
     /** B木のときだけ使う。1つの節点が持てる子の数の上限 */
     order: number;
     setOrder: (v: number) => void;
-    /** セグメント木のときだけ使う。操作の並びと集約 */
+    /** セグメント木 / Fenwick 木のときだけ使う。操作の並び。集約はセグメント木だけ */
     opsText: string;
     setOpsText: (v: string) => void;
     monoid: Monoid;
@@ -65,7 +65,7 @@ export const TreeSetupPanel: React.FC<Props> = ({
                                 width: '100%', height: compact ? '100px' : '120px',
                                 fontFamily: 'monospace', resize: 'vertical', boxSizing: 'border-box',
                             }}
-                            placeholder={'query 1 6\nupdate 3 9'}
+                            placeholder={defaultOps[variant]}
                         />
                     </>
                 )}
@@ -76,7 +76,7 @@ export const TreeSetupPanel: React.FC<Props> = ({
             </Section>
 
             {/* どれも正しいセグメント木で、分類では決まらないので選ばせる */}
-            {ops && (
+            {variant === 'segtree' && (
                 <Section title="集約">
                     <select value={monoid} onChange={(e) => setMonoid(e.target.value as Monoid)}
                             style={{ padding: '4px', fontSize }}>
@@ -121,6 +121,8 @@ export const TreeSetupPanel: React.FC<Props> = ({
             <p style={{ margin: 0, fontSize: '12px', color: '#78909c', lineHeight: 1.6 }}>
                 {text
                     ? `文章に出てくる文字を数えます。空白は数えません。文字の種類の上限は ${maxValues} です。`
+                    : variant === 'fenwick'
+                    ? `配列は左から添字 1, 2, 3, … です。上限は ${maxValues} 個です。操作は1行に1つ、add に続けて添字と足す値、sum に続けて添字 i と書きます (a[1] から a[i] までの和)。`
                     : ops
                     ? `配列は左から添字 0, 1, 2, … です。上限は ${maxValues} 個です。操作は1行に1つ、update に続けて添字と値、query に続けて区間の両端 l r と書きます (半開区間 [l, r))。`
                     : words

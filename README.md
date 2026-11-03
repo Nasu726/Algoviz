@@ -27,6 +27,7 @@
 - [trie (接頭辞木) の構築](https://algoviz.nasu.uk/tree/trie)
 - [ハフマン木の構築](https://algoviz.nasu.uk/tree/huffman)
 - [セグメント木](https://algoviz.nasu.uk/tree/segtree)
+- [Fenwick 木](https://algoviz.nasu.uk/tree/fenwick)
 
 **配列**
 
@@ -125,7 +126,8 @@ cpp/
     HeapSortVisualizer.hpp     ├ ヒープソート (構築は下ろす、取り出しで後ろから確定)
     TrieVisualizer.hpp         ├ trie の構築
     HuffmanVisualizer.hpp      ├ ハフマン木の構築
-    SegmentTreeVisualizer.hpp  └ セグメント木 (組み立て / update / query。集約は和・最小・最大)
+    SegmentTreeVisualizer.hpp  ├ セグメント木 (組み立て / update / query。集約は和・最小・最大)
+    FenwickVisualizer.hpp      └ Fenwick 木 (組み立て / add / sum。添字の上に区間の箱を並べる)
     ArrayVisualizer.hpp        配列を一列に並べるものの基底 (節点の番号 = 添字)
     BubbleSortVisualizer.hpp   ├ バブルソート
     SelectionSortVisualizer.hpp├ 選択ソート

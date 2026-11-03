@@ -397,8 +397,54 @@ const SegTreeHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
     </>
 );
 
+const FenwickHelp: React.FC<{ maxValues: number }> = ({ maxValues }) => (
+    <>
+        <h3>1. 画面の見方</h3>
+        <ul>
+            <li>いちばん下の段が配列 a。<b>その下の数字が添字で、1 から始まる</b></li>
+            <li>上の横長の箱が ft[i]。箱の下にある a の値の和を持つ。
+                箱の右端の添字が i</li>
+            <li>色の意味は実行状態のパネルにある凡例のとおり</li>
+        </ul>
+
+        <h3>2. 1ステップの単位</h3>
+        <ul>
+            <li><b>組み立て</b>：ft[i] = a[i] から始めて、ft[i] を ft[i + lowbit(i)] に1回足す。i の小さい順に進む</li>
+            <li><b>add i x</b>：箱を1つ書き換える (x を足す)。1手目で a[i] も書き換え、
+                i に lowbit(i) を足した箱へ進む</li>
+            <li><b>sum i</b>：箱を1つ答えに足し、i から lowbit(i) を引いた箱へ進む。0 になったら終わり</li>
+        </ul>
+
+        <h3>3. 値と操作の入れ方</h3>
+        <ul>
+            <li><b>配列</b>：空白か改行で区切って値を並べる。上限は {maxValues} 個</li>
+            <li><b>操作の並び</b>：1行に1つ。add に続けて添字と足す値、sum に続けて添字を書く。
+                範囲の外の番号は端に寄せる</li>
+            <li><b>ランダム生成</b>：個数を決めると、1〜9 の値と操作を作る</li>
+        </ul>
+        <pre style={codeBlock}>{'sum 7\nadd 3 2\nsum 6'}</pre>
+
+        <h3>4. 画面の操作</h3>
+        <ul>
+            <li><b>ドラッグ</b>：表示位置を動かす</li>
+            <li><b>ホイール / 2本指のピンチ</b>：拡大・縮小</li>
+        </ul>
+
+        <h3>5. ショートカットキー</h3>
+        <ul>
+            <li><b>Esc</b>：ビジュアライザ一覧へ戻る</li>
+            <li><b>Ctrl + H</b>：ヘルプを開く</li>
+            <li><b>Ctrl + S</b>：この配列と操作で動かす</li>
+            <li><b>Ctrl + Enter</b>：実行 / 一時停止</li>
+            <li><b>Ctrl + &larr;</b> / <b>&rarr;</b>：戻る / 進む</li>
+            <li><b>Ctrl + &uarr;</b> / <b>&darr;</b>：実行速度の増減</li>
+        </ul>
+    </>
+);
+
 export const TreeHelp: React.FC<{ variant: TreeVariant; maxValues: number }> = ({ variant, maxValues }) =>
     variant === 'segtree' ? <SegTreeHelp maxValues={maxValues} />
+    : variant === 'fenwick' ? <FenwickHelp maxValues={maxValues} />
     : variant === 'btree' ? <BTreeHelp maxValues={maxValues} />
     : variant === 'avl' ? <AvlHelp maxValues={maxValues} />
     : variant === 'huffman' ? <HuffmanHelp maxLeaves={maxValues} />

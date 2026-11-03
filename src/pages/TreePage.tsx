@@ -5,6 +5,7 @@ import { SidebarLayout } from '../components/ui/SidebarLayout';
 import { TreeSetupPanel } from '../components/tree/TreeSetupPanel';
 import { TreePanel } from '../components/tree/TreePanel';
 import { SegTreePanel } from '../components/tree/SegTreePanel';
+import { FenwickPanel } from '../components/tree/FenwickPanel';
 import { TreeHelp } from '../components/tree/TreeHelp';
 import { useKeyboardShortcuts } from '../hooks/keyboardShortcut';
 import { useLayoutTier } from '../hooks/useLayoutTier';
@@ -30,7 +31,7 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
     const [valueText, setValueText] = useState(defaultValues[variant]);
     const [maxHeap, setMaxHeap] = useState(true);
     const [order, setOrder] = useState(4);
-    const [opsText, setOpsText] = useState(defaultOps);
+    const [opsText, setOpsText] = useState(defaultOps[variant] ?? '');
     const [monoid, setMonoid] = useState<Monoid>('sum');
     const [count, setCount] = useState('10');
     const [state, setState] = useState<GraphState | null>(null);
@@ -82,7 +83,7 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
         if (!engine) return;
         setIsPlaying(false);
         engine.setAlgorithm(treeAlgorithm(variant));
-        if (usesOps(variant)) engine.load('setMonoid', latest.current.monoid);
+        if (variant === 'segtree') engine.load('setMonoid', latest.current.monoid);
         loadInputs();
         readState();
         setIsLoaded(true);
@@ -170,7 +171,21 @@ export const TreePage: React.FC<Props> = ({ engine, onBack, variant }) => {
                     />
                 }
                 canvas={isLoaded ? <GraphRenderer engine={engine} showWeights={usesText(variant) || variant === 'avl'} /> : null}
-                controlPanel={usesOps(variant) ? (
+                controlPanel={variant === 'fenwick' ? (
+                    <FenwickPanel
+                        state={state}
+                        isPlaying={isPlaying}
+                        delay={delay}
+                        setDelay={setDelay}
+                        onReset={handleReset}
+                        onPlayPause={toggle}
+                        onStepBack={handleStepBack}
+                        onStepNext={handleStep}
+                        onRunToEnd={handleRunToEnd}
+                        horizontal={tier !== 'wide'}
+                        compact={compact}
+                    />
+                ) : variant === 'segtree' ? (
                     <SegTreePanel
                         state={state}
                         isPlaying={isPlaying}
