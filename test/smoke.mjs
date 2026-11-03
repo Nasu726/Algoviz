@@ -265,6 +265,13 @@ engine.load('setOps', 'query 1 3');
 engine.runToEnd();
 checkEq('セグメント木の区間和', engine.getState({}).answer, 11);
 
+// --- Fenwick 木 ---
+engine.setAlgorithm('fenwick');
+engine.load('setValues', '5 3 8 1');
+engine.load('setOps', 'sum 3');
+engine.runToEnd();
+checkEq('Fenwick 木の先頭からの和', engine.getState({}).answer, 16);
+
 if (failures === 0) {
     console.log(`smoke: OK (${checks} checks)`);
     process.exit(0);

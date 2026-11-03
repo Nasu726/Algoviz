@@ -41,6 +41,7 @@
 #include "../cpp/include/RadixSortVisualizer.hpp"
 #include "../cpp/include/UnionFindVisualizer.hpp"
 #include "../cpp/include/SegmentTreeVisualizer.hpp"
+#include "../cpp/include/FenwickVisualizer.hpp"
 #include "../cpp/include/KruskalVisualizer.hpp"
 #include "../cpp/include/BipartiteVisualizer.hpp"
 #include "../cpp/include/HeapSortVisualizer.hpp"
@@ -6486,6 +6487,217 @@ static void testSegtreeRandomStaysInRange() {
 }
 
 // ==========================================
+// Fenwick 木
+// ==========================================
+
+static int fenLow(int i) { return i & -i; }
+
+static void fenLoad(FenwickVisualizer& t, const std::vector<int>& values, const std::string& ops) {
+    t.load("setValues", joinInts(values));
+    t.load("setOps", ops);
+}
+
+// どの ft[i] も a[i - lowbit + 1 .. i] の和か (どちらも 0 始まりの配列で渡ってくる)
+static bool fenConsistent(FenwickVisualizer& t) {
+    val s = t.getState(val::object());
+    std::vector<int> a = valToVector(s["fenA"]), ft = valToVector(s["fenTree"]);
+    for (int i = 1; i <= (int)a.size(); i++) {
+        int sum = 0;
+        for (int j = i - fenLow(i) + 1; j <= i; j++) sum += a[j - 1];
+        if (ft[i - 1] != sum) return false;
+    }
+    return true;
+}
+
+static int fenBuildSteps(int n) {
+    int steps = 0;
+    for (int i = 1; i <= n; i++) if (i + fenLow(i) <= n) steps++;
+    return steps;
+}
+
+static void testFenwickBuildAddsUpward() {
+    beginTest("組み立ては1手に1回、ft[i] を ft[i + lowbit(i)] に足す");
+
+    for (int n : {1, 5, 8, 13, 16}) {
+        FenwickVisualizer t;
+        fenLoad(t, segValues(n), "");
+        int steps = 0;
+        while (t.step()) {
+            steps++;
+            val s = t.getState(val::object());
+            int from = s["lastFrom"].as<int>();
+            CHECK_EQ(s["lastIndex"].as<int>(), from + fenLow(from));
+        }
+        CHECK_EQ(steps, fenBuildSteps(n));
+        CHECK(fenConsistent(t));
+    }
+}
+
+static void testFenwickSumJumpsLeft() {
+    beginTest("sum i は ft を右から左へ足し、答えが a[1..i] の和になる");
+
+    for (int n : {1, 5, 8, 13}) {
+        std::vector<int> v = segValues(n);
+        for (int i = 1; i <= n; i++) {
+            FenwickVisualizer t;
+            fenLoad(t, v, "sum " + std::to_string(i));
+            for (int k = 0; k < fenBuildSteps(n); k++) t.step();
+
+            int steps = 0;
+            while (t.step()) steps++;
+            CHECK_EQ(steps, __builtin_popcount(i));
+
+            val s = t.getState(val::object());
+            int expected = 0;
+            for (int j = 0; j < i; j++) expected += v[j];
+            CHECK_EQ(s["answer"].as<int>(), expected);
+
+            // 足した箱の受け持ちが右から隙間なく並び、1 で終わる
+            int at = i;
+            for (int k : valToVector(s["taken"])) {
+                CHECK_EQ(k, at);
+                at = k - fenLow(k);
+            }
+            CHECK_EQ(at, 0);
+        }
+    }
+}
+
+static void testFenwickAddClimbsRight() {
+    beginTest("add i x は1手に箱を1つ書き換え、i += lowbit(i) と登る");
+
+    for (int n : {1, 5, 8, 13}) {
+        std::vector<int> v = segValues(n);
+        for (int i = 1; i <= n; i++) {
+            FenwickVisualizer t;
+            fenLoad(t, v, "add " + std::to_string(i) + " 7");
+            for (int k = 0; k < fenBuildSteps(n); k++) t.step();
+
+            std::vector<int> visited;
+            while (t.step()) visited.push_back(t.getState(val::object())["lastIndex"].as<int>());
+            int at = i;
+            for (int k : visited) {
+                CHECK_EQ(k, at);
+                at = k + fenLow(k);
+            }
+            CHECK(at > n);
+            CHECK(!visited.empty());
+
+            CHECK_EQ(valToVector(t.getState(val::object())["fenA"])[i - 1], v[i - 1] + 7);
+            CHECK(fenConsistent(t));
+        }
+    }
+}
+
+static void testFenwickClampsIndices() {
+    beginTest("範囲外の番号は端に寄せ、sum 0 は1手で 0");
+
+    std::vector<int> v = {5, 3, 8, 1, 6};
+    FenwickVisualizer wide;
+    fenLoad(wide, v, "sum 99");
+    wide.runToEnd();
+    CHECK_EQ(wide.getState(val::object())["answer"].as<int>(), 23);
+
+    for (const char* q : {"sum 0", "sum -3"}) {
+        FenwickVisualizer t;
+        fenLoad(t, v, q);
+        for (int k = 0; k < fenBuildSteps(5); k++) t.step();
+        int steps = 0;
+        while (t.step()) steps++;
+        CHECK_EQ(steps, 1);
+        val s = t.getState(val::object());
+        CHECK_EQ(s["answer"].as<int>(), 0);
+        CHECK_EQ(s["taken"]["length"].as<int>(), 0);
+    }
+
+    FenwickVisualizer low;
+    fenLoad(low, v, "add 0 4");
+    low.runToEnd();
+    CHECK_EQ(valToVector(low.getState(val::object())["fenA"])[0], 9);
+    CHECK(fenConsistent(low));
+}
+
+static void testFenwickBoxesSpanTheirRange() {
+    beginTest("ft[i] の箱は a[i - lowbit + 1] から a[i] までにまたがり、lowbit が大きいほど上");
+
+    const int n = 13;
+    FenwickVisualizer t;
+    fenLoad(t, segValues(n), "");
+    val s = t.getState(val::object());
+    val nodes = s["nodes"];
+    val widths = s["nodeHalfWidths"];
+    auto x = [&](int u) { return nodes[u * GraphData::NODE_STRIDE].as<float>(); };
+    auto y = [&](int u) { return nodes[u * GraphData::NODE_STRIDE + 1].as<float>(); };
+    auto hw = [&](int u) { return widths[u].as<float>(); };
+
+    for (int i = 1; i <= n; i++) {
+        int box = n + i - 1;
+        int first = i - fenLow(i) + 1;
+        CHECK(std::abs((x(box) - hw(box)) - (x(first - 1) - hw(first - 1))) < 0.01f);
+        CHECK(std::abs((x(box) + hw(box)) - (x(i - 1) + hw(i - 1))) < 0.01f);
+        CHECK(y(box) < y(i - 1)); // a より上
+        for (int k = 1; k <= n; k++) {
+            if (fenLow(k) > fenLow(i)) CHECK(y(n + k - 1) < y(box));
+        }
+    }
+}
+
+static std::string fenSnapshot(FenwickVisualizer& t) {
+    val s = t.getState(val::object());
+    return joinInts(valToVector(s["fenA"])) + "|" + joinInts(valToVector(s["fenTree"])) + "|" +
+           joinInts(valToVector(s["taken"])) + "|" + std::to_string(s["lastIndex"].as<int>()) +
+           s["lastKind"].as<std::string>() + std::to_string(s["opIndex"].as<int>()) +
+           s["phase"].as<std::string>() + std::to_string(s["answer"].as<int>());
+}
+
+static void testFenwickStepMatchesRunToEndAndStepsBack() {
+    beginTest("Fenwick 木: 1手ずつ進めた結果が一気に実行と一致し、1手戻せる");
+
+    const std::string ops = "sum 7 add 3 2 sum 6 add 8 -5 sum 8 sum 0";
+    std::vector<int> v = {5, 3, 8, 1, 6, 2, 7, 4};
+
+    FenwickVisualizer stepwise, atOnce;
+    fenLoad(stepwise, v, ops);
+    fenLoad(atOnce, v, ops);
+    int total = 0;
+    while (stepwise.step()) total++;
+    atOnce.runToEnd();
+    CHECK_EQ(fenSnapshot(stepwise), fenSnapshot(atOnce));
+
+    for (int k = 0; k < total; k++) {
+        FenwickVisualizer before, after;
+        fenLoad(before, v, ops);
+        fenLoad(after, v, ops);
+        for (int i = 0; i < k; i++) before.step();
+        for (int i = 0; i <= k; i++) after.step();
+        after.stepBack();
+        CHECK_EQ(fenSnapshot(after), fenSnapshot(before));
+    }
+}
+
+static void testFenwickRandomStaysConsistent() {
+    beginTest("Fenwick 木: ランダム生成は指定の個数で、流し終えても ft が崩れない");
+
+    for (int count : {1, 6, 16}) {
+        FenwickVisualizer t;
+        t.load("genRandom", std::to_string(count));
+        val s = t.getState(val::object());
+        std::vector<int> v = valToVector(s["values"]);
+        CHECK_EQ((int)v.size(), count);
+        for (int x : v) CHECK(1 <= x && x <= 9);
+        CHECK_EQ(s["ops"]["length"].as<int>(), 5);
+        t.runToEnd();
+        CHECK(t.getState(val::object())["finished"].as<bool>());
+        CHECK(fenConsistent(t));
+    }
+
+    FenwickVisualizer empty;
+    empty.load("setValues", "");
+    CHECK(empty.getState(val::object())["finished"].as<bool>());
+    CHECK(!empty.step());
+}
+
+// ==========================================
 
 int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
@@ -6727,6 +6939,15 @@ int main(int argc, char** argv) {
     testSegtreeUpdateClimbsToTheRoot();
     testSegtreeStepMatchesRunToEndAndStepsBack();
     testSegtreeRandomStaysInRange();
+
+    beginSection("Fenwick 木");
+    testFenwickBuildAddsUpward();
+    testFenwickSumJumpsLeft();
+    testFenwickAddClimbsRight();
+    testFenwickClampsIndices();
+    testFenwickBoxesSpanTheirRange();
+    testFenwickStepMatchesRunToEndAndStepsBack();
+    testFenwickRandomStaysConsistent();
 
     beginSection("スタック / キュー / デック");
     testSameOpsGiveDifferentOrder();
