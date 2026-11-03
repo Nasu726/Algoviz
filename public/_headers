@@ -1,0 +1,4 @@
+# core.js と core.wasm は対で読む。片方だけキャッシュに残ると embind の対応がずれて落ちる。
+# .js は Cloudflare の既定で 4 時間キャッシュされるので、毎回確かめさせる。
+/wasm/*
+  Cache-Control: no-cache
